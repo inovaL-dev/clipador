@@ -1,0 +1,37 @@
+name: Relatar um problema
+description: Algo não funcionou como deveria
+labels: ["problema"]
+body:
+  - type: textarea
+    id: ocorrido
+    attributes:
+      label: O que aconteceu?
+      description: Conte o que você fez e o que apareceu na tela.
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que deveria acontecer?
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do Clipador
+      placeholder: "1.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: plataforma
+    attributes:
+      label: Origem do vídeo
+      options: [Kick, Twitch, YouTube, X, Arquivo do computador, Não se aplica]
+    validations:
+      required: true
+  - type: textarea
+    id: registro
+    attributes:
+      label: Registro do programa
+      description: Cole o trecho final de %LOCALAPPDATA%\Clipador\registro.txt. Apague qualquer dado pessoal antes de enviar.
+      render: text

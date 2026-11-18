@@ -1,0 +1,9 @@
+streamlink>=8.0
+yt-dlp>=2026.10.26
+faster-whisper>=1.2.1
+websockets>=15.0
+curl_cffi>=0.11
+numpy
+onnxruntime
+opencv-python-headless>=4.10,<5
+pillow>=10

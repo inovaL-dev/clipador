@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipador ao vivo</title>
+<meta name="theme-color" content="#0f1b20">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f1b20'/%3E%3Cpath d='M9 7h14l-7 8z' fill='%23f2b544'/%3E%3Crect x='14.75' y='12' width='2.5' height='14' rx='1.25' fill='%23f2b544'/%3E%3C/svg%3E">
+<link rel="preload" href="/web/fontes/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/web/app.css">
+<link rel="stylesheet" href="/web/editor.css">
+<link rel="stylesheet" href="/web/estudio.css">
+<link rel="stylesheet" href="/web/acabamento.css">
+<script>try { if (sessionStorage.getItem("abertura") || location.search.includes("janela=1") || matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("sem-abertura"); sessionStorage.setItem("abertura", "1"); } catch {}</script>
+</head>
+<body data-vazio="true">
+<div class="abertura" aria-hidden="true"><div class="ab-cena"><div class="ab-linha"><i style="--l:3;--n:0;--c:#5ad1b3"></i><i style="--l:5;--n:1;--c:#2f6f7c"></i><i style="--l:2;--n:2;--c:#f2b544"></i><i style="--l:6;--n:3;--c:#2f6f7c"></i><i style="--l:3;--n:4;--c:#a99bff"></i><i style="--l:4;--n:5;--c:#5ad1b3"></i><i style="--l:2;--n:6;--c:#f6f0e4"></i><i style="--l:5;--n:7;--c:#2f6f7c"></i><b></b></div><div class="ab-marca"><svg viewBox="0 0 24 24"><path d="M5 3h14l-7 8z"/><rect x="10.75" y="9" width="2.5" height="13" rx="1.25"/></svg>Clipador</div></div></div>
+<a class="pular" href="#conteudo">Ir para o conteúdo</a>
+
+<div class="app">
+<aside class="lateral">
+  <a class="marca" href="/" aria-label="Clipador ao vivo, início">
+    <svg class="marca-sinal" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14l-7 8z"/><rect x="10.75" y="9" width="2.5" height="13" rx="1.25"/></svg>
+    <span>Clipador</span>
+  </a>
+  <nav class="abas" aria-label="Seções">
+    <button type="button" data-aba="vivo" aria-pressed="true"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M6.3 17.7a8 8 0 0 1 0-11.4M17.7 6.3a8 8 0 0 1 0 11.4"/></svg><span class="aba-nome">Ao vivo</span><span class="contador no-ar" id="n-vivo"></span></button>
+    <button type="button" data-aba="cortes" aria-pressed="false"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5 20 17M8 16.5 20 7"/></svg><span class="aba-nome">Cortes</span><span class="contador" id="n-cortes"></span></button>
+    <button type="button" data-aba="postagem" aria-pressed="false"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span class="aba-nome">Postagem</span><span class="contador" id="n-postagem"></span></button>
+    <button type="button" data-aba="longos" aria-pressed="false"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m10.5 9.5 4 2.5-4 2.5z"/></svg><span class="aba-nome">Vídeos longos</span><span class="contador" id="n-longos"></span></button>
+    <button type="button" data-aba="editor" aria-pressed="false"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h10M17 7h4M3 12h4M11 12h10M3 17h13M20 17h1"/><path d="M15 4v6M9 9v6M18 14v6"/></svg><span class="aba-nome">Editor</span></button>
+  </nav>
+  <div class="lateral-fim">
+    <p class="resumo" id="resumo" aria-live="polite"></p>
+    <button class="ferramenta" id="abrir-estilo" type="button"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 15.5 8.5l3 3L8 22H5z" transform="translate(0 -2)"/><path d="M14 4h6M17 1v6" transform="translate(0 2)"/></svg><span>Estilo do vídeo</span></button>
+    <button class="ferramenta" id="abrir-aprendizado" type="button"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/><path d="M10 20h4"/></svg><span>Aprendizado</span></button>
+    <button class="ferramenta" id="abrir-ajustes" type="button"><svg class="icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span>Ajustes</span></button>
+  </div>
+</aside>
+
+<main id="conteudo">
+  <div class="pagina" id="aba-vivo">
+  <header class="pagina-topo vivo-topo">
+    <div><h1>Ao vivo</h1><p>Acompanhe as lives e veja os cortes saindo em tempo real.</p></div>
+  </header>
+  <section class="comando" aria-labelledby="comando-titulo">
+    <h2 id="comando-titulo">Cole o link da live. Os cortes saem enquanto ela acontece.</h2>
+    <form id="form-link" novalidate>
+      <label class="so-leitor" for="link">Link da live</label>
+      <div class="campo-link">
+        <input id="link" name="link" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="kick.com/canal, twitch.tv/canal, youtube.com/@canal ou x.com/i/broadcasts/…" required>
+        <button class="botao principal" type="submit">Acompanhar live</button>
+      </div>
+      <label class="marcar marcar-link"><input type="checkbox" id="link-programar"><span>Colocar os Shorts desta live na agenda de postagem</span></label>
+      <button class="botao texto ir-envio" type="button" id="ir-envio">Enviar um vídeo do computador</button>
+      <p class="erro-campo" id="erro-link" role="alert" hidden></p>
+    </form>
+    <ol class="passos">
+      <li><b>Cole o link</b><span>Kick, Twitch, YouTube ou X</span></li>
+      <li><b>O sistema corta</b><span>Reações, chat e ação no jogo</span></li>
+      <li><b>Você revisa e posta</b><span>Tudo pronto para os Shorts</span></li>
+    </ol>
+  </section>
+
+  <div class="mesa" id="mesa" hidden>
+    <section class="lives" id="lives" aria-label="Lives acompanhadas"></section>
+    <aside class="agora" aria-labelledby="agora-titulo">
+      <h2 id="agora-titulo">Agora</h2>
+      <p class="aviso" id="aviso-legenda" hidden></p>
+      <ol class="fila" id="fila"></ol>
+      <ol class="eventos" id="eventos" tabindex="0" aria-label="Histórico da live"></ol>
+    </aside>
+  </div>
+
+  <section class="recentes" id="recentes" aria-labelledby="recentes-titulo" hidden>
+    <header class="secao-topo"><h2 id="recentes-titulo">Últimos cortes</h2><button class="botao texto" type="button" id="ver-cortes">Ver todos os cortes</button></header>
+    <div class="recentes-lista" id="recentes-lista"></div>
+  </section>
+  </div>
+
+  <div class="pagina" id="aba-cortes" hidden>
+  <section class="cortes" id="cortes" aria-labelledby="cortes-titulo">
+    <header class="pagina-topo">
+      <div><h1 id="cortes-titulo">Cortes</h1><p>Assista, ajuste a legenda e escolha o que vai para a agenda.</p></div>
+    </header>
+    <div class="barra-ferramentas">
+      <div class="filtros" role="group" aria-label="Filtrar cortes">
+        <button type="button" data-filtro="postar" aria-pressed="true">Para postar <span id="n-postar"></span></button>
+        <button type="button" data-filtro="postados" aria-pressed="false">Postados <span id="n-postados"></span></button>
+        <button type="button" data-filtro="todos" aria-pressed="false">Todos <span id="n-todos"></span></button>
+      </div>
+      <label class="filtro-pasta"><span class="so-leitor">Pasta</span><select id="filtro-pasta"></select></label>
+    </div>
+    <div class="grade" id="grade"></div>
+    <p class="sem-cortes" id="sem-cortes" hidden></p>
+    <nav class="paginacao" id="cortes-paginacao" aria-label="Páginas de cortes" hidden>
+      <span id="cortes-contagem"></span>
+      <div class="paginas" id="cortes-paginas"></div>
+      <label>Por página <select id="cortes-por-pagina"><option>12</option><option selected>24</option><option>48</option><option>96</option></select></label>
+    </nav>
+  </section>
+  </div>
+
+  <div class="pagina postagem" id="aba-postagem" hidden>
+    <header class="pagina-topo">
+      <div><h1 id="agenda-titulo">Postagem</h1><p id="agenda-resumo"></p></div>
+    </header>
+    <div class="subabas" role="tablist" aria-label="Áreas da postagem">
+      <button type="button" role="tab" data-sub="agenda" aria-selected="true">Agenda</button>
+      <button type="button" role="tab" data-sub="pastas" aria-selected="false">Pastas <span id="sub-pastas"></span></button>
+      <button type="button" role="tab" data-sub="horarios" aria-selected="false">Horários</button>
+      <button type="button" role="tab" data-sub="canal" aria-selected="false">Canal e envio <i class="sinal-canal" id="sub-canal" hidden></i></button>
+    </div>
+
+    <section class="agenda" data-painel="agenda" aria-label="Agenda de Shorts">
+      <p class="aviso" id="post-aviso" role="status" hidden></p>
+      <div class="aviso repetidos" id="post-repetidos" role="status" hidden>
+        <p id="post-repetidos-texto"></p>
+        <div><button class="botao principal" type="button" id="repetidos-tirar">Tirar da fila</button><button class="botao" type="button" id="repetidos-manter">Postar neste canal também</button></div>
+      </div>
+      <p class="dica conferencia" id="post-conferencia" hidden></p>
+      <div class="barra-ferramentas">
+        <div class="selecao" id="agenda-selecao" hidden>
+          <label class="marcar"><input type="checkbox" id="selecionar-pagina"><span>Selecionar esta página</span></label>
+          <span id="selecao-total" aria-live="polite"></span>
+          <button class="botao perigo" type="button" id="apagar-selecionados" disabled>Apagar selecionados</button>
+        </div>
+        <label class="filtro-pasta"><span class="so-leitor">Mostrar pasta</span><select id="agenda-pasta"></select></label>
+      </div>
+      <div id="agenda-dias"></div>
+      <nav class="paginacao" id="agenda-paginacao" aria-label="Páginas da agenda" hidden>
+        <p id="agenda-contagem"></p>
+        <div class="paginas" id="agenda-paginas"></div>
+        <label>Por página <select id="agenda-por-pagina"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></label>
+      </nav>
+      <p class="sem-cortes" id="agenda-vazia" hidden>Marque uma pasta para os Shorts dela entrarem na agenda.</p>
+    </section>
+
+    <section class="painel-config" data-painel="pastas" aria-labelledby="pastas-titulo" hidden>
+      <div class="post-bloco">
+        <h2 id="pastas-titulo">Pastas na agenda</h2>
+        <p class="dica">Cada live ou vídeo tem a própria pasta. Só as marcadas entram na agenda de postagem.</p>
+        <ul class="pastas" id="lista-pastas"></ul>
+      </div>
+    </section>
+
+    <section class="painel-config duas-partes" data-painel="canal" aria-label="Canal e envio" hidden>
+      <div class="post-bloco">
+        <h2 id="conta-titulo">Canal do YouTube</h2>
+        <div id="conta-corpo"></div>
+      </div>
+      <div class="post-bloco">
+        <h2 id="auto-titulo">Envio automático</h2>
+        <p class="dica">Até a auditoria ser aprovada, o YouTube deixa os vídeos enviados pela API presos no modo privado. Enquanto isso, poste pela agenda usando os botões de copiar.</p>
+        <label class="marcar"><input type="checkbox" id="post-auditoria"><span>Meu projeto foi aprovado na auditoria do YouTube</span></label>
+        <label class="marcar"><input type="checkbox" id="post-automatico"><span>Enviar e programar os Shorts sozinho</span></label>
+      </div>
+    </section>
+
+    <section class="painel-config" data-painel="horarios" aria-labelledby="hor-titulo" hidden>
+      <div class="post-bloco">
+        <h2 id="hor-titulo">Como postar</h2>
+        <fieldset class="post-modos">
+          <legend class="so-leitor">Como os vídeos serão postados</legend>
+          <label class="marcar"><input type="radio" name="post-modo" value="horarios"><span>Nos horários da agenda</span></label>
+          <label class="marcar"><input type="radio" name="post-modo" value="dia"><span>Todos em um único dia</span></label>
+          <label class="marcar"><input type="radio" name="post-modo" value="agora"><span>Todos de uma vez</span></label>
+        </fieldset>
+        <div class="modo-bloco" id="bloco-horarios">
+          <form class="hor-rapido" id="hor-rapido">
+            <label>Das <input type="time" id="hor-inicio" value="06:00" required></label>
+            <label>Até <input type="time" id="hor-fim" value="23:30" required></label>
+            <label>A cada
+              <select id="hor-intervalo">
+                <option value="30" selected>30 min</option>
+                <option value="45">45 min</option>
+                <option value="60">1 hora</option>
+                <option value="90">1h30</option>
+                <option value="120">2 horas</option>
+              </select>
+            </label>
+            <label class="hor-quantos">Vídeos em cada horário
+              <input type="number" id="hor-quantos" min="1" max="20" step="1" value="1" inputmode="numeric" required>
+            </label>
+            <button class="botao principal" type="submit">Aplicar na agenda</button>
+          </form>
+          <div class="horarios" id="horarios" tabindex="0" aria-label="Horários de postagem"></div>
+          <div class="horarios-acoes">
+            <button class="botao texto" type="button" id="hor-mais">Adicionar horário</button>
+            <button class="botao" type="button" id="hor-salvar">Salvar horários</button>
+          </div>
+        </div>
+        <form class="modo-bloco hor-rapido" id="bloco-dia" hidden>
+          <label>Dia <input type="date" id="dia-data" required></label>
+          <label>Das <input type="time" id="dia-inicio" required></label>
+          <label>Até <input type="time" id="dia-fim" required></label>
+          <button class="botao principal" type="submit">Aplicar neste dia</button>
+          <p class="dica">A fila inteira é dividida por igual entre esses horários. Cortes novos entram na divisão.</p>
+        </form>
+        <p class="modo-bloco dica" id="bloco-agora" hidden>Os vídeos da fila saem em sequência, um por minuto, começando daqui a 10 minutos.</p>
+        <p class="dica">Se o canal atingir o limite diário de envios, a agenda passa os próximos vídeos para quando ele liberar.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="pagina longos" id="aba-longos" hidden>
+    <header class="pagina-topo">
+      <div><h1>Vídeos longos</h1><p>Histórias horizontais com capítulos, zoom nas cenas e foco na webcam.</p></div>
+    </header>
+
+    <section class="auto-longo" aria-labelledby="auto-longo-titulo">
+      <div class="auto-texto">
+        <h2 id="auto-longo-titulo">Criar durante a live</h2>
+        <p id="auto-longo-status"></p>
+        <div class="barra" id="auto-longo-barra" hidden><span></span></div>
+      </div>
+      <div class="auto-campos">
+        <label class="marcar"><input type="checkbox" id="auto-longo-ativo"><span>Criar sozinho</span></label>
+        <label class="auto-tempo">Cada parte com
+          <select id="auto-longo-minutos"><option value="5">5 minutos</option><option value="8">8 minutos</option><option value="10">10 minutos</option><option value="15">15 minutos</option><option value="20">20 minutos</option><option value="30">30 minutos</option></select>
+        </label>
+      </div>
+    </section>
+
+    <div class="longos-entrada">
+      <form class="cartao-acao" id="form-gravada">
+        <h2>Cortar um vídeo pronto</h2>
+        <p class="dica">Envie um vídeo do computador ou cole o link de uma live que já acabou. O sistema encontra os melhores momentos e cria os cortes.</p>
+        <input type="file" id="gr-arquivo" accept="video/*,.mkv,.ts,.flv,.m4v" hidden>
+        <button class="envio-zona" type="button" id="gr-zona">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+          <strong>Enviar vídeo do computador</strong><span>Clique para escolher ou arraste o arquivo até aqui</span>
+        </button>
+        <div class="envio-arquivo" id="gr-escolhido" hidden>
+          <div><strong id="gr-nome"></strong><span id="gr-info"></span><div class="barra" id="gr-barra" hidden><span id="gr-barra-v"></span></div></div>
+          <button class="botao fantasma" type="button" id="gr-tirar">Trocar vídeo</button>
+        </div>
+        <div class="bloco" id="gr-bloco-link">
+          <label for="gr-link">Ou cole o link da gravação</label>
+          <input id="gr-link" autocomplete="off" spellcheck="false" placeholder="Link do YouTube, Twitch, Kick ou X">
+        </div>
+        <div class="campos-tres">
+          <div class="bloco"><label for="gr-momentos">Momentos</label>
+            <select id="gr-momentos"><option value="5">5 cortes</option><option value="10">10 cortes</option><option value="20" selected>20 cortes</option><option value="30">30 cortes</option><option value="50">50 cortes</option></select></div>
+          <div class="bloco"><label for="gr-qualidade">Qualidade</label>
+            <select id="gr-qualidade"><option value="1080" selected>1080p</option><option value="720">720p, baixa mais rápido</option></select></div>
+          <div class="bloco"><label for="gr-minutos">Vídeo longo</label>
+            <select id="gr-minutos"><option value="5">5 minutos</option><option value="8">8 minutos</option><option value="10" selected>10 minutos</option><option value="15">15 minutos</option><option value="20">20 minutos</option><option value="30">30 minutos</option></select></div>
+        </div>
+        <label class="marcar"><input type="checkbox" id="gr-longo" checked><span>Criar o vídeo longo quando os cortes ficarem prontos</span></label>
+        <label class="marcar"><input type="checkbox" id="gr-programar"><span>Colocar os Shorts desta gravação na agenda de postagem</span></label>
+        <p class="erro-campo" id="gr-erro" role="alert" hidden></p>
+        <button class="botao principal" type="submit" id="gr-enviar">Cortar vídeo</button>
+      </form>
+
+      <form class="cartao-acao" id="form-longo">
+        <h2>Criar com os cortes de uma live</h2>
+        <p class="dica">Usa os cortes já prontos, na ordem em que aconteceram. Vídeos acima de 15 minutos exigem canal verificado no YouTube.</p>
+        <div class="bloco"><label for="lg-sessao">Live</label><select id="lg-sessao" required></select></div>
+        <div class="bloco"><label for="lg-minutos">Duração</label>
+          <select id="lg-minutos"><option value="5">5 minutos</option><option value="8">8 minutos</option><option value="10" selected>10 minutos</option><option value="15">15 minutos</option><option value="20">20 minutos</option><option value="30">30 minutos</option></select></div>
+        <p class="erro-campo" id="lg-erro" role="alert" hidden></p>
+        <button class="botao principal" type="submit" id="lg-criar">Criar vídeo longo</button>
+      </form>
+    </div>
+
+    <section class="trabalhos" id="sec-gravadas" aria-labelledby="gravadas-titulo" hidden>
+      <h2 id="gravadas-titulo">Lives gravadas</h2>
+      <ol id="lista-gravadas"></ol>
+    </section>
+
+    <section aria-labelledby="videos-titulo">
+      <h2 class="titulo-secao" id="videos-titulo">Seus vídeos</h2>
+      <div class="grade-longos" id="grade-longos"></div>
+      <p class="sem-cortes" id="longos-vazio">Crie o primeiro vídeo com os cortes de uma live ou analise uma gravação.</p>
+    </section>
+  </div>
+  <div class="pagina estudio" id="aba-editor" hidden>
+    <section id="tl-escolha">
+      <header class="pagina-topo"><div><h1>Editor</h1><p>Escolha um vídeo para cortar, trocar a legenda, colocar filtro e efeitos sonoros.</p></div></header>
+      <div class="barra-ferramentas">
+        <div class="filtros" id="tl-tipos" role="group" aria-label="Tipo de vídeo">
+          <button type="button" data-tipo="corte" aria-pressed="true">Shorts</button>
+          <button type="button" data-tipo="longo" aria-pressed="false">Vídeos longos</button>
+        </div>
+        <label class="filtro-pasta"><span class="so-leitor">Buscar vídeo</span><input id="tl-busca" type="search" placeholder="Buscar pelo título ou canal"></label>
+      </div>
+      <div class="tl-grade" id="tl-lista"></div>
+      <p class="sem-cortes" id="tl-vazio" hidden></p>
+      <nav class="paginacao" id="tl-paginacao" aria-label="Páginas de vídeos" hidden><span data-contagem></span><div class="paginas" data-paginas></div></nav>
+    </section>
+
+    <section class="st-mesa" id="st-mesa" hidden aria-labelledby="st-nome">
+      <header class="st-topo">
+        <button class="botao fantasma" type="button" id="st-voltar">Vídeos</button>
+        <div class="st-titulo"><h1 id="st-nome"></h1><p id="st-salvo" aria-live="polite"></p></div>
+        <div class="st-modo" role="group" aria-label="O que editar"><button type="button" id="st-m-video" aria-pressed="true">Vídeo</button><button type="button" id="st-m-capa" aria-pressed="false">Capa</button></div>
+        <span class="st-grupo"><button class="botao" type="button" id="st-desfazer" title="Ctrl+Z" disabled>Desfazer</button><button class="botao" type="button" id="st-refazer" title="Ctrl+Y" disabled>Refazer</button><button class="botao" type="button" id="st-salvar" title="Ctrl+S">Salvar</button></span>
+        <button class="botao principal" type="button" id="st-exportar">Exportar</button>
+      </header>
+      <div class="st-progresso" id="st-progresso" hidden><span id="st-prog-txt"></span><progress id="st-prog" max="100" value="0"></progress><button class="botao" type="button" id="st-prog-acao">Cancelar</button></div>
+      <aside class="st-bib" aria-label="Biblioteca">
+        <div class="st-rail" id="st-rail" role="tablist"></div>
+        <div class="st-painel" id="st-painel"></div>
+      </aside>
+      <div class="st-palco" id="st-palco">
+        <div class="st-tela" id="st-tela"><canvas id="st-canvas"></canvas><img id="st-exato" alt="" hidden><div class="st-sobre" id="st-sobre"></div>
+          <div class="st-pv" id="st-pv" hidden><img id="st-pv-img" alt=""><p class="st-pv-carga" id="st-pv-carga" role="status"><span class="giro" aria-hidden="true"></span>Preparando a prévia</p>
+            <div class="st-pv-barra"><strong id="st-pv-nome"></strong><button class="botao fantasma" type="button" id="st-pv-cancelar">Cancelar</button><button class="botao principal" type="button" id="st-pv-aplicar">Aplicar no vídeo</button></div></div></div>
+        <div class="st-transporte" id="st-transporte">
+          <button class="botao principal" type="button" id="st-tocar">Reproduzir</button><output id="st-tempo">0:00.0</output>
+          <span class="st-selo" id="st-selo"></span>
+        </div>
+      </div>
+      <aside class="st-insp" id="st-insp" aria-label="Ajustes do elemento"></aside>
+      <div class="st-linha" id="st-linha">
+        <div class="st-divisor" id="st-divisor" role="separator" aria-orientation="horizontal" aria-label="Aumentar ou diminuir a timeline" tabindex="0" title="Arraste para aumentar ou diminuir a timeline"><i></i></div>
+        <div class="st-ferr">
+          <span class="st-modo st-ferramenta" role="group" aria-label="Ferramenta"><button type="button" id="st-f-sel" aria-pressed="true" aria-label="Selecionar" title="Selecionar e mover (A)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 8-6 2-2 6z"/></svg></button><button type="button" id="st-f-lamina" aria-pressed="false" aria-label="Lâmina" title="Lâmina: clique para cortar (B)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></svg></button></span>
+          <span class="st-grupo"><button class="botao st-ico" type="button" id="st-dividir" aria-label="Dividir" title="Dividir na agulha (Ctrl+B)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M5 8l-3 4 3 4M19 8l3 4-3 4"/></svg></button><button class="botao st-ico" type="button" id="st-duplicar" aria-label="Duplicar" title="Duplicar (Ctrl+D)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button><button class="botao st-ico" type="button" id="st-apagar" aria-label="Apagar" title="Apagar (Delete)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button><button class="botao st-ico" type="button" id="st-fechar-vao" aria-label="Apagar e juntar" title="Apagar e juntar as partes (Shift+Delete)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h6M21 12h-6M7 8l4 4-4 4M17 8l-4 4 4 4"/></svg></button></span>
+          <button class="botao destaque st-abrir-tr" type="button" id="st-abrir-tr" title="Abrir as transições"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5l8 7-8 7zM20 5l-8 7 8 7z"/></svg>Transições</button>
+          <label class="marcar" title="N"><input type="checkbox" id="st-ima" checked><span>Ímã</span></label>
+          <span class="st-grupo"><select id="st-nova-faixa" aria-label="Adicionar faixa"><option value="">Adicionar faixa</option><option value="video">Vídeo e imagem</option><option value="texto">Texto</option><option value="legenda">Legenda</option><option value="efeito">Efeitos</option><option value="audio">Áudio</option></select></span>
+          <span class="st-sel" id="st-sel"></span>
+          <label class="st-alt" title="Alt + rolagem do mouse"><input type="range" id="st-alt-faixa" min="60" max="260" step="10" value="100"></label>
+          <span class="st-grupo"><button class="botao" type="button" id="st-menos" aria-label="Afastar a timeline" title="Ctrl+−">−</button><button class="botao" type="button" id="st-ajustar" title="Shift+Z">Ajustar</button><button class="botao" type="button" id="st-mais" aria-label="Aproximar a timeline" title="Ctrl+=">+</button><button class="botao" type="button" id="st-atalhos" title="?">Atalhos</button></span>
+        </div>
+        <div class="st-corpo"><div class="st-cabecas" id="st-cab-caixa"><div id="st-cabecas"></div></div><div class="st-rolagem" id="st-rolagem"><div class="st-faixas" id="st-faixas"><canvas id="st-regua-topo"></canvas><canvas id="st-regua"></canvas><div id="st-trilhas"></div><div class="st-agulha" id="st-agulha"></div></div></div></div>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+
+<dialog class="janela janela-longo" id="janela-longo" aria-labelledby="jl-titulo">
+  <form id="form-jl">
+    <header class="editor-topo">
+      <div><h2 id="jl-titulo">Vídeo longo</h2><p id="jl-meta"></p></div>
+      <button class="botao" type="button" id="jl-timeline">Abrir no editor</button>
+      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+    </header>
+    <div class="jl-corpo">
+      <div class="jl-video">
+        <video id="jl-player" controls playsinline preload="metadata"></video>
+        <ol class="capitulos" id="jl-capitulos" aria-label="Capítulos"></ol>
+      </div>
+      <div class="jl-textos">
+        <div class="bloco">
+          <div class="bloco-topo"><label for="jl-nome">Título</label><button class="botao texto" type="button" id="jl-copiar-titulo">Copiar título</button></div>
+          <input id="jl-nome" maxlength="100" required>
+        </div>
+        <div class="bloco">
+          <div class="bloco-topo"><label for="jl-desc">Descrição</label><button class="botao texto" type="button" id="jl-copiar-desc">Copiar descrição</button></div>
+          <textarea id="jl-desc" rows="11"></textarea>
+        </div>
+        <div class="bloco">
+          <span class="rotulo">Miniatura</span>
+          <img class="jl-capa" id="jl-capa" alt="Miniatura do vídeo">
+        </div>
+        <div class="bloco">
+          <label for="jl-quando">Programar no YouTube</label>
+          <input id="jl-quando" type="datetime-local">
+          <p class="dica" id="jl-envio"></p>
+        </div>
+        <p class="erro-campo" id="jl-erro" role="alert" hidden></p>
+      </div>
+    </div>
+    <footer class="editor-acoes">
+      <button class="botao principal" type="submit">Salvar textos</button>
+      <a class="botao" id="jl-baixar" download>Baixar vídeo</a>
+      <a class="botao" id="jl-baixar-capa" download>Baixar miniatura</a>
+      <button class="botao" type="button" id="jl-enviar">Enviar ao YouTube</button>
+      <button class="botao perigo" type="button" id="jl-excluir">Excluir</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="janela item-post" id="janela-item" aria-labelledby="it-titulo">
+  <form id="form-item">
+    <header class="editor-topo">
+      <div><h2 id="it-titulo">Short programado</h2><p id="it-quando"></p></div>
+      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+    </header>
+    <div class="it-corpo">
+      <div class="it-video"><video id="it-player" controls playsinline preload="metadata"></video></div>
+    <div class="editor-rolagem">
+      <div class="bloco">
+        <div class="bloco-topo"><label for="it-texto">Título</label><button class="botao texto" type="button" id="it-copiar-titulo">Copiar título</button></div>
+        <input id="it-texto" maxlength="100" required>
+        <p class="dica"><span id="it-conta">0</span> de 100 caracteres</p>
+      </div>
+      <div class="bloco">
+        <div class="bloco-topo"><label for="it-desc">Descrição</label><button class="botao texto" type="button" id="it-copiar-desc">Copiar descrição</button></div>
+        <textarea id="it-desc" rows="12"></textarea>
+      </div>
+      <p class="erro-campo" id="it-erro" role="alert" hidden></p>
+    </div>
+    </div>
+    <footer class="editor-acoes">
+      <button class="botao principal" type="submit" id="it-salvar">Salvar textos</button>
+      <a class="botao" id="it-baixar" download>Baixar vídeo</a>
+      <button class="botao" type="button" id="it-timeline">Abrir no editor</button>
+      <button class="botao" type="button" id="it-agendado">Já agendei no YouTube</button>
+      <button class="botao" type="button" id="it-remover">Tirar da fila</button>
+      <button class="botao perigo" type="button" id="it-apagar">Apagar Short</button>
+      <button class="botao" type="button" id="it-voltar">Voltar para a fila</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="janela editor" id="editor" aria-labelledby="ed-titulo">
+  <div class="editor-corpo">
+    <div class="editor-video">
+      <video id="ed-video" controls playsinline preload="metadata"></video>
+      <div class="refazendo" id="ed-refazendo" hidden><span class="giro" aria-hidden="true"></span><span id="ed-refazendo-texto">Refazendo o vídeo</span></div>
+    </div>
+    <div class="editor-painel">
+      <header class="editor-topo">
+        <div>
+          <h2 id="ed-titulo">Editar corte</h2>
+          <p id="ed-meta"></p>
+        </div>
+        <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+      </header>
+
+      <div class="editor-rolagem">
+        <div class="bloco">
+          <label for="ed-gancho">Título no vídeo</label>
+          <input id="ed-gancho" maxlength="90" data-visual>
+          <p class="dica">Aparece nos primeiros segundos para dar contexto.</p>
+        </div>
+
+        <div class="bloco duas-colunas">
+          <div class="bloco"><label for="ed-estilo-legenda">Legenda deste corte</label><select id="ed-estilo-legenda" data-estilo-corte="legenda"></select></div>
+          <div class="bloco"><label for="ed-estilo-gancho">Título deste corte</label><select id="ed-estilo-gancho" data-estilo-corte="gancho"></select></div>
+        </div>
+
+        <div class="bloco">
+          <div class="bloco-topo">
+            <label for="ed-post">Texto para postar</label>
+            <button class="botao texto" type="button" id="ed-copiar">Copiar texto</button>
+          </div>
+          <textarea id="ed-post" rows="7"></textarea>
+        </div>
+
+        <div class="bloco">
+          <div class="bloco-topo">
+            <span class="rotulo">Enquadramento</span>
+            <button class="botao texto" type="button" id="ed-enquadrar">Ajustar enquadramento</button>
+          </div>
+          <p id="ed-layout"></p>
+        </div>
+
+        <div class="bloco">
+          <span class="rotulo" id="ed-leg-rotulo">Legenda</span>
+          <p class="dica">Corrija as palavras aqui. Clique no tempo para ouvir o trecho.</p>
+          <ol class="linhas" id="ed-linhas" aria-labelledby="ed-leg-rotulo"></ol>
+        </div>
+      </div>
+
+      <footer class="editor-acoes">
+        <a class="botao principal" id="ed-baixar" download>Baixar vídeo</a>
+        <button class="botao" type="button" id="ed-timeline">Abrir no editor</button>
+        <button class="botao" type="button" id="ed-postado"></button>
+        <button class="botao destaque" type="button" id="ed-salvar">Refazer vídeo</button>
+        <button class="botao perigo" type="button" id="ed-excluir">Excluir</button>
+      </footer>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="janela enquadrar" id="janela-camera" aria-labelledby="cam-titulo">
+  <form method="dialog" id="form-camera">
+    <header class="editor-topo">
+      <div>
+        <h2 id="cam-titulo">Ajustar enquadramento</h2>
+        <p id="cam-sub"></p>
+      </div>
+      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+    </header>
+    <div class="enq-corpo">
+      <fieldset class="modos enq-modos">
+        <legend>Como montar o vídeo vertical</legend>
+        <label><input type="radio" name="modo" value="auto"><span><i class="mini mini-auto" aria-hidden="true"></i><b>Automático</b><small>Encontra a câmera sozinho</small></span></label>
+        <label><input type="radio" name="modo" value="dividido"><span><i class="mini mini-dividido" aria-hidden="true"></i><b>Câmera em cima</b><small>Você marca onde ela está</small></span></label>
+        <label><input type="radio" name="modo" value="tela_cheia"><span><i class="mini mini-cheia" aria-hidden="true"></i><b>Só a câmera</b><small>Para lives de conversa</small></span></label>
+        <label><input type="radio" name="modo" value="inteiro"><span><i class="mini mini-inteiro" aria-hidden="true"></i><b>Tela inteira</b><small>Sem separar a câmera</small></span></label>
+      </fieldset>
+      <div class="enq-palco">
+        <div class="palco" id="palco">
+          <img id="cam-quadro" alt="Imagem da live">
+          <div class="marcador" id="marcador" tabindex="0" role="application" aria-label="Área da câmera. Use as setas para mover e Shift com as setas para redimensionar." hidden>
+            <span class="alca" data-alca="nw"></span><span class="alca" data-alca="ne"></span>
+            <span class="alca" data-alca="sw"></span><span class="alca" data-alca="se"></span>
+          </div>
+          <p class="palco-vazio" id="palco-vazio" hidden>A imagem aparece quando a live começar a ser gravada.</p>
+        </div>
+        <p class="dica" id="cam-dica"></p>
+      </div>
+    </div>
+    <footer class="editor-acoes">
+      <button class="botao principal" type="submit" id="cam-salvar">Salvar enquadramento</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="janela janela-estilo" id="janela-estilo" aria-labelledby="es-titulo">
+  <form id="form-estilo">
+    <header class="editor-topo">
+      <div><h2 id="es-titulo">Estilo do vídeo</h2><p>Vale para os próximos Shorts e vídeos longos.</p></div>
+      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+    </header>
+    <div class="es-corpo">
+      <div class="es-opcoes">
+        <fieldset><legend>Legenda</legend><div class="es-grade" id="es-legendas"></div></fieldset>
+        <fieldset><legend>Título que aparece no vídeo</legend><div class="es-grade" id="es-ganchos"></div></fieldset>
+        <fieldset><legend>Cor de destaque</legend><div class="es-cores" id="es-cores"></div></fieldset>
+        <div class="es-duas">
+          <div class="bloco"><label for="es-tamanho">Tamanho da legenda</label>
+            <select id="es-tamanho"><option value="pequeno">Pequena</option><option value="medio">Média</option><option value="grande">Grande</option></select></div>
+          <div class="bloco"><label for="es-tempo">Tempo do título na tela</label>
+            <select id="es-tempo"><option value="3">3 segundos</option><option value="5">5 segundos</option><option value="8">8 segundos</option></select></div>
+        </div>
+        <div class="bloco"><label for="es-filtro">Filtro dos próximos vídeos</label><select id="es-filtro"><option value="nenhum">Sem filtro</option><option value="cinema">Cinema</option><option value="vibrante">Vibrante</option><option value="gamer">Gamer</option><option value="quente">Quente</option><option value="frio">Frio</option><option value="por_do_sol">Pôr do sol</option><option value="dramatico">Dramático</option><option value="noir">Preto e branco</option><option value="vintage">Vintage</option><option value="desbotado">Desbotado</option><option value="vhs">Fita VHS</option><option value="sonho">Sonho</option></select></div>
+        <label class="marcar"><input type="checkbox" id="es-sons"><span>Colocar efeitos sonoros que combinam com cada corte</span></label>
+      </div>
+      <div class="es-previas" aria-live="polite">
+        <p class="dica es-arraste">Arraste os quadros para escolher onde a legenda e o título ficam.</p>
+        <figure><div class="es-palco" id="es-palco-v"><img id="es-previa-v" alt="Prévia do Short com o estilo escolhido" draggable="false"></div><figcaption>Short</figcaption></figure>
+        <figure><div class="es-palco" id="es-palco-h"><img id="es-previa-h" alt="Prévia do vídeo longo com o estilo escolhido" draggable="false"></div><figcaption>Vídeo longo</figcaption>
+          <button class="botao texto es-restaurar" type="button" id="es-restaurar">Voltar para o lugar automático</button></figure>
+      </div>
+    </div>
+    <p class="erro-campo es-erro" id="es-erro" role="alert" hidden></p>
+    <footer class="editor-acoes"><button class="botao principal" type="submit">Salvar estilo</button></footer>
+  </form>
+</dialog>
+
+<dialog class="janela st-dlg-atalhos" id="st-dlg-atalhos" aria-labelledby="st-da-t">
+  <header class="editor-topo"><h2 id="st-da-t">Atalhos do teclado</h2><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+  <ul class="st-lista-atalhos"><li><span>Reproduzir e pausar</span><kbd>Espaço</kbd></li><li><span>Voltar, parar, avançar</span><kbd>J / K / L</kbd></li><li><span>Quadro anterior e próximo</span><kbd>← / →</kbd></li><li><span>Pular 1 segundo</span><kbd>Shift + ← / →</kbd></li><li><span>Corte anterior e próximo</span><kbd>↑ / ↓</kbd></li><li><span>Início e fim</span><kbd>Home / End</kbd></li><li><span>Dividir</span><kbd>Ctrl + B</kbd></li><li><span>Dividir todas as faixas</span><kbd>Ctrl + Shift + B</kbd></li><li><span>Apagar à esquerda da agulha</span><kbd>Q</kbd></li><li><span>Apagar à direita da agulha</span><kbd>W</kbd></li><li><span>Aparar sem juntar</span><kbd>[ / ]</kbd></li><li><span>Ferramenta selecionar</span><kbd>A</kbd></li><li><span>Ferramenta lâmina</span><kbd>B</kbd></li><li><span>Apagar</span><kbd>Delete</kbd></li><li><span>Apagar e juntar</span><kbd>Shift + Delete</kbd></li><li><span>Copiar, recortar, colar</span><kbd>Ctrl + C / X / V</kbd></li><li><span>Duplicar</span><kbd>Ctrl + D</kbd></li><li><span>Selecionar tudo</span><kbd>Ctrl + A</kbd></li><li><span>Desfazer</span><kbd>Ctrl + Z</kbd></li><li><span>Refazer</span><kbd>Ctrl + Shift + Z ou Ctrl + Y</kbd></li><li><span>Aproximar e afastar</span><kbd>Ctrl + = / Ctrl + − ou Ctrl + rolagem</kbd></li><li><span>Ver o vídeo inteiro</span><kbd>Shift + Z</kbd></li><li><span>Altura das faixas</span><kbd>Alt + rolagem</kbd></li><li><span>Rolar para os lados</span><kbd>Shift + rolagem</kbd></li><li><span>Ligar e desligar o ímã</span><kbd>N</kbd></li><li><span>Marcador</span><kbd>M</kbd></li><li><span>Salvar</span><kbd>Ctrl + S</kbd></li><li><span>Exportar</span><kbd>Ctrl + E</kbd></li></ul>
+</dialog>
+
+<dialog class="janela st-exportar" id="st-dlg-exportar" aria-labelledby="st-dx-t">
+  <form method="dialog" id="st-form-exportar">
+    <header class="editor-topo"><h2 id="st-dx-t">Exportar vídeo</h2><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+    <div class="st-dx-corpo">
+      <fieldset class="st-res" id="st-res"></fieldset>
+      <p class="dica" id="st-dx-nota"></p>
+    </div>
+    <footer class="editor-acoes"><button class="botao principal" type="submit" value="ok" id="st-dx-ok">Exportar agora</button></footer>
+  </form>
+</dialog>
+
+<dialog class="janela ap-janela" id="janela-aprendizado" aria-labelledby="ap-titulo">
+  <div class="ap-caixa">
+    <header class="editor-topo"><div><h2 id="ap-titulo">Aprendizado</h2><p>O sistema melhora os próximos vídeos com o que você mostra, edita e publica.</p></div><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+    <div class="ap-corpo" id="ap-corpo"></div>
+  </div>
+</dialog>
+
+<dialog class="janela ajustes" id="janela-ajustes" aria-labelledby="aj-titulo">
+  <form id="form-ajustes">
+    <header class="editor-topo">
+      <h2 id="aj-titulo">Ajustes</h2>
+      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+    </header>
+    <fieldset class="modos coluna">
+      <legend>Quando cortar</legend>
+      <label><input type="radio" name="sensibilidade" value="baixa"><span><b>Só os grandes momentos</b>Reações muito fortes</span></label>
+      <label><input type="radio" name="sensibilidade" value="media"><span><b>Equilibrado</b>Boas reações do streamer e do chat</span></label>
+      <label><input type="radio" name="sensibilidade" value="alta"><span><b>Mais cortes</b>Pega também as reações menores</span></label>
+    </fieldset>
+    <div class="duas uma">
+      <div class="bloco">
+        <label for="aj-garantido">Corte automático</label>
+        <select id="aj-garantido" name="corte_garantido">
+          <option value="0">Só por reação do streamer e do chat</option>
+          <option value="3">Por reação e melhor momento a cada 3 minutos</option>
+          <option value="5">Por reação e melhor momento a cada 5 minutos</option>
+          <option value="10">Por reação e melhor momento a cada 10 minutos</option>
+        </select>
+      </div>
+    </div>
+    <div class="duas">
+      <div class="bloco"><label for="aj-min">Duração mínima (segundos)</label><input id="aj-min" name="duracao_min" type="number" min="10" max="180" required></div>
+      <div class="bloco"><label for="aj-max">Duração máxima (segundos)</label><input id="aj-max" name="duracao_max" type="number" min="10" max="180" required></div>
+    </div>
+    <div class="duas">
+      <div class="bloco">
+        <label for="aj-modelo">Precisão da legenda</label>
+        <select id="aj-modelo" name="modelo">
+          <option value="base">Rápida</option>
+          <option value="small">Equilibrada</option>
+          <option value="medium">Máxima, mais lenta</option>
+        </select>
+      </div>
+      <div class="bloco">
+        <label for="aj-idioma">Idioma da live</label>
+        <select id="aj-idioma" name="idioma">
+          <option value="pt">Português</option>
+          <option value="es">Espanhol</option>
+          <option value="en">Inglês</option>
+        </select>
+      </div>
+    </div>
+    <p class="erro-campo" id="aj-erro" role="alert" hidden></p>
+    <footer class="editor-acoes"><button class="botao principal" type="submit">Salvar ajustes</button>
+      <label class="marcar" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo"><span>Continuar em segundo plano ao fechar</span></label>
+      <label class="marcar" id="aj-win-rot" hidden><input type="checkbox" id="aj-win"><span>Abrir junto com o Windows</span></label>
+      <button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button><span class="dica" id="aj-versao"></span></footer>
+  </form>
+</dialog>
+
+<div class="aviso-flutuante" id="toast" role="status" aria-live="polite"></div>
+<script src="/web/app.js"></script>
+<script src="/web/estudio.js"></script>
+<script src="/web/acabamento.js"></script>
+</body>
+</html>

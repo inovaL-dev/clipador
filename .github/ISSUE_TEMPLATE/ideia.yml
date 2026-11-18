@@ -1,0 +1,14 @@
+name: Sugerir uma ideia
+description: Proponha um recurso ou uma melhoria
+labels: ["ideia"]
+body:
+  - type: textarea
+    id: necessidade
+    attributes:
+      label: O que você quer conseguir fazer?
+    validations:
+      required: true
+  - type: textarea
+    id: proposta
+    attributes:
+      label: Como você imagina que funcionaria?

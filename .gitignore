@@ -1,0 +1,25 @@
+# Dados pessoais, contas e vídeos: nunca vão para o repositório
+dados/
+cortes/
+youtube_cliente.json
+youtube_token.json
+client_secret*.json
+credenciais*.json
+*.env
+.env*
+registro.txt
+
+# Ambientes e ferramentas
+.venv/
+.venv-exe/
+.ferramentas/
+__pycache__/
+*.pyc
+
+# Arquivos gerados
+build_exe/
+programa/
+instalador/
+ffmpeg/
+*.spec.bak
+*.zip

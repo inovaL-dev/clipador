@@ -1,0 +1,2 @@
+"""Versão mostrada no programa e no instalador."""
+VERSAO = "1.4.0"

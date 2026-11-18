@@ -1,0 +1,866 @@
+"use strict";
+/* Estúdio: timeline, prévia, inspetor, assistente e capas. O vídeo final sai do mesmo projeto, renderizado no computador. */
+(() => {
+const S = { aberto: false, tipo: null, id: null, p: null, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, px: 30, sujo: false, gerando: false,
+  h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, caixas: new Map(), painel: "midia", zoomMao: false, filtros: [], fontes: [], sons: [], sug: [], clipe: [], ondas: new Map(), ultimoSom: 0, altFaixa: 1, vel: 1, ferr: "sel" };
+const ALTURAS = { video: 46, texto: 28, legenda: 30, efeito: 24, audio: 34 };
+const altF = (f) => Math.round(ALTURAS[f.tipo] * S.altFaixa);
+const ROTULOS = { video: "Vídeo", imagem: "Imagem", forma: "Forma", texto: "Texto", legenda: "Legenda", efeito: "Efeito", audio: "Áudio" };
+const ANIM = [["nenhuma", "Nenhuma"], ["fade", "Aparecer"], ["pop", "Pop"], ["zoom", "Zoom"], ["subir", "Subir"], ["descer", "Descer"], ["esquerda", "Da direita"], ["direita", "Da esquerda"], ["quique", "Quicar"], ["digitando", "Digitando"]];
+const TRANS = [["corte", "Corte seco"], ["dissolver", "Dissolver"], ["preto", "Passar pelo preto"], ["branco", "Clarão branco"], ["zoom", "Zoom"], ["esquerda", "Deslizar para a esquerda"], ["direita", "Deslizar para a direita"], ["cima", "Deslizar para cima"], ["baixo", "Deslizar para baixo"], ["chicote", "Chicote"], ["queda", "Chicote vertical"], ["impulso", "Impulso de zoom"], ["giro", "Giro"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["clarao_rapido", "Clarão rápido"], ["desfoque_rapido", "Desfoque rápido"]];
+const EFEITOS = [["clarao", "Clarão"], ["tremor", "Tremor"], ["vinheta", "Vinheta"], ["escurecer", "Escurecer aos poucos"], ["clarear", "Surgir do preto"], ["desfoque", "Desfoque"], ["filtro", "Filtro de cor"], ["progresso", "Barra de progresso"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["pulso", "Pulso de zoom"], ["sacudir", "Sacudir"], ["barras", "Barras de cinema"], ["pb", "Preto e branco"], ["brilho", "Brilho"], ["negativo", "Negativo"], ["espelho", "Espelho"]];
+const PAD_EST = { fonte: "Poppins-Bold", tamanho: 66, cor: "#FFFFFF", opacidade: 100, maiusculas: false, alinhamento: "centro", ancora: "centro", espacamento: 0, entrelinha: 115, largura: 900, contorno: 0, contorno_cor: "#000000", sombra: false, sombra_cor: "#000000", sombra_opac: 60, sombra_x: 0, sombra_y: 4, sombra_blur: 8, fundo: false, fundo_cor: "#000000", fundo_opac: 75, fundo_raio: 14, fundo_pad: 18, borda: 0, borda_cor: "#FFFFFF", destaque: "nenhum", cor_destaque: "#FFC933", destaque_caixa: false, palavra_a_palavra: false, entrada: "nenhuma", saida: "nenhuma", efeito_texto: "nenhum", efeito_forca: 100, tempo_anim: .15 };
+const FORTES = /^(nossa|caraca|meu|deus|absurdo|insano|incrivel|incrível|mano|socorro|nunca|sempre|muito|demais)/i;
+const tela = $("#st-canvas"), g = tela.getContext("2d"), sobre = $("#st-sobre"), exato = $("#st-exato"), rolagem = $("#st-rolagem"), faixasEl = $("#st-faixas"), trilhas = $("#st-trilhas"), regua = $("#st-regua");
+const lim = (v, a, b) => Math.min(b, Math.max(a, v)), arred = (v, n = 3) => +(+v).toFixed(n);
+const tempoTxt = (s) => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(1).padStart(4, "0")}`; };
+const nid = (p = "e") => p + Math.random().toString(16).slice(2, 11);
+const clonar = (o) => JSON.parse(JSON.stringify(o));
+const urlMidia = (m) => `/estudio/midia?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`;
+const itens = () => S.p.faixas.flatMap((f) => f.itens.map((i) => [f, i]));
+const achar = (id) => { for (const f of S.p.faixas) { const i = f.itens.find((x) => x.id === id); if (i) return [f, i]; } return [null, null]; };
+const duracao = () => Math.max(0.1, ...S.p.faixas.flatMap((f) => f.itens.map((i) => i.ini + i.dur)));
+const selecionados = () => [...S.sel].map((id) => achar(id)[1]).filter(Boolean);
+const sel1 = () => { const a = selecionados(); return a.length === 1 ? a[0] : null; };
+
+/* ---------- Valores e estilos ---------- */
+const svg = (d) => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONES = { olho: svg('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'), trava: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'), som: svg('<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9a4 4 0 0 1 0 6"/>') };
+const PAD_T = { x: 0, y: 0, w: 100, h: 100, escala: 1, rot: 0, opac: 100, zoom: 1, zx: .5, zy: .5, cl: 0, ct: 0, cr: 0, cb: 0 };
+const suave = (p) => p * p * (3 - 2 * p);
+function val(item, prop, u) {
+  const c = item.kf?.[prop];
+  if (!c?.length) return item.t?.[prop] ?? PAD_T[prop] ?? 0;
+  if (u <= c[0].t) return c[0].v;
+  for (let n = 0; n < c.length - 1; n++) if (u < c[n + 1].t) { let p = (u - c[n].t) / Math.max(1e-6, c[n + 1].t - c[n].t); p = c[n].e === "degrau" ? 0 : c[n].e === "suave" ? suave(p) : p; return c[n].v + (c[n + 1].v - c[n].v) * p; }
+  return c[c.length - 1].v;
+}
+const local = (i) => lim(S.t - i.ini, 0, i.dur);
+function porProp(item, prop, v) {
+  const c = item.kf?.[prop];
+  if (!c?.length) { (item.t ||= {})[prop] = v; return; }
+  const u = arred(local(item)), k = c.find((x) => Math.abs(x.t - u) < .02);
+  if (k) k.v = v; else { c.push({ t: u, v, e: "linear" }); c.sort((a, b) => a.t - b.t); }
+}
+const estiloDe = (i) => i.tipo === "legenda" ? { ...PAD_EST, ...S.p.global.legenda, ...(i.estilo || {}) } : { ...PAD_EST, ...(i.estilo || {}) };
+
+/* ---------- Histórico e gravação ---------- */
+const pilha = () => S.h[S.modo];
+const foto = () => JSON.stringify(S.modo === "capa" ? S.capa : S.p);
+function antes() { const h = pilha(); h.d.push(foto()); if (h.d.length > 60) h.d.shift(); h.r = []; botoes(); }
+function aplicarFoto(j) { if (S.modo === "capa") S.capa = JSON.parse(j); else S.p = JSON.parse(j); S.sel.clear(); mudou(true); }
+function desfazer() { const h = pilha(); if (h.d.length) { h.r.push(foto()); aplicarFoto(h.d.pop()); botoes(); } }
+function refazer() { const h = pilha(); if (h.r.length) { h.d.push(foto()); aplicarFoto(h.r.pop()); botoes(); } }
+function botoes() { $("#st-desfazer").disabled = !pilha().d.length; $("#st-refazer").disabled = !pilha().r.length; }
+let tempoSalvar;
+function mudou(estrutura = false) {
+  fecharPrevia(); S.rev = (S.rev || 0) + 1;
+  S.sujo = true; $("#st-salvo").textContent = "Alterações não salvas";
+  clearTimeout(tempoSalvar); tempoSalvar = setTimeout(salvar, 1200);
+  pedirPintura(); pedirExato(); desenharLinha();
+  if (estrutura) { montarInspetor(); montarPainel(); }
+}
+async function salvar() {
+  clearTimeout(tempoSalvar); if (!S.aberto || !S.sujo) return;
+  S.sujo = false; $("#st-salvo").textContent = "Salvando…";
+  try {
+    if (S.capa) await api("POST", `/api/estudio/${S.tipo}/${S.id}/capa`, { capa: S.capa });
+    await api("POST", `/api/estudio/${S.tipo}/${S.id}/salvar`, { projeto: S.p });
+    $("#st-salvo").textContent = `Salvo às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  } catch (e) { S.sujo = true; $("#st-salvo").textContent = `Não salvou: ${e.message}`; tempoSalvar = setTimeout(salvar, 5000); }
+}
+addEventListener("beforeunload", (ev) => { if (S.aberto && S.sujo) { salvar(); ev.preventDefault(); } });
+
+/* ---------- Fontes e mídias da prévia ---------- */
+const fontesPedidas = new Set();
+function fonteCss(id) {
+  if (!fontesPedidas.has(id)) {
+    fontesPedidas.add(id);
+    const f = S.fontes.find((x) => x.id === id);
+    if (f) new FontFace(`st-${id}`, `url("${f.url}")`).load().then((x) => { document.fonts.add(x); pedirPintura(); }).catch(() => {});
+  }
+  return `"st-${id}", "Instrument Sans", sans-serif`;
+}
+const videos = new Map(), imagens = new Map(), audios = new Map();
+function elVideo(mid) {
+  if (!videos.has(mid)) { const v = document.createElement("video"); v.src = urlMidia(S.p.midias[mid]); v.preload = "auto"; v.playsInline = true; v.addEventListener("seeked", pedirPintura); v.addEventListener("loadeddata", pedirPintura); videos.set(mid, v); }
+  return videos.get(mid);
+}
+function elImagem(chave, m) {
+  if (!imagens.has(chave)) { const i = new Image(); i.onload = pedirPintura; i.src = urlMidia(m); imagens.set(chave, i); }
+  return imagens.get(chave);
+}
+const ativos = (tipoFaixa) => S.p.faixas.filter((f) => tipoFaixa(f)).flatMap((f) => f.itens.filter((i) => S.t >= i.ini && S.t < i.ini + i.dur).map((i) => [f, i]));
+function sincronizarMidia() {
+  const quer = new Map();
+  for (const [f, i] of ativos((x) => x.tipo === "video" && !x.oculta)) if (i.tipo === "video" && S.p.midias[i.midia]) {
+    const cand = { alvo: (i.entrada || 0) + local(i) * (i.velocidade || 1), vel: i.velocidade || 1, som: !i.mudo && !f.muda, vol: (i.volume ?? 100) / 100 * (S.p.global.volume_fala ?? 100) / 100 };
+    const a = quer.get(i.midia); if (!a || (cand.som && !a.som)) quer.set(i.midia, cand);
+  }
+  for (const [mid, v] of videos) {
+    const q = quer.get(mid);
+    if (!q) { if (!v.paused) v.pause(); continue; }
+    v.muted = !q.som || S.vel !== 1; v.volume = lim(q.vol, 0, 1); v.playbackRate = q.vel;
+    if (S.tocando && S.vel > 0) { v.playbackRate = lim(q.vel * S.vel, .25, 8); if (Math.abs(v.currentTime - q.alvo) > .3 * Math.max(1, S.vel)) v.currentTime = q.alvo; if (v.paused) v.play().catch(() => {}); }
+    else { if (!v.paused) v.pause(); if (Math.abs(v.currentTime - q.alvo) > .02 && !v.seeking) v.currentTime = q.alvo; }
+  }
+  for (const mid of quer.keys()) if (!videos.has(mid)) elVideo(mid);
+}
+let ctxAudio = null;
+const buffers = new Map(), tocandoSons = new Set();
+function audioCtx() { ctxAudio ||= new (window.AudioContext || window.webkitAudioContext)(); if (ctxAudio.state === "suspended") ctxAudio.resume(); return ctxAudio; }
+function bufferDe(mid) {
+  if (!buffers.has(mid)) buffers.set(mid, fetch(urlMidia(S.p.midias[mid])).then((r) => r.arrayBuffer()).then((b) => audioCtx().decodeAudioData(b)).catch(() => null));
+  return buffers.get(mid);
+}
+async function tocarSom(i, f) {
+  const a = await bufferDe(i.midia); if (!a || !S.tocando) return;
+  const c = audioCtx(), src = c.createBufferSource(), gn = c.createGain(), g0 = S.p.global, cat = i.categoria || "efeito";
+  src.buffer = a; gn.gain.value = (i.volume ?? 100) / 100 * (cat === "musica" ? g0.volume_musica ?? 100 : cat === "voz" ? g0.volume_fala ?? 100 : g0.volume_efeitos ?? 100) / 100;
+  src.connect(gn).connect(c.destination); const salto = Math.max(0, S.t - i.ini); src.start(0, (i.entrada || 0) + salto, Math.max(.01, i.dur - salto)); tocandoSons.add(src); src.onended = () => tocandoSons.delete(src);
+}
+function tocar(vel = 1) {
+  if (!S.p) return; fecharPrevia(); S.vel = vel; if (vel > 0 && S.t >= duracao() - .03) S.t = 0;
+  audioCtx(); S.tocando = true; S.ultimoSom = S.t - .001; S.relogio = performance.now(); exato.hidden = true; $("#st-tocar").textContent = "Pausar";
+  for (const [f, i] of itens()) if (f.tipo === "audio" && !f.muda && i.ini < S.t && i.ini + i.dur > S.t + .1) tocarSom(i, f);
+}
+function pausar() { if (!S.tocando) return; S.tocando = false; S.vel = 1; $("#st-tocar").textContent = "Reproduzir"; tocandoSons.forEach((s) => { try { s.stop(); } catch {} }); tocandoSons.clear(); videos.forEach((v) => v.pause()); pedirExato(); }
+function irPara(t) { S.t = lim(t, 0, duracao()); S.ultimoSom = S.t; exato.hidden = true; pedirPintura(); pedirExato(); moverAgulha(); atualizarCampos(); }
+$("#st-tocar").addEventListener("click", () => (S.tocando ? pausar() : tocar()));
+function vaivem(sentido) { const v = S.tocando && Math.sign(S.vel) === sentido ? lim(Math.abs(S.vel) * 2, 1, 8) * sentido : sentido; if (S.tocando) { S.vel = v; S.relogio = performance.now(); } else tocar(v); $("#st-selo").textContent = v === 1 ? "" : `${v > 0 ? "Avançando" : "Voltando"} ${Math.abs(v)}x`; }
+
+/* ---------- Pintura da prévia ---------- */
+let pintar = true; function pedirPintura() { pintar = true; }
+function laco(agora) {
+  requestAnimationFrame(laco);
+  if (!S.aberto || $("#aba-editor").hidden || S.modo !== "video") { if (S.aberto && S.modo === "capa" && pintar) { pintar = false; pintarCapa(); } return; }
+  if (S.tocando) {
+    const dt = (agora - S.relogio) / 1000; S.relogio = agora; S.t += Math.min(.25, dt) * S.vel;
+    if (S.t >= duracao()) { S.t = duracao(); pausar(); } else if (S.t <= 0) { S.t = 0; pausar(); }
+    if (S.vel === 1) for (const [f, i] of itens()) if (f.tipo === "audio" && !f.muda && i.ini > S.ultimoSom && i.ini <= S.t) tocarSom(i, f);
+    S.ultimoSom = S.t; moverAgulha(); atualizarCampos(); pintar = true;
+  }
+  sincronizarMidia();
+  if (pintar) { pintar = false; pintarProjeto(); desenharAlca(); }
+}
+requestAnimationFrame(laco);
+function ajustarTela() {
+  const W = S.modo === "capa" ? S.capa?.largura : S.p?.largura, H = S.modo === "capa" ? S.capa?.altura : S.p?.altura; if (!W) return;
+  const c = $("#st-tela").getBoundingClientRect(), e = Math.min(c.width / W, c.height / H), w = W * e, h = H * e;
+  for (const n of [tela, exato, sobre]) Object.assign(n.style, { width: `${w}px`, height: `${h}px`, left: `${(c.width - w) / 2}px`, top: `${(c.height - h) / 2}px` });
+  const r = Math.min(1, Math.max(.4, w * (devicePixelRatio || 1) / W)); if (tela.width !== Math.round(W * r)) { tela.width = Math.round(W * r); tela.height = Math.round(H * r); } S.escTela = r; pedirPintura(); desenharAlca();
+}
+new ResizeObserver(ajustarTela).observe($("#st-tela"));
+function filtroCss(i) {
+  const fil = i.filtro || S.p?.global?.filtro, a = i.ajustes || {}, css = [];
+  const f = fil?.nome && S.filtros.find((x) => x.id === fil.nome); if (f && f.css !== "none") css.push(f.css);
+  if (a.brilho) css.push(`brightness(${1 + a.brilho / 100})`); if (a.contraste) css.push(`contrast(${1 + a.contraste / 100})`); if (a.saturacao) css.push(`saturate(${1 + a.saturacao / 100})`);
+  if (a.desfoque) css.push(`blur(${a.desfoque * S.escTela}px)`); return css.join(" ") || "none";
+}
+function desenharVisual(item, u, m = {}) {
+  const v = (p) => val(item, p, u), e = v("escala") * (m.esc ?? 1), bw = v("w") * e, bh = v("h") * e, x = v("x") + (m.dx || 0), y = v("y") + (m.dy || 0), rot = v("rot") * Math.PI / 180, al = v("opac") / 100 * (m.al ?? 1);
+  S.caixas.set(item.id, { x, y, w: bw, h: bh, rot });
+  g.save(); g.translate(x, y); g.rotate(rot); g.globalAlpha = lim(al, 0, 1);
+  if (item.tipo === "forma") {
+    g.fillStyle = item.cor || "#FFC933"; g.globalAlpha *= (item.cor_opac ?? 100) / 100; g.beginPath();
+    if (item.forma === "circulo") g.ellipse(0, 0, bw / 2, bh / 2, 0, 0, 7); else g.roundRect(-bw / 2, -bh / 2, bw, bh, Math.min(item.raio || 0, Math.min(bw, bh) / 2)); g.fill();
+    if (item.borda) { g.strokeStyle = item.borda_cor || "#FFF"; g.lineWidth = item.borda; g.stroke(); } g.restore(); return;
+  }
+  const mid = S.p.midias[item.midia], src = mid?.tipo === "imagem" ? elImagem(item.midia, mid) : mid ? elVideo(item.midia) : null;
+  const w = src?.videoWidth || src?.naturalWidth, h = src?.videoHeight || src?.naturalHeight;
+  if (w) {
+    const [cl, ct, cr, cb] = ["cl", "ct", "cr", "cb"].map(v), fx0 = cl, fx1 = Math.max(cl + .01, 1 - cr), fy0 = ct, fy1 = Math.max(ct + .01, 1 - cb), forca = (S.p.global.zoom_forca ?? 100) / 100 * (item.zoom_forca ?? 100) / 100;
+    const z = Math.max(1, 1 + (v("zoom") - 1) * forca), lx = (fx1 - fx0) / z, ly = (fy1 - fy0) / z, zx = lim(fx0 + v("zx") * (fx1 - fx0), fx0 + lx / 2, fx1 - lx / 2), zy = lim(fy0 + v("zy") * (fy1 - fy0), fy0 + ly / 2, fy1 - ly / 2);
+    g.filter = filtroCss(item); try { g.drawImage(src, (zx - lx / 2) * w, (zy - ly / 2) * h, lx * w, ly * h, -bw / 2, -bh / 2, bw, bh); } catch {}
+  }
+  g.restore();
+}
+function comTransicao(f, item, u) {
+  const tr = item.transicao || {}, tipo = tr.tipo || "corte", d = tr.dur ?? .4;
+  if (tipo === "corte" || u >= d || !["video", "imagem"].includes(item.tipo)) { desenharVisual(item, u); return; }
+  const p = suave(lim(u / d, 0, 1)), a = f.itens.find((x) => x !== item && Math.abs(x.ini + x.dur - item.ini) < .08), ua = S.t - (a?.ini ?? 0), W = S.p.largura, H = S.p.altura;
+  if (tipo === "dissolver") { if (a) desenharVisual(a, ua); desenharVisual(item, u, { al: p }); }
+  else if (tipo === "preto" || tipo === "branco") { if (p < .5) { if (a) desenharVisual(a, ua); } else desenharVisual(item, u); g.fillStyle = tipo === "preto" ? "#000" : "#fff"; g.globalAlpha = p < .5 ? p * 2 : (1 - p) * 2; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
+  else if (tipo === "zoom") { if (a) desenharVisual(a, ua); desenharVisual(item, u, { al: p, esc: 1.35 - .35 * p }); }
+  else if (["chicote", "queda", "impulso", "giro", "glitch", "rgb", "clarao_rapido", "desfoque_rapido"].includes(tipo)) { if (p < .5 && a) desenharVisual(a, ua, { esc: 1 + p * .5 }); else desenharVisual(item, u, { esc: 1 + (1 - p) * .5 }); }
+  else { const [dx, dy] = { esquerda: [W, 0], direita: [-W, 0], cima: [0, H], baixo: [0, -H] }[tipo] || [0, 0]; if (a) desenharVisual(a, ua, { dx: -dx * p, dy: -dy * p }); desenharVisual(item, u, { dx: dx * (1 - p), dy: dy * (1 - p) }); }
+}
+function animar(est, u, dur) {
+  const r = { al: 1, dx: 0, dy: 0, esc: 1, mostrar: 1 }, tempo = Math.max(.01, est.tempo_anim);
+  for (const [tipo, p] of [[est.entrada, Math.min(1, u / tempo)], [est.saida, Math.min(1, (dur - u) / tempo)]]) {
+    if (p >= 1 || tipo === "nenhuma") continue; const e = 1 - (1 - p) ** 3;
+    if (tipo === "fade") r.al *= p; else if (tipo === "pop") { r.esc *= .7 + .3 * (e + Math.sin(p * Math.PI) * .12); r.al *= Math.min(1, p * 2); }
+    else if (tipo === "zoom") { r.esc *= 1.5 - .5 * e; r.al *= p; } else if (tipo === "subir") { r.dy += (1 - e) * 60; r.al *= p; } else if (tipo === "descer") { r.dy -= (1 - e) * 60; r.al *= p; }
+    else if (tipo === "esquerda") { r.dx += (1 - e) * 90; r.al *= p; } else if (tipo === "direita") { r.dx -= (1 - e) * 90; r.al *= p; }
+    else if (tipo === "quique") { r.esc *= 1 + Math.sin(p * Math.PI * 2.5) * (1 - p) * .35; r.al *= Math.min(1, p * 3); } else if (tipo === "digitando") r.mostrar = Math.min(r.mostrar, p);
+  }
+  return r;
+}
+const EF_TEXTO = [["nenhum", "Sem efeito"], ["neon", "Neon"], ["brilho", "Brilho"], ["reflexo", "Reflexo"], ["ouro", "Ouro"], ["fogo", "Fogo"], ["gelo", "Gelo"], ["arcoiris", "Arco-íris"], ["glitch", "Glitch"], ["rgb", "Cores separadas"], ["onda", "Onda"], ["pulsar", "Pulsar"], ["batida", "Batida"], ["tremer", "Tremer"], ["balancar", "Balançar"], ["flutuar", "Flutuar"], ["piscar", "Piscar"]];
+function movTexto(est, u) {
+  const r = { dx: 0, dy: 0, esc: 1, rot: 0, al: 1 }, f = (est.efeito_forca ?? 100) / 100, t = est.tamanho, tipo = est.efeito_texto, T = Math.PI * 2;
+  if (tipo === "pulsar") r.esc = 1 + .07 * f * Math.sin(u * T * 1.6);
+  else if (tipo === "batida") { const a = (u * 1.5) % 1; r.esc = 1 + .16 * f * (Math.exp(-a * 9) + (a > .24 ? .55 * Math.exp(-(a - .24) * 11) : 0)); }
+  else if (tipo === "tremer") { const n = Math.floor(u * 24); r.dx = t * .05 * f * Math.sin(n * 12.9898); r.dy = t * .05 * f * Math.sin(n * 78.233); }
+  else if (tipo === "balancar") r.rot = 5 * f * Math.sin(u * T * .9); else if (tipo === "flutuar") r.dy = t * .14 * f * Math.sin(u * T * .7);
+  else if (tipo === "piscar") r.al = Math.sin(u * T * 3) < -.2 ? 1 - Math.min(1, f) * .75 : 1;
+  return r;
+}
+function tintaTexto(est, u, lar, alt) {
+  const faixa = (pares) => { const d = g.createLinearGradient(0, -alt / 2, 0, alt / 2); pares.forEach(([p, c]) => d.addColorStop(p, c)); return d; };
+  if (est.efeito_texto === "ouro") return faixa([[.2, "#fff7be"], [.5, "#f5be46"], [.85, "#a8660f"]]); if (est.efeito_texto === "gelo") return faixa([[.25, "#ffffff"], [.8, "#6ed7ff"]]); if (est.efeito_texto === "fogo") return faixa([[.2, "#ff3c14"], [.55, "#ff9619"], [.85, "#ffeb78"]]);
+  if (est.efeito_texto === "arcoiris") { const d = g.createLinearGradient(-lar / 2, 0, lar / 2, 0); for (let n = 0; n <= 6; n++) d.addColorStop(n / 6, `hsl(${(n * 60 + u * 160) % 360} 90% 60%)`); return d; }
+  return null;
+}
+function desenharTexto(txt, est, x, y, esc, rot, al, ativa, u = 0) {
+  g.save(); g.font = `${est.tamanho}px ${fonteCss(est.fonte)}`; g.textBaseline = "alphabetic"; g.letterSpacing = `${est.espacamento}px`;
+  const vazio = g.measureText(" ").width, linhas = []; let n = 0;
+  for (const bloco of String(txt).split("\n")) { let at = [], us = 0; for (const b of bloco.split(/\s+/).filter(Boolean)) { const q = est.maiusculas ? b.toLocaleUpperCase("pt-BR") : b, w = g.measureText(q).width; if (at.length && us + vazio + w > est.largura) { linhas.push(at); at = []; us = 0; } us += (at.length ? vazio : 0) + w; at.push({ q, w, n: n++ }); } linhas.push(at); }
+  const passo = est.tamanho * est.entrelinha / 100, altT = est.tamanho * 1.5 + passo * (linhas.length - 1), largs = linhas.map((l) => l.reduce((s, p) => s + p.w, 0) + vazio * Math.max(0, l.length - 1)), lar = Math.max(1, ...largs), pad = est.fundo ? est.fundo_pad : 0, h = altT + pad * 2;
+  const cy = y + (est.ancora === "topo" ? h / 2 : est.ancora === "base" ? -h / 2 : 0);
+  g.translate(x, cy); g.rotate(rot * Math.PI / 180); g.scale(esc, esc); g.globalAlpha = lim(al * est.opacidade / 100, 0, 1);
+  if (est.fundo) { g.fillStyle = est.fundo_cor; const a0 = g.globalAlpha; g.globalAlpha = a0 * est.fundo_opac / 100; g.beginPath(); g.roundRect(-lar / 2 - pad, -h / 2, lar + pad * 2, h, est.fundo_raio); g.fill(); g.globalAlpha = a0; if (est.borda) { g.strokeStyle = est.borda_cor; g.lineWidth = est.borda; g.stroke(); } }
+  if (est.sombra) { g.shadowColor = est.sombra_cor + Math.round(est.sombra_opac * 2.55).toString(16).padStart(2, "0"); g.shadowBlur = est.sombra_blur * 2 * S.escTela; g.shadowOffsetX = est.sombra_x * S.escTela; g.shadowOffsetY = est.sombra_y * S.escTela; }
+  const fxT = est.efeito_texto, fxF = (est.efeito_forca ?? 100) / 100, tinta = tintaTexto(est, u, lar, altT), desvio = fxT === "rgb" || fxT === "glitch" ? est.tamanho * .06 * fxF : 0;
+  if (fxT === "neon" || fxT === "brilho" || fxT === "fogo" || fxT === "gelo") { g.shadowColor = fxT === "neon" ? est.cor_destaque : fxT === "brilho" ? est.cor : fxT === "fogo" ? "#ff5a0f" : "#5ac8ff"; g.shadowBlur = est.tamanho * .5 * fxF * S.escTela; g.shadowOffsetX = 0; g.shadowOffsetY = 0; }
+  g.lineJoin = "round"; linhas.forEach((l, i) => {
+    let px = -lar / 2 + (est.alinhamento === "esquerda" ? 0 : est.alinhamento === "direita" ? lar - largs[i] : (lar - largs[i]) / 2); const py = -altT / 2 + est.tamanho * 1.1 + passo * i;
+    for (const p of l) { const py0 = py;
+      const atv = ativa === p.n && ["palavra", "ambos"].includes(est.destaque), imp = ["importantes", "ambos"].includes(est.destaque) && (FORTES.test(p.q) || /[!?]$/.test(p.q));
+      if (est.destaque_caixa && ativa === p.n) { g.fillStyle = est.cor_destaque; g.beginPath(); g.roundRect(px - est.tamanho * .14, py - est.tamanho * 1.02, p.w + est.tamanho * .28, est.tamanho * 1.34, est.tamanho * .16); g.fill(); }
+      if (est.contorno && !(est.destaque_caixa && ativa === p.n)) { g.strokeStyle = est.contorno_cor; g.lineWidth = est.contorno * 2; g.strokeText(p.q, px, py); }
+      if (desvio) { g.fillStyle = "#ff2a55"; g.fillText(p.q, px + desvio, py0); g.fillStyle = "#22e0ff"; g.fillText(p.q, px - desvio, py0); }
+      g.fillStyle = tinta || (atv ? (est.destaque_caixa ? "#141414" : est.cor_destaque) : imp ? est.cor_destaque : est.cor); g.fillText(p.q, px, fxT === "onda" ? py0 + Math.sin(px / (est.tamanho * 1.1) - u * 6) * est.tamanho * .13 * fxF : py0); px += p.w + vazio;
+    }
+  });
+  g.restore(); return { x, y: cy, w: (lar + pad * 2 + est.contorno * 2) * esc, h: h * esc, rot };
+}
+function pintarItemTexto(i, u) {
+  const est = estiloDe(i), an = animar(est, u, i.dur); let txt = i.texto || "", ativa = null;
+  if (i.palavras?.length) { i.palavras.forEach((p, n) => { if (u >= p.ini) ativa = n; }); ativa ??= 0; if (est.palavra_a_palavra) { txt = i.palavras[ativa].p; ativa = 0; } }
+  if (an.mostrar < 1) txt = txt.slice(0, Math.round(txt.length * an.mostrar));
+  const leg = i.tipo === "legenda", x = leg ? est.x ?? S.p.largura / 2 : val(i, "x", u), y = leg ? est.y ?? S.p.altura * .86 : val(i, "y", u);
+  const mv = movTexto(est, u);
+  S.caixas.set(i.id, desenharTexto(txt, est, x + an.dx + mv.dx, y + an.dy + mv.dy, (leg ? 1 : val(i, "escala", u)) * an.esc * mv.esc, (leg ? 0 : val(i, "rot", u)) + mv.rot, an.al * mv.al * (leg ? 1 : val(i, "opac", u) / 100), ativa, u));
+}
+function pintarEfeito(i, u) {
+  const W = S.p.largura, H = S.p.altura, [ax, ay, aw, ah] = i.area || [0, 0, W, H], f = i.forca ?? 1;
+  let k = 0, cor = "#fff";
+  if (i.efeito === "clarao") k = f * Math.exp(-u * 13); else if (i.efeito === "escurecer") { k = f * u / i.dur; cor = "#000"; } else if (i.efeito === "clarear") { k = f * (1 - u / i.dur); cor = "#000"; }
+  else if (i.efeito === "progresso") { g.fillStyle = i.cor || "#FFC933"; g.fillRect(0, 0, W * (i.ini + u) / duracao(), 9); return; }
+  else if (i.efeito === "vinheta") { const gr = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .7); gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, `rgba(0,0,0,${.42 * f * suave(lim(Math.min(u / .2, (i.dur - u) / .3), 0, 1))})`); g.fillStyle = gr; g.fillRect(0, 0, W, H); return; }
+  if (k > .01) { g.globalAlpha = lim(k, 0, 1); g.fillStyle = cor; g.fillRect(ax, ay, aw, ah); g.globalAlpha = 1; }
+}
+function pintarProjeto() {
+  g.setTransform(S.escTela, 0, 0, S.escTela, 0, 0); g.filter = "none"; g.globalAlpha = 1; g.fillStyle = "#000"; g.fillRect(0, 0, S.p.largura, S.p.altura); S.caixas.clear();
+  for (const f of S.p.faixas) { if (f.oculta || f.tipo === "audio") continue;
+    for (const i of f.itens) { if (S.t < i.ini || S.t >= i.ini + i.dur) continue; const u = S.t - i.ini; if (["video", "imagem", "forma"].includes(i.tipo)) comTransicao(f, i, u); else if (["texto", "legenda"].includes(i.tipo)) pintarItemTexto(i, u); else if (i.tipo === "efeito") pintarEfeito(i, u); } }
+  $("#st-tempo").textContent = `${tempoTxt(S.t)} / ${tempoTxt(duracao())}`;
+}
+/* Quadro exato: o mesmo motor da exportação, usado sempre que a prévia está parada. */
+let tempoExato, seqExato = 0;
+function pedirExato() {
+  clearTimeout(tempoExato); exato.hidden = true; $("#st-selo").textContent = ""; if (S.tocando || !S.aberto) return;
+  tempoExato = setTimeout(async () => {
+    const n = ++seqExato, capa = S.modo === "capa";
+    try {
+      const url = capa ? "/api/estudio/capa/quadro" : `/api/estudio/${S.tipo}/${S.id}/quadro`, corpo = capa ? { capa: S.capa, escala: 1 } : { projeto: S.p, t: S.t, altura: 1920 };
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) }); if (!r.ok || n !== seqExato || S.tocando) return;
+      const blob = await r.blob(); if (n !== seqExato) return; URL.revokeObjectURL(exato.src); exato.src = URL.createObjectURL(blob); exato.hidden = false; $("#st-selo").textContent = "Prévia igual ao vídeo final";
+    } catch {}
+  }, 260);
+}
+
+/* ---------- Manipular direto na prévia ---------- */
+const cap = () => S.modo === "capa";
+const objSel = () => cap() ? S.capa.camadas.find((c) => S.sel.has(c.id)) : sel1();
+const lerP = (o, p) => cap() ? o[p] ?? PAD_T[p] : o.tipo === "legenda" ? estiloDe(o)[p] : val(o, p, local(o));
+function porP(o, p, v) { if (cap()) o[p] = v; else if (o.tipo === "legenda") (o.estilo ||= {})[p] = v; else porProp(o, p, v); }
+function desenharAlca() {
+  sobre.replaceChildren(); const o = objSel(), b = o && S.caixas.get(o.id); if (!b) return;
+  const W = tela.clientWidth / (cap() ? S.capa.largura : S.p.largura), n = el("div", { class: "st-alca", style: `left:${(b.x - b.w / 2) * W}px;top:${(b.y - b.h / 2) * W}px;width:${b.w * W}px;height:${b.h * W}px;transform:rotate(${b.rot || 0}deg)` });
+  if (cap() || o.tipo !== "legenda") { for (const [a, l, t] of [["nw", 0, 0], ["ne", 100, 0], ["sw", 0, 100], ["se", 100, 100]]) n.append(el("i", { dados: { a }, style: `left:${l}%;top:${t}%` })); n.append(el("i", { dados: { a: "rot" } })); }
+  sobre.append(n);
+}
+function pontoCena(ev) { const r = sobre.getBoundingClientRect(), W = cap() ? S.capa.largura : S.p.largura, H = cap() ? S.capa.altura : S.p.altura; return [(ev.clientX - r.left) / r.width * W, (ev.clientY - r.top) / r.height * H]; }
+function noPonto(x, y) {
+  const lista = cap() ? [...S.capa.camadas].filter((c) => !c.travada && !c.oculta).map((c) => c.id) : S.p.faixas.filter((f) => !f.travada && !f.oculta && f.tipo !== "efeito" && f.tipo !== "audio").flatMap((f) => f.itens.map((i) => i.id));
+  for (const id of lista.reverse()) { const b = S.caixas.get(id); if (!b) continue; const a = -(b.rot || 0) * Math.PI / 180, dx = x - b.x, dy = y - b.y, lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a); if (Math.abs(lx) <= b.w / 2 && Math.abs(ly) <= b.h / 2) return id; }
+  return null;
+}
+let gesto = null;
+sobre.addEventListener("pointerdown", (ev) => {
+  pausar(); const [x, y] = pontoCena(ev), alca = ev.target.dataset?.a;
+  if (!alca) { const id = noPonto(x, y); if (S.sel.size !== 1 || !S.sel.has(id)) { S.sel.clear(); if (id) S.sel.add(id); selecaoMudou(); } }
+  const o = objSel(); if (!o) return; const b = S.caixas.get(o.id); if (!b) return;
+  gesto = { o, alca, x0: x, y0: y, px: lerP(o, "x"), py: lerP(o, "y"), esc: cap() ? o.escala ?? 1 : o.tipo === "legenda" ? estiloDe(o).tamanho : lerP(o, "escala"), rot: lerP(o, "rot") || 0, d0: Math.hypot(x - b.x, y - b.y) || 1, a0: Math.atan2(y - b.y, x - b.x), cx: b.x, cy: b.y, feito: false, zx: !cap() && o.tipo === "video" ? lerP(o, "zx") : 0, zy: !cap() && o.tipo === "video" ? lerP(o, "zy") : 0 };
+  sobre.setPointerCapture(ev.pointerId);
+});
+sobre.addEventListener("pointermove", (ev) => {
+  if (!gesto) return; const [x, y] = pontoCena(ev), g0 = gesto, W = cap() ? S.capa.largura : S.p.largura, H = cap() ? S.capa.altura : S.p.altura;
+  if (!g0.feito) { if (Math.hypot(x - g0.x0, y - g0.y0) < W / 300) return; antes(); g0.feito = true; }
+  if (g0.alca === "rot") { let r = g0.rot + (Math.atan2(y - g0.cy, x - g0.cx) - g0.a0) * 180 / Math.PI; if (Math.abs(r % 90) < 3) r = Math.round(r / 90) * 90; porP(g0.o, "rot", arred(r, 1)); }
+  else if (g0.alca) { const f = Math.hypot(x - g0.cx, y - g0.cy) / g0.d0; if (!cap() && g0.o.tipo === "legenda") (g0.o.estilo ||= {}).tamanho = Math.round(g0.esc * f); else porP(g0.o, "escala", arred(lim(g0.esc * f, .05, 12))); }
+  else if (S.zoomMao && !cap() && g0.o.tipo === "video") { const z = Math.max(1, val(g0.o, "zoom", local(g0.o))); porProp(g0.o, "zx", arred(lim(g0.zx - (x - g0.x0) / (val(g0.o, "w", 0) * z), 0, 1), 4)); porProp(g0.o, "zy", arred(lim(g0.zy - (y - g0.y0) / (val(g0.o, "h", 0) * z), 0, 1), 4)); }
+  else { let nx = g0.px + x - g0.x0, ny = g0.py + y - g0.y0; sobre.querySelectorAll(".st-guia").forEach((n) => n.remove()); const m = W / 90; if (Math.abs(nx - W / 2) < m) nx = W / 2; if (Math.abs(ny - H / 2) < m) ny = H / 2; porP(g0.o, "x", arred(nx, 1)); porP(g0.o, "y", arred(ny, 1)); }
+  exato.hidden = true; pedirPintura(); if (cap()) pintarCapa(); atualizarCampos();
+});
+const fimGesto = () => { if (gesto?.feito) mudou(); gesto = null; };
+sobre.addEventListener("pointerup", fimGesto); sobre.addEventListener("pointercancel", fimGesto);
+sobre.addEventListener("wheel", (ev) => { const o = sel1(); if (!S.zoomMao || !o || o.tipo !== "video") return; ev.preventDefault(); antes(); porProp(o, "zoom", arred(lim(val(o, "zoom", local(o)) * (ev.deltaY < 0 ? 1.06 : .94), 1, 6), 3)); mudou(); atualizarCampos(); }, { passive: false });
+
+/* ---------- Timeline ---------- */
+const larguraT = () => (duracao() + 8) * S.px;
+function ajustarZoom() { S.px = lim((rolagem.clientWidth - 30) / duracao(), 1, 300); rolagem.scrollLeft = 0; desenharLinha(); }
+function zoomT(f) { const c = S.t; S.px = lim(S.px * f, .4, 400); desenharLinha(); rolagem.scrollLeft = c * S.px - rolagem.clientWidth / 2; }
+$("#st-mais").addEventListener("click", () => zoomT(1.5)); $("#st-menos").addEventListener("click", () => zoomT(1 / 1.5)); $("#st-ajustar").addEventListener("click", ajustarZoom);
+rolagem.addEventListener("scroll", () => { $("#st-cab-caixa").scrollTop = rolagem.scrollTop; desenharLinha(); }, { passive: true });
+$("#st-cab-caixa").addEventListener("wheel", (ev) => { rolagem.scrollTop += ev.deltaY; ev.preventDefault(); }, { passive: false });
+function alturaFaixas(v) { S.altFaixa = lim(v, .6, 2.6); $("#st-alt-faixa").value = Math.round(S.altFaixa * 100); try { localStorage.setItem("st-alt-faixa", S.altFaixa); } catch {} montarCabecas(); desenharLinha(); }
+$("#st-alt-faixa").addEventListener("input", (ev) => alturaFaixas(ev.target.value / 100));
+function alturaLinha(px) { const h = lim(px, 110, innerHeight * .75); $("#st-mesa").style.setProperty("--st-altura", `${h}px`); try { localStorage.setItem("st-altura", h); } catch {} desenharLinha(); }
+{ const d = $("#st-divisor"); let ini = null;
+  d.addEventListener("pointerdown", (ev) => { ini = { y: ev.clientY, h: $(".st-corpo").offsetHeight }; d.setPointerCapture(ev.pointerId); });
+  d.addEventListener("pointermove", (ev) => { if (ini) alturaLinha(ini.h + ini.y - ev.clientY); }); d.addEventListener("pointerup", () => (ini = null)); d.addEventListener("pointercancel", () => (ini = null));
+  d.addEventListener("keydown", (ev) => { if (ev.key === "ArrowUp" || ev.key === "ArrowDown") { ev.preventDefault(); ev.stopPropagation(); alturaLinha($(".st-corpo").offsetHeight + (ev.key === "ArrowUp" ? 30 : -30)); } }); }
+try { const a = +localStorage.getItem("st-altura"), b = +localStorage.getItem("st-alt-faixa"); if (a) $("#st-mesa").style.setProperty("--st-altura", `${a}px`); if (b) { S.altFaixa = b; $("#st-alt-faixa").value = Math.round(b * 100); } } catch {}
+rolagem.addEventListener("wheel", (ev) => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); zoomT(ev.deltaY < 0 ? 1.2 : 1 / 1.2); } else if (ev.altKey) { ev.preventDefault(); alturaFaixas(S.altFaixa + (ev.deltaY < 0 ? .1 : -.1)); } }, { passive: false });
+let linhaPedida = false; function desenharLinha() { if (linhaPedida || !S.aberto || cap()) return; linhaPedida = true; requestAnimationFrame(() => { linhaPedida = false; montarLinha(); }); }
+function montarCabecas() {
+  const ordem = [...S.p.faixas].reverse();
+  $("#st-cabecas").replaceChildren(...ordem.map((f) => { const ci = S.p.faixas.indexOf(f);
+    const b = (txt, tit, on, fn) => { const n = el("button", { type: "button", title: tit, "aria-label": tit, dados: on ? { on: "1" } : {}, onclick: fn }); n.innerHTML = ICONES[txt] || txt; return n; };
+    return el("div", { class: "st-cab", style: `height:${altF(f)}px`, dados: { tipo: f.tipo } }, el("b", { title: f.nome }, f.nome), b("▲", "Subir faixa", false, () => moverFaixa(ci, 1)), b("▼", "Descer faixa", false, () => moverFaixa(ci, -1)),
+      f.tipo === "audio" ? b("som", "Silenciar faixa", f.muda, () => { antes(); f.muda = !f.muda; mudou(); montarCabecas(); }) : b("olho", "Esconder faixa", f.oculta, () => { antes(); f.oculta = !f.oculta; mudou(); montarCabecas(); }),
+      b("trava", "Travar faixa", f.travada, () => { antes(); f.travada = !f.travada; mudou(); montarCabecas(); }), b("×", "Apagar faixa", false, () => { antes(); S.p.faixas.splice(ci, 1); mudou(true); montarCabecas(); })); }));
+}
+function moverFaixa(i, d) { const j = i + d; if (j < 0 || j >= S.p.faixas.length) return; antes(); [S.p.faixas[i], S.p.faixas[j]] = [S.p.faixas[j], S.p.faixas[i]]; mudou(); montarCabecas(); }
+function montarLinha() {
+  const W = rolagem.clientWidth, esq = rolagem.scrollLeft, de = esq / S.px - 2, ate = (esq + W) / S.px + 2;
+  faixasEl.style.width = `${larguraT()}px`;
+  trilhas.replaceChildren(...[...S.p.faixas].reverse().map((f) => {
+    const n = el("div", { class: "st-trilha", style: `height:${altF(f)}px`, dados: { f: f.id, ...(f.oculta ? { oculta: "1" } : {}) } });
+    for (const i of f.itens) { if (i.ini + i.dur < de || i.ini > ate) continue;
+      const s = S.sel.has(i.id), b = el("div", { class: `st-bl ${i.tipo}${s ? " sel" : ""}${s && arr?.modo === "mover" && arr.feito ? " arrastando" : ""}`, style: `left:${i.ini * S.px}px;width:${Math.max(3, i.dur * S.px)}px`, title: rotuloItem(i), dados: { i: i.id } }, el("span", {}, rotuloItem(i)));
+      if (s && !f.travada && i.dur * S.px >= 30) b.append(el("em", { class: "a", dados: { b: "a" } }), el("em", { class: "b", dados: { b: "b" } }));
+      if (s) for (const c of new Set(Object.values(i.kf || {}).flat().map((k) => k.t))) b.append(el("u", { style: `left:${c * S.px}px` }));
+      if (i.transicao?.tipo && i.transicao.tipo !== "corte") b.append(el("s", { style: `width:${i.transicao.dur * S.px}px` }));
+      n.append(b);
+      if (f.tipo === "video" && ehCorte(f, i)) { const tr = i.transicao?.tipo && i.transicao.tipo !== "corte", nome = tr ? nomeTr(i.transicao.tipo) : "Adicionar transição"; const m = el("button", { class: "st-tr", type: "button", title: nome, "aria-label": `${nome} em ${tempoTxt(i.ini)}`, style: `left:${i.ini * S.px}px`, dados: { t: i.ini, ...(tr ? { on: "1" } : {}) } }); m.innerHTML = svg('<path d="M4 5l8 7-8 7zM20 5l-8 7 8 7z"/>'); n.append(m); } }
+    if (S.alvoF === f.id) n.dataset.alvo = "1";
+    return n; }));
+  const alt = trilhas.scrollHeight, d = devicePixelRatio || 1, topo = $("#st-regua-topo"); regua.width = W * d; regua.height = alt * d; regua.style.width = `${W}px`; regua.style.height = `${alt}px`; regua.style.left = `${esq}px`;
+  topo.width = W * d; topo.height = 24 * d; topo.style.width = `${W}px`; topo.style.height = "24px";
+  const r0 = topo.getContext("2d"); r0.scale(d, d); r0.fillStyle = "#0b1518"; r0.fillRect(0, 0, W, 24); r0.font = "11px 'Instrument Sans',sans-serif"; r0.fillStyle = "#a6babc"; r0.strokeStyle = "#2c444e";
+  const passo = [.1, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((p) => p * S.px >= 64) || 1200;
+  for (let t = Math.floor(esq / S.px / passo) * passo; t * S.px < esq + W; t += passo) { const x = t * S.px - esq; r0.beginPath(); r0.moveTo(x + .5, 16); r0.lineTo(x + .5, 24); r0.stroke(); r0.fillText(passo < 1 ? tempoTxt(t) : relogio(t), x + 3, 13); }
+  r0.fillStyle = "#5ad1b3"; for (const m of S.p.marcadores || []) { const x = m * S.px - esq; r0.beginPath(); r0.moveTo(x - 5, 14); r0.lineTo(x + 5, 14); r0.lineTo(x, 23); r0.fill(); }
+  const c = regua.getContext("2d"); c.scale(d, d);
+  let y = 0; c.fillStyle = "rgba(255,255,255,.42)";
+  for (const f of [...S.p.faixas].reverse()) { const h = altF(f);
+    if (["video", "audio"].includes(f.tipo)) for (const i of f.itens) { if (i.mudo || i.tipo === "imagem" || i.tipo === "forma" || i.ini + i.dur < de || i.ini > ate) continue; const m = S.p.midias[i.midia], o = m && ondaDe(m); if (!o?.length || !m.dur) continue;
+      const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, v * (h - 10)); c.fillRect(x, y + h - 3 - a, 1.2, a); } }
+    y += h + 1; }
+  moverAgulha(false);
+  const n = S.sel.size, u = sel1(); $("#st-sel").textContent = n > 1 ? `${n} elementos selecionados` : u ? `${ROTULOS[u.tipo]}: ${tempoTxt(u.ini)} a ${tempoTxt(u.ini + u.dur)}` : "";
+}
+function ondaDe(m) { const k = `${m.raiz}:${m.rel}`; if (!S.ondas.has(k)) { S.ondas.set(k, []); api("GET", `/api/estudio/onda?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`).then((o) => { S.ondas.set(k, o); desenharLinha(); }).catch(() => {}); } return S.ondas.get(k); }
+const rotuloItem = (i) => i.tipo === "legenda" || i.tipo === "texto" ? i.texto : i.nome || ROTULOS[i.tipo];
+function alvoTrMudou() { if (S.painel !== "transicoes" || !$("#st-tr-alvo")) return; const c = alvoTr(), k = c ? `c${c.t}` : "n"; if (k !== S.chaveTr) { S.chaveTr = k; if (!S.tocando) montarPainel(); } else if (!c) $("#st-tr-alvo strong").textContent = `Novo corte em ${tempoTxt(S.t)}`; }
+function moverAgulha(seguir = true) { alvoTrMudou(); const x = S.t * S.px; $("#st-agulha").style.transform = `translateX(${x}px)`; $("#st-tempo").textContent = `${tempoTxt(S.t)} / ${tempoTxt(duracao())}`; if (seguir && S.tocando && (x > rolagem.scrollLeft + rolagem.clientWidth - 40 || x < rolagem.scrollLeft)) rolagem.scrollLeft = x - 60; }
+function pontosIma(ignorar) { const p = [0, S.t]; for (const [, i] of itens()) if (!ignorar.has(i.id)) p.push(i.ini, i.ini + i.dur); return p; }
+const imantar = (t, pts) => { if (!$("#st-ima").checked) return t; const m = 8 / S.px; let m0 = m, r = t; for (const p of pts) if (Math.abs(p - t) < m0) { m0 = Math.abs(p - t); r = p; } return r; };
+const compativel = (fx, i) => ({ video: ["video", "imagem", "forma"], texto: ["texto"], legenda: ["legenda"], efeito: ["efeito"], audio: ["audio"] }[fx.tipo] || []).includes(i.tipo);
+let arr = null;
+faixasEl.addEventListener("dragstart", (ev) => ev.preventDefault()); faixasEl.addEventListener("selectstart", (ev) => ev.preventDefault());
+const guiaT = el("i", { class: "st-guia-t", hidden: "" }), dicaArr = el("output", { class: "st-dica-arr", hidden: "" }); faixasEl.append(guiaT); document.body.append(dicaArr);
+function mostrarGuia(t) { guiaT.hidden = t == null; if (t != null) guiaT.style.left = `${t * S.px}px`; }
+function mostrarDica(ev, txt) { dicaArr.hidden = !txt; if (txt) { dicaArr.textContent = txt; dicaArr.style.left = `${Math.min(ev.clientX + 14, innerWidth - dicaArr.offsetWidth - 8)}px`; dicaArr.style.top = `${ev.clientY - 34}px`; } }
+function rolarNaBorda(ev) { const v = rolagem.getBoundingClientRect(); if (ev.clientX > v.right - 48) rolagem.scrollLeft += 18; else if (ev.clientX < v.left + 36) rolagem.scrollLeft -= 18; if (ev.clientY > v.bottom - 28) rolagem.scrollTop += 10; else if (ev.clientY < v.top + 34) rolagem.scrollTop -= 10; }
+trilhas.addEventListener("click", (ev) => { const m = ev.target.closest(".st-tr"); if (!m) return; pausar(); irPara(+m.dataset.t); abrirPainel("transicoes"); });
+faixasEl.addEventListener("pointerdown", (ev) => {
+  fecharPrevia(); if (ev.target.closest(".st-tr")) return;
+  const bl = ev.target.closest(".st-bl"), r = faixasEl.getBoundingClientRect(), x = ev.clientX - r.left;
+  document.activeElement?.blur?.();
+  if (!bl) {
+    const naRegua = ev.clientY - rolagem.getBoundingClientRect().top < 24;
+    if (naRegua) { pausar(); arr = { modo: "agulha" }; faixasEl.setPointerCapture(ev.pointerId); irPara(x / S.px); }
+    else if (ev.pointerType !== "touch") { pausar(); arr = { modo: "laco", x0: x, y0: ev.clientY - r.top - 24, base: new Set(ev.shiftKey || ev.ctrlKey || ev.metaKey ? S.sel : []), andou: false }; faixasEl.setPointerCapture(ev.pointerId); }
+    return;
+  }
+  const id = bl.dataset.i, [f, i] = achar(id); pausar();
+  if (S.ferr === "lamina") { const t = arred(imantar(x / S.px, pontosIma(new Set([id])))); if (!f.travada && t > i.ini + .03 && t < i.ini + i.dur - .03) { antes(); const [a, b] = partir(i, t); f.itens.splice(f.itens.indexOf(i), 1, a, b); S.sel = new Set([b.id]); irPara(t); mudou(true); } return; }
+  if (ev.shiftKey || ev.ctrlKey || ev.metaKey) { S.sel.has(id) ? S.sel.delete(id) : S.sel.add(id); selecaoMudou(); return; }
+  const ja = S.sel.has(id), soEste = ja && S.sel.size > 1 ? id : null; if (!ja) { S.sel.clear(); S.sel.add(id); selecaoMudou(); }
+  if (f.travada || (ev.pointerType === "touch" && !ja)) return;
+  const grupo = selecionados().map((o) => ({ o, ini: o.ini, dur: o.dur, ent: o.entrada ?? 0, kf: clonar(o.kf || {}), pal: clonar(o.palavras || []) }));
+  arr = { modo: ev.target.dataset.b || "mover", i, f, x0: ev.clientX, y0: ev.clientY, s0: rolagem.scrollLeft, origens: new Set([f]), grupo, feito: false, pts: pontosIma(S.sel), soEste }; faixasEl.setPointerCapture(ev.pointerId);
+});
+faixasEl.addEventListener("pointermove", (ev) => {
+  if (!arr) return; const r = faixasEl.getBoundingClientRect();
+  if (arr.modo === "agulha") { irPara((ev.clientX - r.left) / S.px); return; }
+  if (arr.modo === "laco") { moverLaco(ev, r); return; }
+  if (!arr.feito) { if (Math.hypot(ev.clientX - arr.x0, ev.clientY - arr.y0) < 4) return; antes(); arr.feito = true; }
+  rolarNaBorda(ev);
+  const dx = (ev.clientX + rolagem.scrollLeft - arr.x0 - arr.s0) / S.px, base = arr.grupo.find((g0) => g0.o === arr.i);
+  if (arr.modo === "mover") {
+    const cru = base.ini + dx, porIni = imantar(cru, arr.pts), porFim = imantar(cru + base.dur, arr.pts) - base.dur, usaFim = porIni === cru && porFim !== cru, novo = usaFim ? porFim : porIni;
+    const d = novo - base.ini, min = Math.min(...arr.grupo.map((g0) => g0.ini)), dd = Math.max(-min, d);
+    arr.grupo.forEach((g0) => { g0.o.ini = arred(g0.ini + dd); }); mostrarGuia(novo !== cru ? (usaFim ? novo + base.dur : novo) : null);
+    let aviso = "";
+    if (arr.grupo.length === 1) { const alvo = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => n.classList?.contains("st-trilha")); const fx = alvo && S.p.faixas.find((x) => x.id === alvo.dataset.f);
+      if (fx && fx !== arr.f && compativel(fx, arr.i) && !fx.travada) { arr.f.itens.splice(arr.f.itens.indexOf(arr.i), 1); fx.itens.push(arr.i); arr.f = fx; arr.origens.add(fx); } else if (fx && fx !== arr.f) aviso = `${ROTULOS[arr.i.tipo]} não entra na faixa ${fx.nome}`; S.alvoF = arr.f.id; }
+    mostrarDica(ev, aviso || `${tempoTxt(arr.i.ini)} em ${arr.f.nome}`);
+  } else for (const g0 of arr.grupo) { const o = g0.o, m = o.midia && S.p.midias[o.midia], vel = o.velocidade || 1;
+    if (arr.modo === "a") { let ini = imantar(g0.ini + dx, arr.pts); ini = lim(ini, Math.max(0, m?.dur ? g0.ini - g0.ent / vel : 0), g0.ini + g0.dur - .1); const d = ini - g0.ini; o.ini = arred(ini); o.dur = arred(g0.dur - d); if (o.entrada !== undefined) o.entrada = arred(g0.ent + d * vel);
+      if (Object.keys(g0.kf).length) o.kf = Object.fromEntries(Object.entries(g0.kf).map(([p, c]) => [p, c.map((k) => ({ ...k, t: arred(k.t - d) }))])); if (g0.pal.length) o.palavras = g0.pal.map((w) => ({ ...w, ini: Math.max(0, arred(w.ini - d)), fim: arred(w.fim - d) })); }
+    else { let fim = imantar(g0.ini + g0.dur + dx, arr.pts); const max = ["video", "audio"].includes(o.tipo) && m?.dur ? g0.ini + (m.dur - g0.ent) / vel : Infinity; o.dur = arred(lim(fim, g0.ini + .1, max) - g0.ini); } }
+  pedirPintura(); desenharLinha(); atualizarCampos();
+});
+function moverLaco(ev, r) {
+  const x = ev.clientX - r.left, y = ev.clientY - r.top - 24;
+  if (!arr.andou && Math.hypot(x - arr.x0, y - arr.y0) < 4) return; arr.andou = true;
+  const v = rolagem.getBoundingClientRect(); if (ev.clientX > v.right - 40) rolagem.scrollLeft += 24; else if (ev.clientX < v.left + 30) rolagem.scrollLeft -= 24; if (ev.clientY > v.bottom - 30) rolagem.scrollTop += 14; else if (ev.clientY < v.top + 34) rolagem.scrollTop -= 14;
+  const x0 = Math.min(x, arr.x0), x1 = Math.max(x, arr.x0), y0 = Math.min(y, arr.y0), y1 = Math.max(y, arr.y0);
+  let n = $("#st-laco"); if (!n) { n = el("div", { id: "st-laco", class: "st-laco" }); faixasEl.append(n); }
+  Object.assign(n.style, { left: `${x0}px`, top: `${y0 + 24}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
+  const novos = new Set(arr.base); let topo = 0;
+  for (const f of [...S.p.faixas].reverse()) { const h = altF(f) + 1; if (!f.travada && topo < y1 && topo + h > y0) for (const i of f.itens) if (i.ini * S.px < x1 && (i.ini + i.dur) * S.px > x0) novos.add(i.id); topo += h; }
+  S.sel = novos; desenharLinha();
+}
+const soltar = (ev) => {
+  if (arr?.modo === "laco") { $("#st-laco")?.remove(); if (!arr.andou) { irPara(arr.x0 / S.px); S.sel = arr.base; } selecaoMudou(); }
+  else if (arr?.feito) { if (arr.modo === "mover") assentar(); mudou(true); montarCabecas(); }
+  else if (arr?.soEste) { S.sel = new Set([arr.soEste]); selecaoMudou(); }
+  arr = null; S.alvoF = null; mostrarGuia(null); mostrarDica(null, ""); desenharLinha();
+};
+/* Ao soltar sobre outro elemento, o bloco desce para uma faixa livre, como no CapCut. */
+function assentar() {
+  const movidos = new Set(arr.grupo.map((g0) => g0.o));
+  const bate = (f, o) => f.itens.some((x) => x !== o && !movidos.has(x) && x.ini < o.ini + o.dur - .02 && x.ini + x.dur > o.ini + .02);
+  for (const o of movidos) { const f = achar(o.id)[0]; if (!bate(f, o)) continue;
+    const livre = S.p.faixas.find((x) => x !== f && x.tipo === f.tipo && !x.travada && compativel(x, o) && !bate(x, o)) || novaFaixa(f.tipo);
+    f.itens.splice(f.itens.indexOf(o), 1); livre.itens.push(o); arr.origens.add(f); }
+  for (const f of arr.origens) if (!f.itens.length && S.p.faixas.filter((x) => x.tipo === f.tipo).length > 1) S.p.faixas.splice(S.p.faixas.indexOf(f), 1);
+}
+faixasEl.addEventListener("pointerup", soltar); faixasEl.addEventListener("pointercancel", soltar);
+sobre.addEventListener("pointerdown", () => document.activeElement?.blur?.(), true);
+function partir(i, t) {
+  const u = t - i.ini, a = clonar(i), b = clonar(i); b.id = nid(); a.dur = arred(u); b.ini = arred(t); b.dur = arred(i.dur - u); if (b.entrada !== undefined) b.entrada = arred(b.entrada + u * (b.velocidade || 1)); delete b.transicao;
+  for (const [p, c] of Object.entries(i.kf || {})) { const v = arred(val(i, p, u), 4); a.kf[p] = [...c.filter((k) => k.t < u), { t: arred(u), v, e: "linear" }]; b.kf[p] = [{ t: 0, v, e: "linear" }, ...c.filter((k) => k.t > u).map((k) => ({ ...k, t: arred(k.t - u) }))]; }
+  if (i.palavras) { a.palavras = i.palavras.filter((w) => w.ini < u); b.palavras = i.palavras.filter((w) => w.ini >= u).map((w) => ({ ...w, ini: arred(w.ini - u), fim: arred(w.fim - u) })); a.texto = a.palavras.map((w) => w.p).join(" "); b.texto = b.palavras.map((w) => w.p).join(" "); }
+  return [a, b];
+}
+function dividir() {
+  const lista = (S.sel.size ? selecionados() : itens().filter(([f, i]) => !f.travada && f.tipo !== "efeito").map(([, i]) => i)).filter((i) => S.t > i.ini + .03 && S.t < i.ini + i.dur - .03);
+  if (!lista.length) { avisar("Coloque a agulha sobre o elemento que quer dividir"); return; } antes(); S.sel.clear();
+  for (const i of lista) { const [f] = achar(i.id), [a, b] = partir(i, S.t); f.itens.splice(f.itens.indexOf(i), 1, a, b); S.sel.add(b.id); } mudou(true);
+}
+function duplicar() { const l = selecionados(); if (!l.length) return; antes(); S.sel.clear(); const fim = Math.max(...l.map((i) => i.ini + i.dur)), ini = Math.min(...l.map((i) => i.ini)); for (const i of l) { const [f] = achar(i.id), n = clonar(i); n.id = nid(); n.ini = arred(i.ini + fim - ini); f.itens.push(n); S.sel.add(n.id); } mudou(true); }
+function apagar() { const l = selecionados(); if (!l.length) return; antes(); for (const i of l) { const [f] = achar(i.id); f.itens.splice(f.itens.indexOf(i), 1); } S.sel.clear(); mudou(true); }
+async function cortarTempo(lista) { await salvar(); antes(); const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/aplicar`, { projeto: S.p, sugestoes: [{ acao: { tipo: "cortar_varios", intervalos: lista } }] }); S.p = r.projeto; S.sel.clear(); S.t = Math.min(S.t, duracao()); mudou(true); montarCabecas(); }
+function apagarJuntando() { const l = selecionados(); if (!l.length) return; cortarTempo(l.map((i) => [i.ini, i.ini + i.dur])).catch((e) => avisar(e.message)); }
+$("#st-abrir-tr").addEventListener("click", () => abrirPainel("transicoes")); $("#st-dividir").addEventListener("click", dividir); $("#st-duplicar").addEventListener("click", duplicar); $("#st-apagar").addEventListener("click", () => (cap() ? apagarCamada() : apagar())); $("#st-fechar-vao").addEventListener("click", apagarJuntando);
+$("#st-desfazer").addEventListener("click", desfazer); $("#st-refazer").addEventListener("click", refazer); $("#st-salvar").addEventListener("click", () => { S.sujo = true; salvar(); });
+$("#st-nova-faixa").addEventListener("change", (ev) => { const t = ev.target.value; ev.target.value = ""; if (!t) return; antes(); novaFaixa(t); mudou(); montarCabecas(); });
+function novaFaixa(tipo) { const f = { id: nid("f"), tipo, nome: { video: "Vídeo", texto: "Textos", legenda: "Legendas", efeito: "Efeitos", audio: "Áudio" }[tipo] + " " + (S.p.faixas.filter((x) => x.tipo === tipo).length + 1), oculta: false, muda: false, travada: false, itens: [] };
+  const n = S.p.faixas.map((x) => x.tipo).lastIndexOf(tipo); S.p.faixas.splice(n < 0 ? S.p.faixas.length : n + 1, 0, f); return f; }
+function ferramenta(f) { S.ferr = f; faixasEl.dataset.ferr = f; $("#st-f-sel").setAttribute("aria-pressed", String(f === "sel")); $("#st-f-lamina").setAttribute("aria-pressed", String(f === "lamina")); }
+$("#st-f-sel").addEventListener("click", () => ferramenta("sel")); $("#st-f-lamina").addEventListener("click", () => ferramenta("lamina"));
+function dividirTudo() { const l = itens().filter(([f, i]) => !f.travada && S.t > i.ini + .03 && S.t < i.ini + i.dur - .03); if (!l.length) return; antes(); for (const [f, i] of l) { const [a, b] = partir(i, S.t); f.itens.splice(f.itens.indexOf(i), 1, a, b); } mudou(true); }
+function alvoAgulha() { return sel1() || itens().filter(([f, i]) => f.tipo === "video" && !f.travada && i.tipo !== "forma" && S.t > i.ini && S.t < i.ini + i.dur).map(([, i]) => i).pop(); }
+function aparoLocal(i, lado) { const [f] = achar(i.id), [a, b] = partir(i, S.t), fica = lado === "esq" ? b : a; antes(); f.itens.splice(f.itens.indexOf(i), 1, fica); S.sel = new Set([fica.id]); mudou(true); }
+function aparar(lado, juntar = true) {
+  const i = alvoAgulha(); if (!i || S.t <= i.ini + .03 || S.t >= i.ini + i.dur - .03) { avisar("Coloque a agulha sobre o trecho que quer aparar"); return; }
+  if (!juntar || !["video", "imagem"].includes(i.tipo)) { aparoLocal(i, lado); return; }
+  const a = i.ini, b = i.ini + i.dur, t = S.t; cortarTempo([lado === "esq" ? [a, t] : [t, b]]).then(() => irPara(lado === "esq" ? a : t)).catch((e) => avisar(e.message));
+}
+function pontoCorte(sentido) { const p = [...new Set(itens().filter(([f]) => f.tipo === "video").flatMap(([, i]) => [i.ini, i.ini + i.dur]).map((v) => arred(v)))].sort((a, b) => a - b), n = sentido > 0 ? p.find((v) => v > S.t + .01) : p.reverse().find((v) => v < S.t - .01); if (n !== undefined) { irPara(n); const x = n * S.px; if (x < rolagem.scrollLeft || x > rolagem.scrollLeft + rolagem.clientWidth - 30) rolagem.scrollLeft = x - 80; } }
+function marcador() { antes(); const l = S.p.marcadores ||= [], n = l.findIndex((m) => Math.abs(m - S.t) < .05); if (n >= 0) l.splice(n, 1); else l.push(arred(S.t)); mudou(); }
+const abrirAtalhos = () => $("#st-dlg-atalhos").showModal();
+$("#st-atalhos").addEventListener("click", abrirAtalhos); $$("#st-dlg-atalhos [data-fechar], #st-dlg-exportar [data-fechar]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+const digitando = (n) => n.closest?.('textarea, select, input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=color])');
+document.addEventListener("pointerup", (ev) => { const n = document.activeElement; if (n?.closest?.("#st-mesa") && n.matches("button, input[type=range], input[type=checkbox], #st-divisor")) n.blur(); });
+addEventListener("keydown", (ev) => {
+  if (!S.aberto || $("#aba-editor").hidden || document.querySelector("dialog[open]")) return;
+  if (ev.key === " " && ev.target.matches?.("input[type=number]")) ev.target.blur();
+  else if (digitando(ev.target)) return;
+  if (ev.key === " " && ev.repeat) { ev.preventDefault(); return; }
+  if (ev.target.matches?.("input[type=range]") && ev.key.startsWith("Arrow")) return;
+  const k = ev.key.toLowerCase(), c = ev.ctrlKey || ev.metaKey, sh = ev.shiftKey, faz = (fn) => { ev.preventDefault(); fn(); };
+  if (c && k === "z") return faz(sh ? refazer : desfazer); if (c && k === "y") return faz(refazer); if (c && k === "s") return faz(() => { S.sujo = true; salvar(); }); if (c && k === "e") return faz(() => $("#st-exportar").click());
+  if (k === "?" || (c && k === "/")) return faz(abrirAtalhos);
+  if (cap()) { if (k === "delete" || k === "backspace") faz(apagarCamada); return; }
+  if (c && k === "b") return faz(sh ? dividirTudo : dividir); if (c && k === "d") return faz(duplicar); if (c && k === "a") return faz(() => { S.sel = new Set(itens().map(([, i]) => i.id)); selecaoMudou(); });
+  if (c && k === "c") return faz(() => { S.clipe = clonar(selecionados()); if (S.clipe.length) avisar("Copiado"); }); if (c && k === "x") return faz(() => { S.clipe = clonar(selecionados()); apagar(); });
+  if (c && k === "v") return faz(() => { if (!S.clipe.length) return; antes(); const ini = Math.min(...S.clipe.map((i) => i.ini)); S.sel.clear(); for (const i of S.clipe) { const n = clonar(i); n.id = nid(); n.ini = arred(S.t + i.ini - ini); (S.p.faixas.find((f) => compativel(f, n)) || novaFaixa(n.tipo === "audio" ? "audio" : "video")).itens.push(n); S.sel.add(n.id); } mudou(true); });
+  if (c && (k === "=" || k === "+")) return faz(() => zoomT(1.4)); if (c && k === "-") return faz(() => zoomT(1 / 1.4)); if (c) return;
+  if (k === " ") return faz(() => (S.tocando ? pausar() : tocar())); if (k === "j") return faz(() => vaivem(-1)); if (k === "l") return faz(() => vaivem(1)); if (k === "k") return faz(pausar);
+  if (sh && k === "z") return faz(ajustarZoom); if (k === "q") return faz(() => aparar("esq")); if (k === "w") return faz(() => aparar("dir")); if (k === "[") return faz(() => aparar("esq", false)); if (k === "]") return faz(() => aparar("dir", false));
+  if (k === "a") return faz(() => ferramenta("sel")); if (k === "b") return faz(() => ferramenta("lamina")); if (k === "s") return faz(dividir); if (k === "n") return faz(() => { $("#st-ima").checked = !$("#st-ima").checked; avisar($("#st-ima").checked ? "Ímã ligado" : "Ímã desligado"); }); if (k === "m") return faz(marcador);
+  if (k === "delete" || k === "backspace") return faz(sh ? apagarJuntando : apagar); if (k === "escape") return faz(() => { ferramenta("sel"); S.sel.clear(); selecaoMudou(); });
+  if (k === "arrowleft") return faz(() => { pausar(); irPara(S.t - (sh ? 1 : 1 / 30)); }); if (k === "arrowright") return faz(() => { pausar(); irPara(S.t + (sh ? 1 : 1 / 30)); }); if (k === "arrowup") return faz(() => { pausar(); pontoCorte(-1); }); if (k === "arrowdown") return faz(() => { pausar(); pontoCorte(1); });
+  if (k === "home") return faz(() => { irPara(0); rolagem.scrollLeft = 0; }); if (k === "end") return faz(() => irPara(duracao()));
+});
+function selecaoMudou() { montarInspetor(); desenharLinha(); pedirPintura(); if (cap() || S.painel === "efeitos") montarPainel(); }
+/* ---------- Componentes do inspetor ---------- */
+let vivos = [];
+function atualizarCampos() { vivos.forEach((f) => f()); }
+const sec = (titulo, ...f) => el("section", { class: "st-sec" }, titulo ? el("h3", {}, titulo) : null, ...f);
+const btn = (txt, fn, cls = "botao") => el("button", { class: cls, type: "button", onclick: fn }, txt);
+function botaoKf(i, p) {
+  const b = el("button", { class: "st-kf", type: "button", title: "Keyframe neste instante", "aria-label": `Keyframe de ${p}` });
+  const ver = () => { const c = i.kf?.[p] || [], u = local(i), aqui = c.some((k) => Math.abs(k.t - u) < .02); b.textContent = aqui ? "◆" : "◇"; c.length ? b.dataset.tem = "1" : delete b.dataset.tem; aqui ? b.dataset.aqui = "1" : delete b.dataset.aqui; };
+  b.addEventListener("click", () => { antes(); i.kf ||= {}; const u = arred(local(i)), v = arred(val(i, p, u), 4), c = i.kf[p] ||= [], n = c.findIndex((k) => Math.abs(k.t - u) < .02); if (n >= 0) c.splice(n, 1); else { c.push({ t: u, v, e: "suave" }); c.sort((a, d) => a.t - d.t); } if (!c.length) { delete i.kf[p]; (i.t ||= {})[p] = v; } mudou(); ver(); desenharLinha(); });
+  vivos.push(ver); ver(); return b;
+}
+function campo(rot, { get, set, min = 0, max = 100, step = 1, kf }) {
+  const r = el("input", { type: "range", min, max, step, "aria-label": rot }), n = el("input", { type: "number", step, "aria-label": rot }); let m = false;
+  const ver = () => { const v = get(); if (document.activeElement !== n) n.value = arred(v, 3); r.value = v; };
+  const pos = (v) => { if (Number.isNaN(+v)) return; if (!m) { antes(); m = true; } set(+v); mudou(); ver(); };
+  r.addEventListener("input", () => pos(r.value)); n.addEventListener("input", () => pos(n.value)); for (const x of [r, n]) x.addEventListener("change", () => (m = false));
+  vivos.push(ver); ver(); return el("label", { class: `st-campo${kf ? "" : " sem-kf"}` }, el("span", {}, rot), r, n, kf ? botaoKf(...kf) : null);
+}
+const campoT = (i, p, rot, o) => campo(rot, { ...o, get: () => val(i, p, local(i)), set: (v) => porProp(i, p, v), kf: [i, p] });
+function linha(rot, ctrl) { return el("label", { class: "st-campo largo" }, el("span", {}, rot), ctrl); }
+function escolha(rot, ops, v, fn) { const s = el("select", { "aria-label": rot }, ...ops.map(([a, b]) => el("option", { value: a }, b))); s.value = v ?? ops[0][0]; s.addEventListener("change", () => { antes(); fn(s.value); mudou(); }); return linha(rot, s); }
+function corCampo(rot, v, fn) { const c = el("input", { type: "color", value: String(v || "#ffffff").slice(0, 7) }); let m = false; c.addEventListener("input", () => { if (!m) { antes(); m = true; } fn(c.value.toUpperCase()); mudou(); }); c.addEventListener("change", () => (m = false)); return linha(rot, c); }
+function marca(rot, v, fn) { const c = el("input", { type: "checkbox" }); c.checked = !!v; c.addEventListener("change", () => { antes(); fn(c.checked); mudou(); }); return el("label", { class: "marcar" }, c, el("span", {}, rot)); }
+const opFontes = () => S.fontes.map((f) => [f.id, f.nome]);
+function controlesEstilo(est, por) {
+  const n = (k, rot, min, max, step = 1) => campo(rot, { get: () => est()[k], set: (v) => por(k, v), min, max, step });
+  const envioFonte = el("input", { type: "file", accept: ".ttf,.otf", hidden: "" });
+  envioFonte.addEventListener("change", async () => { const a = envioFonte.files[0]; if (!a) return; const r = await fetch(`/api/estudio/fontes?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }); const d = await r.json(); if (r.ok) { S.fontes = d; montarInspetor(); avisar("Fonte adicionada"); } else avisar(d.erro); });
+  return [sec("Fonte", escolha("Fonte", opFontes(), est().fonte, (v) => por("fonte", v)), btn("Enviar fonte", () => envioFonte.click()), envioFonte, n("tamanho", "Tamanho", 10, 300), corCampo("Cor", est().cor, (v) => por("cor", v)), n("opacidade", "Opacidade", 0, 100), marca("Letras maiúsculas", est().maiusculas, (v) => por("maiusculas", v))),
+    sec("Layout", escolha("Alinhar", [["centro", "Centro"], ["esquerda", "Esquerda"], ["direita", "Direita"]], est().alinhamento, (v) => por("alinhamento", v)), n("espacamento", "Espaço letras", -5, 40), n("entrelinha", "Entrelinhas", 70, 220), n("largura", "Largura", 100, 3000, 10)),
+    sec("Contorno e sombra", n("contorno", "Contorno", 0, 40), corCampo("Cor", est().contorno_cor, (v) => por("contorno_cor", v)), marca("Sombra", est().sombra, (v) => por("sombra", v)), corCampo("Cor", est().sombra_cor, (v) => por("sombra_cor", v)), n("sombra_x", "Sombra X", -40, 40), n("sombra_y", "Sombra Y", -40, 40), n("sombra_blur", "Suavidade", 0, 40), n("sombra_opac", "Força", 0, 100)),
+    sec("Fundo e borda", marca("Caixa de fundo", est().fundo, (v) => por("fundo", v)), corCampo("Cor", est().fundo_cor, (v) => por("fundo_cor", v)), n("fundo_opac", "Opacidade", 0, 100), n("fundo_raio", "Arredondar", 0, 80), n("fundo_pad", "Margem", 0, 80), n("borda", "Borda", 0, 20), corCampo("Cor borda", est().borda_cor, (v) => por("borda_cor", v))),
+    sec("Destaque de palavras", escolha("Destacar", [["nenhum", "Nada"], ["palavra", "Palavra falada"], ["importantes", "Palavras importantes"], ["ambos", "Falada e importantes"]], est().destaque, (v) => por("destaque", v)), corCampo("Cor", est().cor_destaque, (v) => por("cor_destaque", v)), marca("Caixa na palavra falada", est().destaque_caixa, (v) => por("destaque_caixa", v)), marca("Uma palavra por vez", est().palavra_a_palavra, (v) => por("palavra_a_palavra", v))),
+    sec("Animação", escolha("Entrada", ANIM, est().entrada, (v) => por("entrada", v)), escolha("Saída", ANIM, est().saida, (v) => por("saida", v)), n("tempo_anim", "Tempo (s)", .03, 1.5, .01))];
+}
+function alinhar(i, modo) { antes(); const b = S.caixas.get(i.id), W = S.p.largura, H = S.p.altura, w = b?.w ?? 0, h = b?.h ?? 0, m = { e: ["x", w / 2], c: ["x", W / 2], d: ["x", W - w / 2], t: ["y", h / 2], m: ["y", H / 2], b: ["y", H - h / 2] }[modo]; porP(i, m[0], arred(m[1], 1)); mudou(); atualizarCampos(); }
+function secTempo(i) { return sec("Tempo", campo("Início", { get: () => i.ini, set: (v) => { i.ini = Math.max(0, arred(v)); }, min: 0, max: Math.ceil(duracao()), step: .01 }), campo("Duração", { get: () => i.dur, set: (v) => { const f = Math.max(.1, v) / i.dur; i.dur = arred(Math.max(.1, v)); if (i.palavras) i.palavras = i.palavras.map((w) => ({ ...w, ini: arred(w.ini * f), fim: arred(w.fim * f) })); }, min: .1, max: Math.max(30, Math.ceil(i.dur * 2)), step: .01 })); }
+function montarInspetor() {
+  vivos = []; const c = $("#st-insp"); if (cap()) { inspetorCapa(c); return; }
+  const l = selecionados(), i = l.length === 1 ? l[0] : null;
+  if (!l.length) { c.replaceChildren(el("h2", {}, "Ajustes"), el("p", { class: "dica" }, "Clique em um elemento na prévia ou na timeline para ajustar posição, tempo, estilo e animação.")); return; }
+  const legs = l.filter((x) => ["legenda", "texto"].includes(x.tipo));
+  if (!i && legs.length !== l.length) { c.replaceChildren(el("h2", {}, `${l.length} elementos`), el("p", { class: "dica" }, "Use Dividir, Duplicar ou Apagar na timeline.")); return; }
+  const b = i || legs[0], blocos = [el("h2", {}, i ? `${ROTULOS[i.tipo]}` : `${l.length} textos selecionados`)];
+  if (i) blocos.push(secTempo(i));
+  if (["video", "imagem", "forma"].includes(b.tipo)) {
+    blocos.push(sec("Posição e tamanho", campoT(b, "x", "X", { min: -S.p.largura, max: S.p.largura * 2 }), campoT(b, "y", "Y", { min: -S.p.altura, max: S.p.altura * 2 }), campoT(b, "escala", "Escala", { min: .05, max: 5, step: .01 }), campoT(b, "rot", "Rotação", { min: -180, max: 180 }), campoT(b, "opac", "Opacidade", { min: 0, max: 100 }), campoT(b, "w", "Largura", { min: 10, max: S.p.largura * 2 }), campoT(b, "h", "Altura", { min: 10, max: S.p.altura * 2 }),
+      el("div", { class: "st-botoes" }, ...[["e", "Esquerda"], ["c", "Centro"], ["d", "Direita"], ["t", "Topo"], ["m", "Meio"], ["b", "Base"]].map(([m, t]) => btn(t, () => alinhar(b, m))))));
+    if (b.tipo !== "forma") {
+      const mao = marca("Ajustar arrastando na prévia", S.zoomMao, (v) => { S.zoomMao = v; });
+      blocos.push(sec("Zoom e enquadramento", mao, campoT(b, "zoom", "Zoom", { min: 1, max: 5, step: .01 }), campoT(b, "zx", "Foco X", { min: 0, max: 1, step: .005 }), campoT(b, "zy", "Foco Y", { min: 0, max: 1, step: .005 }), campo("Força", { get: () => b.zoom_forca ?? 100, set: (v) => { b.zoom_forca = v; }, min: 0, max: 200 }),
+        btn("Tirar todos os zooms desta cena", () => { antes(); for (const p of ["zoom", "zx", "zy"]) if (b.kf) delete b.kf[p]; b.t.zoom = 1; mudou(true); })),
+        sec("Recorte", campoT(b, "cl", "Esquerda", { min: 0, max: .9, step: .005 }), campoT(b, "cr", "Direita", { min: 0, max: .9, step: .005 }), campoT(b, "ct", "Topo", { min: 0, max: .9, step: .005 }), campoT(b, "cb", "Base", { min: 0, max: .9, step: .005 })));
+      const fil = () => b.filtro || {}, aj = (k, rot, a, z) => campo(rot, { get: () => b.ajustes?.[k] ?? 0, set: (v) => { (b.ajustes ||= {})[k] = v; }, min: a, max: z });
+      blocos.push(sec("Transição de entrada", escolha("Tipo", TRANS, b.transicao?.tipo || "corte", (v) => { b.transicao = { tipo: v, dur: b.transicao?.dur ?? .4 }; }), campo("Duração", { get: () => b.transicao?.dur ?? .4, set: (v) => { b.transicao = { tipo: b.transicao?.tipo || "corte", dur: v }; }, min: .1, max: 2, step: .05 })),
+        sec("Cor", escolha("Filtro", [["", "Igual ao projeto"], ...S.filtros.map((f) => [f.id, f.nome])], fil().nome || "", (v) => { b.filtro = v ? { nome: v, forca: fil().forca ?? 100 } : null; }), campo("Intensidade", { get: () => fil().forca ?? 100, set: (v) => { if (b.filtro) b.filtro.forca = v; } }), aj("brilho", "Brilho", -60, 60), aj("contraste", "Contraste", -60, 60), aj("saturacao", "Saturação", -100, 100), aj("temperatura", "Temperatura", -100, 100), aj("desfoque", "Desfoque", 0, 60)));
+    } else blocos.push(sec("Aparência", corCampo("Cor", b.cor, (v) => { b.cor = v; }), campo("Opacidade", { get: () => b.cor_opac ?? 100, set: (v) => { b.cor_opac = v; } }), campo("Arredondar", { get: () => b.raio ?? 0, set: (v) => { b.raio = v; }, max: 200 }), campo("Borda", { get: () => b.borda ?? 0, set: (v) => { b.borda = v; }, max: 40 }), corCampo("Cor borda", b.borda_cor, (v) => { b.borda_cor = v; })));
+    if (b.tipo === "video") blocos.push(sec("Som e velocidade", campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), marca("Sem som", b.mudo, (v) => { b.mudo = v; }), campo("Velocidade", { get: () => b.velocidade ?? 1, set: (v) => { const f = (b.velocidade ?? 1) / v; b.velocidade = v; b.dur = arred(b.dur * f); }, min: .25, max: 4, step: .05 })));
+  } else if (b.tipo === "legenda" || b.tipo === "texto") {
+    const t = el("textarea", { "aria-label": "Texto" }); t.value = b.texto;
+    t.addEventListener("change", () => { antes(); b.texto = t.value; if (b.palavras) { const ps = t.value.split(/\s+/).filter(Boolean), tot = ps.reduce((s, p) => s + p.length + 1, 0) || 1; let pos = 0; b.palavras = ps.map((p) => { const d = b.dur * (p.length + 1) / tot, w = { p, ini: arred(pos), fim: arred(pos + d) }; pos += d; return w; }); } mudou(); desenharLinha(); });
+    if (i) blocos.push(sec("Texto", t));
+    const est = () => estiloDe(b), por = (k, v) => { for (const x of legs) (x.estilo ||= {})[k] = v; };
+    if (b.tipo === "legenda") {
+      const grupo = el("input", { type: "text", value: b.grupo || "", placeholder: "Nome do grupo" }); grupo.addEventListener("change", () => { antes(); for (const x of legs) x.grupo = grupo.value.trim(); mudou(true); });
+      const todas = () => itens().filter(([, x]) => x.tipo === "legenda").map(([, x]) => x);
+      blocos.push(sec("Aplicar este estilo", btn("Aplicar a todas as legendas", () => { antes(); S.p.global.legenda = { ...S.p.global.legenda, ...b.estilo }; todas().forEach((x) => { x.estilo = {}; }); mudou(true); avisar("Estilo aplicado a todas as legendas"); }, "botao destaque"),
+        l.length > 1 ? btn(`Aplicar às ${l.length} selecionadas`, () => { antes(); legs.forEach((x) => { x.estilo = { ...b.estilo }; }); mudou(true); }) : null, linha("Grupo", grupo),
+        b.grupo ? btn(`Aplicar ao grupo ${b.grupo}`, () => { antes(); todas().filter((x) => x.grupo === b.grupo).forEach((x) => { x.estilo = { ...b.estilo }; }); mudou(true); }) : null, btn("Voltar ao estilo global", () => { antes(); legs.forEach((x) => { x.estilo = {}; }); mudou(true); })),
+        sec("Posição", campo("X", { get: () => est().x ?? S.p.largura / 2, set: (v) => por("x", v), max: S.p.largura }), campo("Y", { get: () => est().y ?? S.p.altura * .86, set: (v) => por("y", v), max: S.p.altura })));
+    } else if (i) blocos.push(sec("Posição", campoT(b, "x", "X", { min: -200, max: S.p.largura + 200 }), campoT(b, "y", "Y", { min: -200, max: S.p.altura + 200 }), campoT(b, "escala", "Escala", { min: .1, max: 6, step: .01 }), campoT(b, "rot", "Rotação", { min: -180, max: 180 }), campoT(b, "opac", "Opacidade", { min: 0, max: 100 }), el("div", { class: "st-botoes" }, ...[["e", "Esquerda"], ["c", "Centro"], ["d", "Direita"], ["t", "Topo"], ["m", "Meio"], ["b", "Base"]].map(([m, x]) => btn(x, () => alinhar(b, m))))));
+    blocos.push(sec("Efeito do texto", escolha("Efeito", EF_TEXTO, est().efeito_texto, (v) => por("efeito_texto", v)), campo("Força", { get: () => est().efeito_forca, set: (v) => por("efeito_forca", v), min: 0, max: 200 })));
+    blocos.push(...controlesEstilo(est, por));
+  } else if (b.tipo === "efeito") {
+    blocos.push(sec("Efeito", escolha("Tipo", EFEITOS, b.efeito, (v) => { b.efeito = v; }), campo("Força", { get: () => b.forca ?? 1, set: (v) => { b.forca = v; }, min: 0, max: b.efeito === "tremor" ? 30 : 1, step: b.efeito === "tremor" ? .5 : .01 }), b.efeito === "filtro" ? escolha("Filtro", S.filtros.map((f) => [f.id, f.nome]), b.filtro, (v) => { b.filtro = v; }) : null, b.efeito === "progresso" ? corCampo("Cor", b.cor, (v) => { b.cor = v; }) : null));
+  } else if (b.tipo === "audio") {
+    blocos.push(sec("Áudio", el("p", {}, b.nome), escolha("Tipo", [["efeito", "Efeito sonoro"], ["musica", "Música de fundo"], ["voz", "Voz"]], b.categoria || "efeito", (v) => { b.categoria = v; }), campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), campo("Entrada suave", { get: () => b.fade_in ?? 0, set: (v) => { b.fade_in = v; }, max: 10, step: .1 }), campo("Saída suave", { get: () => b.fade_out ?? 0, set: (v) => { b.fade_out = v; }, max: 10, step: .1 })));
+  }
+  c.replaceChildren(...blocos);
+}
+
+/* ---------- Painéis ---------- */
+const ICONE_RAIL = { midia: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>', texto: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>', sons: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>', efeitos: '<path d="M12 3l2 5.5L19.5 10 14 12l-2 6-2-6-5.5-2L10 8.5z"/><path d="M19 16v4M17 18h4"/>', transicoes: '<path d="M4 5l8 7-8 7zM20 5l-8 7 8 7z"/>', cenas: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/>', ia: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><rect x="7" y="7" width="10" height="10" rx="2"/>', global: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>' };
+const RAIL_VIDEO = [["midia", "Mídia"], ["texto", "Textos"], ["sons", "Sons"], ["efeitos", "Efeitos"], ["transicoes", "Transições"], ["cenas", "Cenas"], ["ia", "IA"], ["global", "Global"]], RAIL_CAPA = [["camadas", "Camadas"], ["modelos", "Modelos"]];
+function montarRail() { const l = cap() ? RAIL_CAPA : RAIL_VIDEO; if (!l.some(([k]) => k === S.painel)) S.painel = l[0][0]; $("#st-rail").replaceChildren(...l.map(([k, n]) => { const b = el("button", { type: "button", role: "tab", "aria-selected": String(k === S.painel), onclick: () => abrirPainel(k) }); if (ICONE_RAIL[k]) b.innerHTML = svg(ICONE_RAIL[k]).replace('width="14" height="14"', 'width="20" height="20"'); b.append(el("span", {}, n)); return b; })); }
+function abrirPainel(k) { fecharPrevia(); S.painel = k; montarRail(); montarPainel(); }
+function montarPainel() { if (!S.aberto) return; const c = $("#st-painel"); const fn = { midia: pMidia, texto: pTexto, sons: pSons, efeitos: pEfeitos, transicoes: pTransicoes, cenas: pCenas, ia: pIa, global: pGlobal, camadas: pCamadas, modelos: pModelos }[S.painel]; if (S.painel === "sons" && c.dataset.p === "sons") return; c.dataset.p = S.painel; c.replaceChildren(...fn()); }
+function faixaLivre(tipo, ini, dur) { const f = S.p.faixas.find((x) => x.tipo === tipo && !x.travada && !x.itens.some((i) => i.ini < ini + dur && i.ini + i.dur > ini)); if (f) return f; const n = novaFaixa(tipo); montarCabecas(); return n; }
+function colocar(tipo, item) { antes(); item.id ||= nid(); item.ini = arred(S.t); faixaLivre(tipo, item.ini, item.dur).itens.push(item); S.sel = new Set([item.id]); mudou(true); montarCabecas(); }
+function usarMidia(m) {
+  S.p.midias[m.id] = m; const W = S.p.largura, H = S.p.altura;
+  if (m.tipo === "audio") return colocar("audio", { tipo: "audio", nome: m.nome, midia: m.id, dur: arred(m.dur), entrada: 0, volume: m.dur > 20 ? 40 : 80, categoria: m.dur > 20 ? "musica" : "efeito" });
+  const e = Math.min(W / (m.lar || W), H / (m.alt || H)) * (m.tipo === "imagem" ? .6 : 1);
+  colocar("video", { tipo: m.tipo, nome: m.nome, midia: m.id, dur: arred(m.tipo === "video" ? m.dur : 5), entrada: 0, velocidade: 1, volume: 100, t: { x: W / 2, y: H / 2, w: arred((m.lar || W) * e, 1), h: arred((m.alt || H) * e, 1), escala: 1, rot: 0, opac: 100, zoom: 1, zx: .5, zy: .5, cl: 0, ct: 0, cr: 0, cb: 0 }, kf: {} });
+}
+function envioArquivos(accept, fn) { const n = el("input", { type: "file", accept, multiple: "", hidden: "" }); n.addEventListener("change", async () => { for (const a of [...n.files]) { $("#st-salvo").textContent = `Enviando ${a.name}…`; try { const r = await fetch(`/api/estudio/midia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); if (!r.ok) throw new Error(d.erro); fn(d); } catch (e) { avisar(e.message); } } $("#st-salvo").textContent = ""; n.value = ""; }); return n; }
+function pMidia() {
+  const inp = envioArquivos("image/*,video/*,audio/*", usarMidia), l = Object.values(S.p.midias).filter((m) => m.raiz !== "som");
+  return [el("h2", {}, "Mídia"), btn("Enviar imagem, vídeo ou áudio", () => inp.click(), "botao destaque"), inp, el("div", { class: "st-midias" }, ...l.map((m) => el("button", { class: "st-midia", type: "button", title: "Adicionar na agulha", onclick: () => usarMidia(m) }, m.tipo === "imagem" ? el("img", { src: urlMidia(m), alt: "", loading: "lazy" }) : m.tipo === "video" ? el("video", { src: `${urlMidia(m)}#t=1`, preload: "metadata", muted: "" }) : null, el("span", {}, m.nome || ROTULOS[m.tipo]))))];
+}
+function trabalho(nome, corpo, b, fim) {
+  const txt = b.textContent; b.disabled = true; b.textContent = "Ouvindo o vídeo…"; const fimB = () => { b.disabled = false; b.textContent = txt; };
+  api("POST", `/api/estudio/${S.tipo}/${S.id}/${nome}`, corpo).then(async () => { for (;;) { await new Promise((r) => setTimeout(r, 1500)); const r = await api("GET", `/api/estudio/${S.tipo}/${S.id}/trabalho/${nome}`); if (r.estado === "erro") throw new Error(r.erro); if (r.estado === "pronto") { antes(); S.p = r.projeto; fim(); mudou(true); montarCabecas(); break; } } }).catch((e) => avisar(e.message)).finally(fimB);
+}
+const MODELOS_LEGENDA = [
+  ["Viral amarelo", { fonte: "Anton", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#FFD400", contorno: 8, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "pop" }],
+  ["Caixa verde", { fonte: "Montserrat-Black", tamanho: 58, cor: "#FFFFFF", cor_destaque: "#2BE36B", contorno: 6, maiusculas: true, destaque: "palavra", destaque_caixa: true, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "pop" }],
+  ["Uma palavra", { fonte: "Poppins-Black", tamanho: 86, cor: "#FFFFFF", cor_destaque: "#FFC933", contorno: 9, maiusculas: false, destaque: "importantes", destaque_caixa: false, palavra_a_palavra: true, fundo: false, sombra: true, entrada: "pop" }],
+  ["Desenho", { fonte: "Luckiest-Guy", tamanho: 76, cor: "#FFE14D", cor_destaque: "#FF4B5C", contorno: 9, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "quique" }],
+  ["Quadrinho", { fonte: "Bangers", tamanho: 84, cor: "#141414", cor_destaque: "#D7263D", contorno: 0, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: true, fundo_cor: "#FFE14D", fundo_opac: 100, fundo_raio: 6, borda: 4, borda_cor: "#141414", sombra: false, entrada: "pop" }],
+  ["Gamer", { fonte: "Orbitron-Black", tamanho: 54, cor: "#E9FBFF", cor_destaque: "#00E5FF", contorno: 5, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, sombra_cor: "#00E5FF", sombra_y: 0, sombra_blur: 14, sombra_opac: 90, entrada: "zoom" }],
+  ["Neon rosa", { fonte: "Audiowide", tamanho: 60, cor: "#FF5FCF", cor_destaque: "#FFFFFF", contorno: 0, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, sombra_cor: "#FF5FCF", sombra_y: 0, sombra_blur: 18, sombra_opac: 100, entrada: "fade" }],
+  ["Cinema", { fonte: "Bebas-Neue", tamanho: 70, cor: "#F6F0E4", cor_destaque: "#F2B544", contorno: 0, espacamento: 4, maiusculas: true, destaque: "nenhum", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, sombra_y: 3, sombra_blur: 10, entrada: "fade", saida: "fade" }],
+  ["Terror", { fonte: "Creepster", tamanho: 80, cor: "#E5383B", cor_destaque: "#FFFFFF", contorno: 5, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "quique" }],
+  ["Faixa preta", { fonte: "Kanit-Black", tamanho: 56, cor: "#FFFFFF", cor_destaque: "#FFC933", contorno: 0, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: true, fundo_cor: "#101010", fundo_opac: 88, fundo_raio: 14, borda: 0, sombra: false, entrada: "subir" }],
+  ["Pincel", { fonte: "Caveat-Brush", tamanho: 86, cor: "#FFFFFF", cor_destaque: "#5AD1B3", contorno: 6, maiusculas: false, destaque: "importantes", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "fade" }],
+  ["Arcade", { fonte: "Press-Start-2P", tamanho: 38, cor: "#FFFFFF", cor_destaque: "#39FF88", contorno: 5, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: false, entrada: "digitando" }],
+];
+function modeloEm(p, m) { const base = { fundo: false, borda: 0, espacamento: 0, saida: "nenhuma", sombra_cor: "#000000", sombra_x: 0, sombra_y: 4, sombra_blur: 6, sombra_opac: 60 }; p.global.legenda = { ...p.global.legenda, ...base, ...m }; p.faixas.forEach((f) => f.itens.forEach((i) => { if (i.tipo === "legenda") i.estilo = {}; })); }
+function aplicarModeloLegenda(m) { antes(); modeloEm(S.p, m); mudou(true); avisar("Modelo aplicado a todas as legendas"); }
+const cartaoModelo = ([nome, m]) => { const b = cartaoPrevia(btn(nome, null, "st-modelo"), () => { const l = textoDaPrevia(), ini = l?.tipo === "legenda" ? l.ini : S.t; return { chave: `modelo:${nome}:${ini}`, nome: `Modelo ${nome}`, ini, fim: ini + 2.6, mudar: (p) => modeloEm(p, m), aplicar: () => aplicarModeloLegenda(m) }; }); Object.assign(b.style, { fontFamily: fonteCss(m.fonte), color: m.fundo ? m.cor : m.cor_destaque, background: m.fundo ? m.fundo_cor : "#0b1518" }); return b; };
+function pTexto() {
+  const W = S.p.largura, H = S.p.altura, item = (txt, est) => ({ tipo: "texto", nome: "Texto", dur: 4, texto: txt, estilo: est, t: { x: W / 2, y: H / 2, escala: 1, rot: 0, opac: 100 }, kf: {} });
+  const tx = (nome, txt, est) => cartaoPrevia(btn(nome, null), () => ({ chave: `texto:${nome}:${S.t}`, nome, ini: S.t, fim: S.t + 1.2, fps: 16, mudar: (p) => entrarNaFaixa(p, "texto", item(txt, est)), aplicar: () => colocar("texto", item(txt, est)) }));
+  const des = el("input", { type: "number", value: "0", step: ".05", "aria-label": "Atraso em segundos" });
+  const gerar = btn("Gerar legendas de novo", (ev) => confirmar(ev.currentTarget, "Trocar todas", () => trabalho("legendas", { projeto: S.p }, gerar, () => avisar("Legendas geradas"))));
+  return [el("h2", {}, "Textos e elementos"), el("div", { class: "st-botoes" }, tx("Texto", "Seu texto aqui", { tamanho: 72, contorno: 6 }), tx("Título grande", "TÍTULO", { fonte: "Anton", tamanho: 150, cor: "#FFC933", contorno: 10, entrada: "pop", tempo_anim: .25 }), tx("Faixa", "Faixa de destaque", { tamanho: 56, fundo: true, fundo_cor: "#FFC933", cor: "#141414", fundo_opac: 100 })),
+    el("div", { class: "st-botoes" }, ...[["retangulo", "Retângulo"], ["circulo", "Círculo"]].map(([f, n]) => btn(n, () => colocar("video", { tipo: "forma", forma: f, nome: n, dur: 4, cor: "#FFC933", t: { x: W / 2, y: H / 2, w: 420, h: f === "circulo" ? 420 : 220, escala: 1, rot: 0, opac: 100 }, kf: {} })))),
+    sec("Modelos de legenda", el("div", { class: "st-modelos" }, ...MODELOS_LEGENDA.map(cartaoModelo))),
+    sec("Legendas", gerar, linha("Atrasar (s)", des), btn("Mover todas as legendas", () => { const d = +des.value; if (!d) return; antes(); itens().forEach(([, i]) => { if (i.tipo === "legenda") i.ini = Math.max(0, arred(i.ini + d)); }); mudou(); avisar("Sincronia ajustada"); }))];
+}
+/* ---------- Prévia: mostra o resultado numa cópia do projeto, sem mudar o vídeo ---------- */
+const pv = { caixa: $("#st-pv"), img: $("#st-pv-img"), carga: $("#st-pv-carga"), nome: $("#st-pv-nome"), seq: 0, relogio: 0, atual: null, cache: new Map(), rev: -1, cartao: null };
+function fecharPrevia() { if (!pv.atual) return; pv.seq++; pv.atual = null; clearTimeout(pv.relogio); pv.caixa.hidden = true; pv.img.removeAttribute("src"); pv.cartao?.removeAttribute("data-vendo"); pv.cartao = null; }
+function rodarPrevia(q, fps) { let n = 0; const seq = pv.seq, passo = () => { if (seq !== pv.seq) return; pv.img.src = `data:image/jpeg;base64,${q[n]}`; const fim = n === q.length - 1; n = fim ? 0 : n + 1; pv.relogio = setTimeout(passo, fim ? 650 : 1000 / fps); }; passo(); }
+async function verPrevia(spec, cartao) {
+  fecharPrevia(); pausar(); const seq = ++pv.seq; pv.atual = spec; pv.cartao = cartao || null; cartao?.setAttribute("data-vendo", "1");
+  pv.nome.textContent = spec.nome; pv.caixa.hidden = false; pv.carga.hidden = false; pv.img.hidden = true;
+  if (pv.rev !== (S.rev || 0)) { pv.cache.clear(); pv.rev = S.rev || 0; }
+  const ini = Math.max(0, spec.ini), fim = Math.min(duracao() + .5, Math.max(ini + .4, spec.fim)), fps = spec.fps || 12, chave = `${spec.chave}|${ini.toFixed(2)}|${fim.toFixed(2)}`;
+  try {
+    let q = pv.cache.get(chave);
+    if (!q) { const copia = clonar(S.p); spec.mudar(copia); const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/previa`, { projeto: copia, ini, fim, fps, altura: 720 }); if (seq !== pv.seq || r.cancelada) return; q = r.quadros; pv.cache.set(chave, q); }
+    if (seq !== pv.seq) return; if (!q.length) throw new Error("Não foi possível montar a prévia deste trecho");
+    pv.carga.hidden = true; pv.img.hidden = false; rodarPrevia(q, fps);
+  } catch (e) { if (seq === pv.seq) { fecharPrevia(); avisar(e.message); } }
+}
+$("#st-pv-cancelar").addEventListener("click", fecharPrevia);
+$("#st-pv-aplicar").addEventListener("click", () => { const s = pv.atual; if (!s) return; fecharPrevia(); s.aplicar(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && pv.atual) { ev.stopPropagation(); fecharPrevia(); } }, true);
+const cartaoPrevia = (n, spec) => { n.addEventListener("click", () => { const s = spec(); if (s) verPrevia(s, n); }); return n; };
+function entrarNaFaixa(p, tipo, item) { let f = p.faixas.find((x) => x.tipo === tipo); if (!f) { f = { id: nid("f"), tipo, nome: tipo, oculta: false, muda: false, travada: false, itens: [] }; p.faixas.push(f); } f.itens.push({ ...clonar(item), id: nid(), ini: arred(S.t) }); }
+function textoDaPrevia() { const sel = selecionados().find((i) => ["texto", "legenda"].includes(i.tipo)); if (sel) return sel; const l = itens().map(([, i]) => i).filter((i) => ["texto", "legenda"].includes(i.tipo)), leg = l.filter((i) => i.tipo === "legenda"); return leg.find((i) => S.t >= i.ini && S.t < i.ini + i.dur) || leg.find((i) => i.ini >= S.t) || leg[0] || l[0] || null; }
+
+/* ---------- Efeitos ---------- */
+function pEfeitos() {
+  S.abaFx ||= "texto";
+  const abas = el("div", { class: "st-modo st-fx-abas", role: "group", "aria-label": "Tipo de efeito" }, ...[["texto", "Texto"], ["video", "Vídeo"]].map(([k, n]) => el("button", { type: "button", "aria-pressed": String(S.abaFx === k), onclick: () => { S.abaFx = k; montarPainel(); } }, n)));
+  if (S.abaFx === "video") return [el("h2", {}, "Efeitos"), abas, el("p", { class: "dica" }, "Clique para ver a prévia. O vídeo só muda quando você aplicar."), el("div", { class: "st-fx-grade" }, ...EFEITOS.map(([id, nome]) => cartaoPrevia(el("button", { class: "st-fx-card video", type: "button", dados: { fx: id } }, el("span", { class: "st-fx-am" }, ""), el("small", {}, nome)), () => { const item = { tipo: "efeito", efeito: id, nome, dur: id === "progresso" ? arred(duracao()) : 1.2, forca: id === "tremor" ? 8 : .7, filtro: "cinema", cor: "#FFC933" }; return { chave: `fx:${id}:${S.t}`, nome, ini: S.t, fim: S.t + 1.6, mudar: (p) => entrarNaFaixa(p, "efeito", item), aplicar: () => colocar("efeito", item) }; }))),
+    sec("Filtros de cor", el("div", { class: "st-fx-grade" }, ...S.filtros.filter((f) => f.id !== "nenhum").map((f) => cartaoPrevia(el("button", { class: "st-fx-card video", type: "button", "aria-pressed": String(S.p.global.filtro?.nome === f.id) }, el("span", { class: "st-fx-am" }, ""), el("small", {}, f.nome)), () => { const v = { nome: f.id, forca: S.p.global.filtro?.forca ?? 100 }; return { chave: `filtro:${f.id}:${S.t}`, nome: f.nome, ini: S.t, fim: S.t + 1.2, fps: 8, mudar: (p) => { p.global.filtro = v; }, aplicar: () => { antes(); S.p.global.filtro = v; mudou(true); avisar(`Filtro ${f.nome} aplicado`); } }; }))))];
+  const alvo = selecionados().filter((i) => ["texto", "legenda"].includes(i.tipo)), L = () => (S.p.global.legenda ||= {}), legendas = () => itens().filter(([, i]) => i.tipo === "legenda").map(([, i]) => i);
+  const est = alvo[0] ? estiloDe(alvo[0]) : { ...PAD_EST, ...L() }, por = (k, v) => { if (alvo.length) alvo.forEach((x) => { (x.estilo ||= {})[k] = v; }); else { L()[k] = v; legendas().forEach((x) => { if (x.estilo) delete x.estilo[k]; }); } };
+  const ids = new Set(alvo.map((i) => i.id));
+  const porEm = (p, mud) => { const lista = p.faixas.flatMap((f) => f.itens); if (ids.size) lista.filter((i) => ids.has(i.id)).forEach((x) => { x.estilo = { ...(x.estilo || {}), ...mud }; }); else { p.global.legenda = { ...(p.global.legenda || {}), ...mud }; lista.filter((i) => i.tipo === "legenda" && i.estilo).forEach((x) => { for (const k of Object.keys(mud)) delete x.estilo[k]; }); } };
+  const specTexto = (nome, mud, trecho) => () => { const b = textoDaPrevia(); if (!b) { avisar("Adicione um texto ou gere as legendas para ver a prévia"); return null; } const [ini, fim, fps] = trecho(b); return { chave: `txt:${JSON.stringify(mud)}:${[...ids]}:${b.id}`, nome, ini, fim, fps, mudar: (p) => { porEm(p, mud); }, aplicar: () => { antes(); Object.entries(mud).forEach(([k, v]) => por(k, v)); mudou(true); avisar(`${nome} aplicado`); } }; };
+  const corrido = (b) => [b.ini, b.ini + 2.6, 12], inicio = (b) => [b.ini, b.ini + 1, 24], saindo = (b) => [Math.max(b.ini, b.ini + b.dur - 1), b.ini + b.dur + .1, 24];
+  const cartaoAnim = (k, trecho) => ([id, nome]) => cartaoPrevia(el("button", { class: "st-fx-card", type: "button", "aria-pressed": String((est[k] || "nenhuma") === id) }, el("span", { class: "st-fx-am" }, "Aa"), el("small", {}, nome)), specTexto(`${k === "entrada" ? "Entrada" : "Saída"}: ${nome}`, { [k]: id, tempo_anim: Math.max(est.tempo_anim ?? .15, .35) }, trecho));
+  const rotulo = `Clique para ver a prévia. ${alvo.length === 1 ? (alvo[0].tipo === "legenda" ? "Vale para esta legenda" : "Vale para este texto") : alvo.length ? `Vale para ${alvo.length} selecionados` : "Vale para todas as legendas. Selecione um texto para mudar só ele"}.`;
+  return [el("h2", {}, "Efeitos"), abas, el("p", { class: "dica" }, rotulo),
+    el("div", { class: "st-fx-grade" }, ...EF_TEXTO.map(([id, nome]) => cartaoPrevia(el("button", { class: "st-fx-card", type: "button", "aria-pressed": String((est.efeito_texto || "nenhum") === id), dados: { fx: id } }, el("span", { class: "st-fx-am" }, "Aa"), el("small", {}, nome)), specTexto(nome, { efeito_texto: id, efeito_forca: est.efeito_forca ?? 100 }, corrido)))),
+    sec("Ajuste", campo("Força", { get: () => est.efeito_forca ?? 100, set: (v) => { est.efeito_forca = v; por("efeito_forca", v); }, min: 0, max: 200 }), alvo.length ? btn("Usar em todas as legendas", () => { antes(); L().efeito_texto = est.efeito_texto; L().efeito_forca = est.efeito_forca ?? 100; legendas().forEach((x) => { if (x.estilo) { delete x.estilo.efeito_texto; delete x.estilo.efeito_forca; } }); mudou(true); avisar("Efeito aplicado em todas as legendas"); }) : null),
+    sec("Animação de entrada", el("div", { class: "st-fx-grade" }, ...ANIM.map(cartaoAnim("entrada", inicio)))), sec("Animação de saída", el("div", { class: "st-fx-grade" }, ...ANIM.filter(([id]) => id !== "digitando").map(cartaoAnim("saida", saindo))))];
+}
+
+/* ---------- Transições ---------- */
+const NOMES_TR = { dissolver: "Dissolver", preto: "Pelo preto", branco: "Clarão branco", zoom: "Zoom", esquerda: "Para a esquerda", direita: "Para a direita", cima: "Para cima", baixo: "Para baixo", chicote: "Chicote", queda: "Chicote vertical", impulso: "Impulso", giro: "Giro", glitch: "Glitch", rgb: "Cores separadas", clarao_rapido: "Clarão rápido", desfoque_rapido: "Desfoque rápido" };
+const GRUPOS_TR = [["Suaves", ["dissolver", "preto", "branco", "zoom"]], ["Deslizar", ["esquerda", "direita", "cima", "baixo"]], ["Impacto", ["chicote", "queda", "impulso", "giro", "glitch", "rgb", "clarao_rapido", "desfoque_rapido"]]];
+const nomeTr = (t) => NOMES_TR[t] || "Corte seco", visual = (i) => ["video", "imagem"].includes(i.tipo);
+function ehCorte(f, i) { return visual(i) && i.ini > .05 && f.itens.some((x) => x !== i && visual(x) && Math.abs(x.ini + x.dur - i.ini) < .08); }
+function listaCortes() { const m = new Map(); for (const f of S.p.faixas) if (f.tipo === "video") for (const i of f.itens) if (ehCorte(f, i)) { const k = [...m.keys()].find((t) => Math.abs(t - i.ini) < .08) ?? i.ini; m.set(k, [...(m.get(k) || []), i]); } return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([t, l]) => ({ t, itens: l })); }
+function alvoTr(t = S.t, raio = .75) { let m = null; for (const c of listaCortes()) if (Math.abs(c.t - t) <= raio && (!m || Math.abs(c.t - t) < Math.abs(m.t - t))) m = c; return m; }
+const cortaveis = (t) => S.p.faixas.filter((f) => f.tipo === "video" && !f.travada).flatMap((f) => f.itens.filter((i) => visual(i) && t > i.ini + .2 && t < i.ini + i.dur - .2).map((i) => [f, i]));
+function usarTransicao(tipo, t = S.t, raio = .75) {
+  pausar(); let c = alvoTr(t, raio); const ponto = arred(t);
+  if (!c && !cortaveis(ponto).length) { avisar("Leve a agulha para cima do vídeo, longe do começo e do fim da cena"); return; }
+  antes();
+  if (!c) { for (const [f, i] of cortaveis(ponto)) { const [a, b] = partir(i, ponto); f.itens.splice(f.itens.indexOf(i), 1, a, b); } c = alvoTr(ponto, .1); }
+  const dur = S.durTr ?? .5; c.itens.forEach((i) => { i.transicao = { tipo, dur }; }); mudou(true);
+  clearTimeout(S.tempoTr); irPara(Math.max(0, c.t - .5)); tocar(); S.tempoTr = setTimeout(() => { if (S.tocando) pausar(); irPara(c.t); }, (1 + dur) * 1000);
+  avisar(`${nomeTr(tipo)} aplicada em ${tempoTxt(c.t)}`);
+}
+function specTransicao(tipo) {
+  const c = alvoTr(), ponto = c ? c.t : arred(S.t), dur = S.durTr ?? .5; if (!c && !cortaveis(ponto).length) { avisar("Leve a agulha para cima do vídeo, longe do começo e do fim da cena"); return null; }
+  return { chave: `tr:${tipo}:${ponto}:${dur}`, nome: nomeTr(tipo), ini: ponto - .45, fim: ponto + dur + .45, fps: 16, aplicar: () => usarTransicao(tipo, ponto),
+    mudar: (p) => { for (const f of p.faixas) if (f.tipo === "video" && !f.travada) for (const i of [...f.itens]) { if (!visual(i)) continue; if (Math.abs(i.ini - ponto) < .08 && ehCorte(f, i)) i.transicao = { tipo, dur }; else if (ponto > i.ini + .2 && ponto < i.ini + i.dur - .2) { const [a, b] = partir(i, ponto); b.transicao = { tipo, dur }; f.itens.splice(f.itens.indexOf(i), 1, a, b); } } } };
+}
+function cartaoTr(tipo) {
+  const c = alvoTr(), b = el("button", { class: "st-tr-card", type: "button", "aria-pressed": String(c?.itens[0]?.transicao?.tipo === tipo), dados: { tr: tipo }, title: "Clique para ver a prévia ou arraste até a timeline para aplicar" }, el("span", { class: "st-tr-am" }, el("i", { class: "a" }), el("i", { class: "b" })), el("small", {}, nomeTr(tipo)));
+  let ini = null, andou = false;
+  b.addEventListener("pointerdown", (ev) => { if (ev.pointerType === "touch") return; ini = [ev.clientX, ev.clientY]; andou = false; b.setPointerCapture(ev.pointerId); });
+  b.addEventListener("pointermove", (ev) => { if (!ini) return; if (!andou && Math.hypot(ev.clientX - ini[0], ev.clientY - ini[1]) < 6) return; andou = true; const r = rolagem.getBoundingClientRect(), dentro = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom; if (!dentro) { mostrarGuia(null); mostrarDica(ev, `Solte na timeline: ${nomeTr(tipo)}`); return; } const t = (ev.clientX - faixasEl.getBoundingClientRect().left) / S.px, c1 = alvoTr(t, 14 / S.px); mostrarGuia(c1 ? c1.t : t); mostrarDica(ev, c1 ? `Aplicar neste corte: ${tempoTxt(c1.t)}` : `Cortar aqui e aplicar: ${tempoTxt(t)}`); });
+  const fim = (ev) => { if (!ini) return; ini = null; mostrarGuia(null); mostrarDica(null, ""); if (!andou) return; const r = rolagem.getBoundingClientRect(); if (ev.type === "pointerup" && ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) usarTransicao(tipo, (ev.clientX - faixasEl.getBoundingClientRect().left) / S.px, 14 / S.px); };
+  b.addEventListener("pointerup", fim); b.addEventListener("pointercancel", fim);
+  b.addEventListener("click", () => { if (andou) { andou = false; return; } const s = specTransicao(tipo); if (s) verPrevia(s, b); });
+  return b;
+}
+function pTransicoes() {
+  const cs = listaCortes(), c = alvoTr(), n = c ? cs.findIndex((x) => x.t === c.t) : -1, atual = c?.itens[0]?.transicao?.tipo;
+  const ir = (d) => { const lista = d > 0 ? cs.filter((x) => x.t > S.t + .05) : cs.filter((x) => x.t < S.t - .05).reverse(); if (lista[0]) { pausar(); irPara(lista[0].t); montarPainel(); } };
+  const alvo = el("div", { class: "st-tr-alvo", id: "st-tr-alvo" }, el("div", {}, el("strong", {}, c ? `Corte em ${tempoTxt(c.t)}` : `Novo corte em ${tempoTxt(S.t)}`), el("span", {}, c ? `${n + 1} de ${cs.length}, ${atual && atual !== "corte" ? nomeTr(atual) : "sem transição"}` : "O corte é feito ao aplicar a transição")), btn("‹", () => ir(-1), "botao"), btn("›", () => ir(1), "botao"));
+  const dur = campo("Duração", { get: () => S.durTr ?? .5, set: (v) => { S.durTr = v; if (c) c.itens.forEach((i) => { if (i.transicao) i.transicao.dur = v; }); }, min: .1, max: 2, step: .05 });
+  return [el("h2", {}, "Transições"), alvo, el("p", { class: "dica" }, "Clique para ver a prévia. O vídeo só muda quando você aplicar."), ...GRUPOS_TR.map(([nome, l]) => sec(nome, el("div", { class: "st-tr-grade" }, ...l.map(cartaoTr)))),
+    sec("Ajuste", dur, btn("Usar a mesma em todos os cortes", () => { const t = atual && atual !== "corte" ? atual : null; if (!t) { avisar("Aplique uma transição neste corte primeiro"); return; } antes(); const d = S.durTr ?? .5; cs.forEach((x) => x.itens.forEach((i) => { i.transicao = { tipo: t, dur: d }; })); mudou(true); avisar(`${nomeTr(t)} aplicada em ${cs.length} cortes`); }), atual && atual !== "corte" ? btn("Tirar a transição deste corte", () => { antes(); c.itens.forEach((i) => { delete i.transicao; }); mudou(true); }) : null)];
+}
+function pSons() {
+  const lista = el("ul", { class: "st-lista" }), busca = el("input", { type: "search", placeholder: "Buscar: tiro, boing, explosão…", "aria-label": "Buscar som" }), cat = el("select", { "aria-label": "Categoria" }, el("option", { value: "" }, "Todos"));
+  let audio = null; const usar = (s, d) => { const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; colocar("audio", { tipo: "audio", categoria: "efeito", nome: s.nome, midia: m.id, dur: arred(d), entrada: 0, volume: 70 }); };
+  const achar_ = async () => { const r = await api("GET", `/api/sons?${new URLSearchParams({ q: busca.value, categoria: cat.value })}`); if (cat.options.length < 2) cat.append(...r.categorias.map((c) => el("option", { value: c }, c)));
+    lista.replaceChildren(...r.sons.slice(0, 80).map((s) => el("li", {}, btn("Ouvir", () => { audio?.pause(); audio = new Audio(`/sons/${s.id}.wav`); audio.play().catch(() => {}); }), el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria)), btn("Usar", () => { const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => usar(s, a.duration), { once: true }); })))); };
+  let tm; busca.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(achar_, 200); }); cat.addEventListener("change", achar_); achar_();
+  const inp = el("input", { type: "file", accept: "audio/*", hidden: "" }); inp.addEventListener("change", async () => { const a = inp.files[0]; if (!a) return; const r = await fetch(`/api/sons?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); r.ok ? (cat.value = "Meus sons", achar_()) : avisar(d.erro); });
+  const suger = btn("Sugerir sons para este vídeo", async () => { try { const { sons } = await api("POST", `/api/estudio/${S.tipo}/${S.id}/sugerir-sons`, { projeto: S.p }), nov = sons.filter((s) => !itens().some(([, i]) => i.tipo === "audio" && Math.abs(i.ini - s.t) < 1)); if (!nov.length) { avisar("Os sons sugeridos já estão no vídeo"); return; } antes(); for (const s of nov) { const a = new Audio(`/sons/${s.som}.wav`); await new Promise((r) => a.addEventListener("loadedmetadata", r, { once: true })); const mid = `som:${s.som}`; S.p.midias[mid] ||= { id: mid, tipo: "audio", raiz: "som", rel: s.som, nome: s.som.replace(/_/g, " "), dur: a.duration }; faixaLivre("audio", s.t, a.duration).itens.push({ id: nid(), tipo: "audio", categoria: "efeito", nome: S.p.midias[mid].nome, midia: mid, ini: s.t, dur: arred(a.duration), entrada: 0, volume: Math.round(s.volume * 100) }); } mudou(); montarCabecas(); avisar(`${nov.length} sons adicionados`); } catch (e) { avisar(e.message); } }, "botao destaque");
+  return [el("h2", {}, "Sons"), suger, btn("Enviar som ou música", () => inp.click()), inp, busca, cat, lista];
+}
+const faixaCena = (id) => { const l = itens().filter(([, i]) => i.cena === id).map(([, i]) => i); return l.length ? [Math.min(...l.map((i) => i.ini)), Math.max(...l.map((i) => i.ini + i.dur))] : null; };
+function moverCena(n, d) {
+  const lista = S.p.cenas.filter((c) => faixaCena(c.id)).sort((a, b) => faixaCena(a.id)[0] - faixaCena(b.id)[0]), m = n + d; if (m < 0 || m >= lista.length) return; antes();
+  const [p, s] = d > 0 ? [lista[n], lista[m]] : [lista[m], lista[n]], [a0, a1] = faixaCena(p.id), [b0, b1] = faixaCena(s.id);
+  itens().forEach(([, i]) => { if (i.cena === p.id) i.ini = arred(i.ini + (b1 - a1)); else if (i.cena === s.id) i.ini = arred(i.ini - (b0 - a0)); }); mudou(true);
+}
+function pCenas() {
+  const lista = S.p.cenas.filter((c) => faixaCena(c.id)).sort((a, b) => faixaCena(a.id)[0] - faixaCena(b.id)[0]);
+  return [el("h2", {}, "Cenas"), el("p", { class: "dica" }, "Cada cena guarda seus próprios elementos. Mude uma sem afetar as outras."), el("ul", { class: "st-lista" }, ...lista.map((c, n) => { const [a, b] = faixaCena(c.id);
+    const refazerB = btn("IA", () => trabalho("cena", { projeto: S.p, cena: c.id }, refazerB, () => avisar("Cena refeita pela IA")));
+    refazerB.title = "Refazer zooms e legendas só desta cena";
+    return el("li", {}, el("div", { onclick: () => { irPara(a); S.sel = new Set(itens().filter(([, i]) => i.cena === c.id).map(([, i]) => i.id)); selecaoMudou(); }, style: "cursor:pointer" }, el("strong", {}, c.nome), el("span", {}, `${tempoTxt(a)}, ${tempoTxt(b - a)}`)), btn("▲", () => moverCena(n, -1)), btn("▼", () => moverCena(n, 1)), refazerB, btn("×", () => cortarTempo([[a, b]]).catch((e) => avisar(e.message)))); }))];
+}
+function pIa() {
+  const lista = el("ul", { class: "st-lista" }), marcados = new Set(S.sug.map((s) => s.id));
+  const pintarL = () => lista.replaceChildren(...S.sug.map((s) => { const c = el("input", { type: "checkbox", "aria-label": s.titulo }); c.checked = marcados.has(s.id); c.addEventListener("change", () => (c.checked ? marcados.add(s.id) : marcados.delete(s.id))); return el("li", { class: "st-sug" }, c, el("div", { onclick: () => irPara(s.t), style: "cursor:pointer" }, el("strong", {}, s.titulo)), el("p", {}, s.detalhe)); }));
+  const analisar = btn("Analisar o vídeo", async () => { analisar.disabled = true; analisar.textContent = "Analisando…"; try { S.sug = (await api("POST", `/api/estudio/${S.tipo}/${S.id}/analisar`, { projeto: S.p })).sugestoes; marcados.clear(); S.sug.forEach((s) => marcados.add(s.id)); pintarL(); if (!S.sug.length) avisar("Nenhum problema encontrado"); } catch (e) { avisar(e.message); } analisar.disabled = false; analisar.textContent = "Analisar o vídeo"; }, "botao destaque");
+  pintarL();
+  return [el("h2", {}, "Assistente de IA"), el("p", { class: "dica" }, "Procura zooms errados, legendas sobre rostos, pausas, ritmo e efeitos fora da fala. Nada muda até você aplicar."), analisar, lista,
+    btn("Aplicar as marcadas", async () => { const l = S.sug.filter((s) => marcados.has(s.id)); if (!l.length) return; try { const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/aplicar`, { projeto: S.p, sugestoes: l }); antes(); S.p = r.projeto; S.sug = S.sug.filter((s) => !marcados.has(s.id)); mudou(true); montarCabecas(); avisar("Correções aplicadas"); } catch (e) { avisar(e.message); } }),
+    btn("Voltar à edição original da IA", (ev) => confirmar(ev.currentTarget, "Descartar minhas mudanças", async () => { const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/restaurar`, {}); antes(); S.p = r.projeto; S.sel.clear(); mudou(true); montarCabecas(); }), "botao perigo")];
+}
+function pGlobal() {
+  const G = S.p.global, L = () => G.legenda, por = (k, v) => { L()[k] = v; itens().forEach(([, i]) => { if (i.tipo === "legenda" && i.estilo) delete i.estilo[k]; }); };
+  const vol = (k, r) => campo(r, { get: () => G[k] ?? 100, set: (v) => { G[k] = v; }, max: 200 }), trans = el("select", { "aria-label": "Transição" }, ...TRANS.map(([a, b]) => el("option", { value: a }, b))), dur = el("input", { type: "number", value: ".4", step: ".05", min: ".1", "aria-label": "Duração da transição" }), nome = el("input", { type: "text", placeholder: "Nome do preset", "aria-label": "Nome do preset" }), lista = el("ul", { class: "st-lista" });
+  const conteudo = () => ({ legenda: L(), volume_fala: G.volume_fala, volume_musica: G.volume_musica, volume_efeitos: G.volume_efeitos, zoom_forca: G.zoom_forca, filtro: G.filtro, transicao: G.transicao });
+  const padTrans = (t) => { itens().forEach(([f, i]) => { if (f.tipo === "video" && ["video", "imagem"].includes(i.tipo) && i.ini > .05 && !i.mudo) i.transicao = t; }); };
+  const pintarP = (l) => lista.replaceChildren(...l.map((p) => el("li", {}, el("div", {}, el("strong", {}, p.nome)), btn("Usar", () => { antes(); Object.assign(G, clonar(p.global)); itens().forEach(([, i]) => { if (i.tipo === "legenda") i.estilo = {}; }); if (p.global.transicao) padTrans(p.global.transicao); mudou(true); }), btn("×", async () => pintarP(await api("DELETE", `/api/estudio/presets/${p.id}`))))));
+  api("GET", "/api/estudio/presets").then(pintarP).catch(() => {});
+  return [el("h2", {}, "Ajustes do vídeo inteiro"), sec("Todas as legendas", escolha("Fonte", opFontes(), L().fonte, (v) => por("fonte", v)), campo("Tamanho", { get: () => L().tamanho, set: (v) => por("tamanho", v), min: 12, max: 200 }), corCampo("Cor", L().cor, (v) => por("cor", v)), corCampo("Destaque", L().cor_destaque, (v) => por("cor_destaque", v)), escolha("Entrada", ANIM, L().entrada, (v) => por("entrada", v)), escolha("Saída", ANIM, L().saida, (v) => por("saida", v))),
+    sec("Todos os textos", corCampo("Cor", "#FFFFFF", (v) => itens().forEach(([, i]) => { if (i.tipo === "texto") (i.estilo ||= {}).cor = v; })), escolha("Fonte", opFontes(), "Poppins-Bold", (v) => itens().forEach(([, i]) => { if (i.tipo === "texto") (i.estilo ||= {}).fonte = v; }))),
+    sec("Volume", vol("volume_fala", "Fala"), vol("volume_musica", "Música"), vol("volume_efeitos", "Efeitos")), sec("Zoom e movimento", campo("Força", { get: () => G.zoom_forca ?? 100, set: (v) => { G.zoom_forca = v; }, max: 200 })),
+    sec("Cor", escolha("Filtro", S.filtros.map((f) => [f.id, f.nome]), G.filtro?.nome || "nenhum", (v) => { G.filtro = v === "nenhum" ? null : { nome: v, forca: G.filtro?.forca ?? 100 }; })),
+    sec("Transições", trans, linha("Duração", dur), btn("Usar em todas as cenas", () => { antes(); G.transicao = { tipo: trans.value, dur: +dur.value || .4 }; padTrans(G.transicao); mudou(); avisar("Transições padronizadas"); })),
+    sec("Presets", nome, btn("Salvar preset", async () => { try { pintarP(await api("POST", "/api/estudio/presets", { nome: nome.value, global: conteudo() })); nome.value = ""; } catch (e) { avisar(e.message); } }), lista)];
+}
+
+/* ---------- Capas ---------- */
+function pintarCapa() {
+  if (!S.capa) return; g.setTransform(S.escTela, 0, 0, S.escTela, 0, 0); g.filter = "none"; g.globalAlpha = 1; g.fillStyle = S.capa.fundo || "#000"; g.fillRect(0, 0, S.capa.largura, S.capa.altura); S.caixas.clear();
+  for (const c of S.capa.camadas) { if (c.oculta) continue; const e = c.escala ?? 1, bw = (c.w ?? 100) * e, bh = (c.h ?? 100) * e, a = c.ajustes || {};
+    if (c.tipo === "texto") { S.caixas.set(c.id, desenharTexto(c.texto || "", { ...PAD_EST, ...(c.estilo || {}) }, c.x, c.y, e, c.rot || 0, (c.opac ?? 100) / 100, null)); continue; }
+    S.caixas.set(c.id, { x: c.x, y: c.y, w: bw, h: bh, rot: c.rot || 0 }); g.save(); g.translate(c.x, c.y); g.rotate((c.rot || 0) * Math.PI / 180); g.globalAlpha = (c.opac ?? 100) / 100;
+    if (c.tipo === "imagem") { if (c.borda) { g.fillStyle = c.borda_cor || "#fff"; g.fillRect(-bw / 2 - c.borda, -bh / 2 - c.borda, bw + c.borda * 2, bh + c.borda * 2); } const im = elImagem(c.midia.rel, c.midia), [cl, ct, cr, cb] = [c.cl || 0, c.ct || 0, c.cr || 0, c.cb || 0]; g.filter = [a.brilho ? `brightness(${1 + a.brilho / 100})` : "", a.contraste ? `contrast(${1 + a.contraste / 100})` : "", a.saturacao ? `saturate(${1 + a.saturacao / 100})` : ""].join(" ").trim() || "none"; if (im.naturalWidth) g.drawImage(im, cl * im.naturalWidth, ct * im.naturalHeight, (1 - cl - cr) * im.naturalWidth, (1 - ct - cb) * im.naturalHeight, -bw / 2, -bh / 2, bw, bh); }
+    else { g.fillStyle = c.cor || "#FFC933"; g.globalAlpha *= (c.cor_opac ?? 100) / 100; g.beginPath(); if (c.forma === "circulo") g.ellipse(0, 0, bw / 2, bh / 2, 0, 0, 7); else g.roundRect(-bw / 2, -bh / 2, bw, bh, c.raio || 0); g.fill(); }
+    g.restore(); }
+  desenharAlca();
+}
+function novaCamada(c) { antes(); c.id = nid("k"); S.capa.camadas.push(c); S.sel = new Set([c.id]); mudou(true); }
+function apagarCamada() { if (!S.sel.size) return; antes(); S.capa.camadas = S.capa.camadas.filter((c) => !S.sel.has(c.id)); S.sel.clear(); mudou(true); }
+function moverCamada(c, d) { const l = S.capa.camadas, n = l.indexOf(c), m = n + d; if (m < 0 || m >= l.length) return; antes(); [l[n], l[m]] = [l[m], l[n]]; mudou(true); }
+function camadaImagem(m) { const e = Math.min(1, 640 / (m.lar || 640), 480 / (m.alt || 480)); novaCamada({ tipo: "imagem", nome: m.nome, midia: { raiz: m.raiz, rel: m.rel }, x: 640, y: 360, w: Math.round((m.lar || 640) * e), h: Math.round((m.alt || 480) * e), rot: 0, opac: 100, escala: 1 }); }
+function pCamadas() {
+  const inp = envioArquivos("image/*", camadaImagem), W = S.capa.largura, H = S.capa.altura;
+  return [el("h2", {}, "Camadas"), el("div", { class: "st-botoes" }, btn("Texto", () => novaCamada({ tipo: "texto", nome: "Texto", texto: "SEU TEXTO", x: W / 2, y: H / 2, rot: 0, opac: 100, escala: 1, estilo: { fonte: "Anton", tamanho: 96, cor: "#FFC933", contorno: 8, largura: 1100 } })), btn("Imagem", () => inp.click()), inp, btn("Forma", () => novaCamada({ tipo: "forma", nome: "Forma", forma: "retangulo", cor: "#FFC933", x: W / 2, y: H / 2, w: 420, h: 160, rot: 0, opac: 100, escala: 1 }))),
+    corCampo("Fundo", S.capa.fundo, (v) => { S.capa.fundo = v; }), el("ul", { class: "st-lista" }, ...[...S.capa.camadas].reverse().map((c) => el("li", S.sel.has(c.id) ? { dados: { sel: "1" } } : {}, el("div", { style: "cursor:pointer", onclick: () => { S.sel = new Set([c.id]); selecaoMudou(); pedirPintura(); } }, el("strong", {}, c.tipo === "texto" ? c.texto.slice(0, 26) : c.nome), el("span", {}, { texto: "Texto", imagem: "Imagem", forma: "Forma" }[c.tipo])), btn("▲", () => moverCamada(c, 1)), btn("▼", () => moverCamada(c, -1)), btn(c.oculta ? "Ver" : "Ocultar", () => { antes(); c.oculta = !c.oculta; mudou(true); }))))];
+}
+function pModelos() {
+  const nome = el("input", { type: "text", placeholder: "Nome do modelo", "aria-label": "Nome do modelo" }), lista = el("ul", { class: "st-lista" });
+  const pintarM = (l) => lista.replaceChildren(...l.map((m) => el("li", {}, el("div", {}, el("strong", {}, m.nome)), btn("Usar", async () => { const r = await api("POST", "/api/estudio/modelos-capa/aplicar", { modelo: m.capa, capa: S.capa }); antes(); S.capa = r; S.sel.clear(); mudou(true); }), btn("×", async () => pintarM(await api("DELETE", `/api/estudio/modelos-capa/${m.id}`))))));
+  api("GET", "/api/estudio/modelos-capa").then(pintarM).catch(() => {});
+  return [el("h2", {}, "Modelos de capa"), el("p", { class: "dica" }, "Guarde este visual e use em outros vídeos. O fundo, o rosto e os textos de cada vídeo são mantidos."), nome, btn("Salvar como modelo", async () => { try { pintarM(await api("POST", "/api/estudio/modelos-capa", { nome: nome.value, capa: S.capa })); nome.value = ""; avisar("Modelo salvo"); } catch (e) { avisar(e.message); } }, "botao destaque"), lista];
+}
+function inspetorCapa(box) {
+  const c = S.capa.camadas.find((x) => S.sel.has(x.id)); if (!c) { box.replaceChildren(el("h2", {}, "Capa"), el("p", { class: "dica" }, "Clique em um elemento da capa para mover, redimensionar e mudar o estilo.")); return; }
+  const n = (k, r, min, max, step = 1, pad = 0) => campo(r, { get: () => c[k] ?? pad, set: (v) => { c[k] = v; }, min, max, step }), W = S.capa.largura, H = S.capa.altura, aj = (k, r) => campo(r, { get: () => c.ajustes?.[k] ?? 0, set: (v) => { (c.ajustes ||= {})[k] = v; }, min: -100, max: 100 });
+  const b = [el("h2", {}, c.nome || "Camada"), sec("Posição", n("x", "X", -200, W + 200), n("y", "Y", -200, H + 200), n("escala", "Escala", .1, 5, .01, 1), n("rot", "Rotação", -180, 180), n("opac", "Opacidade", 0, 100, 1, 100), c.tipo !== "texto" ? n("w", "Largura", 10, W * 2) : null, c.tipo !== "texto" ? n("h", "Altura", 10, H * 2) : null),
+    el("div", { class: "st-botoes" }, btn("Duplicar", () => { const d = clonar(c); d.x += 24; d.y += 24; novaCamada(d); }), btn("Apagar", apagarCamada, "botao perigo"))];
+  if (c.tipo === "texto") { const t = el("textarea", { "aria-label": "Texto" }); t.value = c.texto; t.addEventListener("input", () => { c.texto = t.value; mudou(); pintarCapa(); }); t.addEventListener("focus", antes, { once: true }); b.push(sec("Texto", t), ...controlesEstilo(() => ({ ...PAD_EST, ...(c.estilo || {}) }), (k, v) => { (c.estilo ||= {})[k] = v; })); }
+  else if (c.tipo === "imagem") { const inp = envioArquivos("image/*", (m) => { antes(); c.midia = { raiz: m.raiz, rel: m.rel }; mudou(true); }); b.push(sec("Imagem", btn("Trocar imagem", () => inp.click()), inp, n("cl", "Cortar esq.", 0, .9, .01), n("cr", "Cortar dir.", 0, .9, .01), n("ct", "Cortar topo", 0, .9, .01), n("cb", "Cortar base", 0, .9, .01)), sec("Efeitos", aj("brilho", "Brilho"), aj("contraste", "Contraste"), aj("saturacao", "Saturação"), n("borda", "Borda", 0, 40), corCampo("Cor borda", c.borda_cor, (v) => { c.borda_cor = v; }), marca("Sombra", c.sombra, (v) => { c.sombra = v; }))); }
+  else b.push(sec("Forma", escolha("Tipo", [["retangulo", "Retângulo"], ["circulo", "Círculo"]], c.forma, (v) => { c.forma = v; }), corCampo("Cor", c.cor, (v) => { c.cor = v; }), n("cor_opac", "Opacidade", 0, 100, 1, 100), n("raio", "Arredondar", 0, 200), n("borda", "Borda", 0, 40), corCampo("Cor borda", c.borda_cor, (v) => { c.borda_cor = v; })));
+  box.replaceChildren(...b);
+}
+async function trocarModo(modo) {
+  if (modo === S.modo) return; pausar();
+  if (modo === "capa" && !S.capa) { try { S.capa = await api("GET", `/api/estudio/${S.tipo}/${S.id}/capa`); } catch (e) { avisar(e.message); return; } }
+  S.modo = modo; S.sel.clear(); $("#st-mesa").dataset.modo = modo; $("#st-m-video").setAttribute("aria-pressed", String(modo === "video")); $("#st-m-capa").setAttribute("aria-pressed", String(modo === "capa")); $("#st-exportar").textContent = modo === "capa" ? "Exportar capa" : "Exportar";
+  exato.hidden = true; botoes(); montarRail(); montarPainel(); montarInspetor(); ajustarTela(); pedirPintura(); pedirExato(); if (modo === "video") desenharLinha();
+}
+$("#st-m-video").addEventListener("click", () => trocarModo("video")); $("#st-m-capa").addEventListener("click", () => trocarModo("capa"));
+
+/* ---------- Exportar ---------- */
+$("#st-exportar").addEventListener("click", () => {
+  const ops = cap() ? [["1280", "1280 × 720", "Tamanho do YouTube"], ["1920", "1920 × 1080", "Alta definição"], ["3840", "3840 × 2160", "4K"]] : [["720", "720p", "Mais rápido"], ["1080", "1080p", "Recomendado"], ["1440", "1440p", "Quadros maiores"], ["2160", "4K", "Só vale a pena se o vídeo original for 4K"]];
+  $("#st-dx-t").textContent = cap() ? "Exportar capa" : "Exportar vídeo"; $("#st-res").replaceChildren(...ops.map(([v, a, b], n) => el("label", {}, Object.assign(el("input", { type: "radio", name: "st-res", value: v }), { checked: n === (cap() ? 0 : 1) }), el("strong", {}, a), el("span", { class: "dica" }, b))));
+  const orig = Object.values(S.p.midias).filter((m) => m.tipo === "video" && m.alt).sort((a, b) => b.alt - a.alt)[0], baixa = orig && Math.min(orig.lar, orig.alt) < 1080;
+  $("#st-dx-nota").textContent = cap() ? "A capa também passa a ser usada neste vídeo." : `${orig ? `A live foi gravada em ${orig.lar} × ${orig.alt}. ` : ""}${baixa ? "A transmissão não chegou em Full HD, então o vídeo sai em 1080p, mas sem ganhar detalhes novos. " : ""}O arquivo final substitui o vídeo atual na agenda.`; $("#st-dlg-exportar").showModal();
+});
+$("#st-form-exportar").addEventListener("submit", async (ev) => {
+  const v = +$("#st-res input:checked").value;
+  try {
+    if (cap()) { const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/capa/exportar`, { capa: S.capa, largura: v }); avisar(`Capa exportada em ${r.largura} × ${r.altura}`); const a = el("a", { href: r.url, download: "capa.jpg" }); a.click(); return; }
+    await salvar(); await api("POST", `/api/estudio/${S.tipo}/${S.id}/exportar`, { projeto: S.p, altura: v }); acompanharExport();
+  } catch (e) { avisar(e.message); }
+});
+let tempoExp;
+function acompanharExport() {
+  clearTimeout(tempoExp); const box = $("#st-progresso"), acao = $("#st-prog-acao"); box.hidden = false; acao.textContent = "Cancelar"; $("#st-exportar").disabled = true;
+  acao.onclick = () => api("POST", `/api/estudio/${S.tipo}/${S.id}/exportar/cancelar`, {}).catch(() => {});
+  const ver = async () => { try { const r = await api("GET", `/api/estudio/${S.tipo}/${S.id}/exportar`); $("#st-prog").value = r.progresso || 0; $("#st-prog-txt").textContent = `${r.etapa || "Exportando"} (${r.progresso || 0}%)`;
+    if (["fila", "gerando"].includes(r.estado)) { tempoExp = setTimeout(ver, 1000); return; } $("#st-exportar").disabled = false;
+    if (r.estado === "pronto") { avisar("Vídeo exportado"); acao.textContent = "Ver resultado"; acao.onclick = () => { box.hidden = true; S.tipo === "corte" ? abrirEditor(S.id) : abrirLongo(S.id); }; }
+    else { $("#st-prog-txt").textContent = r.erro || r.etapa; acao.textContent = "Fechar"; acao.onclick = () => (box.hidden = true); } } catch { tempoExp = setTimeout(ver, 2000); } };
+  ver();
+}
+
+/* ---------- Escolher e abrir ---------- */
+let pagEscolha = 1, tipoEscolha = "corte", sinalEscolha = "";
+function renderEscolha() {
+  const termo = $("#tl-busca").value.trim().toLocaleLowerCase("pt-BR"), base = tipoEscolha === "corte" ? estado.cortes.filter((c) => c.status === "pronto").map((c) => ({ id: c.id, nome: c.gancho || "Corte", canal: c.canal, dur: c.duracao, capa: `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}` })) : estado.longos.filter((v) => v.status === "pronto").map((v) => ({ id: v.id, nome: v.titulo, canal: v.canal, dur: v.duracao, capa: `/longos/${v.id}/capa.jpg?v=${v.versao || 0}` }));
+  const lista = termo ? base.filter((v) => `${v.nome} ${v.canal}`.toLocaleLowerCase("pt-BR").includes(termo)) : base, paginas = Math.max(1, Math.ceil(lista.length / 24)); pagEscolha = lim(pagEscolha, 1, paginas);
+  const parte = lista.slice((pagEscolha - 1) * 24, pagEscolha * 24), sinal = JSON.stringify([tipoEscolha, pagEscolha, lista.length, parte.map((v) => [v.id, v.nome, v.capa])]); if (sinal === sinalEscolha) return; sinalEscolha = sinal;
+  $("#tl-lista").dataset.tipo = tipoEscolha; $("#tl-lista").replaceChildren(...parte.map((v) => el("button", { class: "tl-cartao", type: "button", onclick: () => abrirTimeline(tipoEscolha, v.id) }, el("img", { src: v.capa, alt: "", loading: "lazy" }), el("strong", {}, v.nome), el("span", {}, `${v.canal || "Live"}, ${relogio(v.dur || 0)}`))));
+  const vazio = $("#tl-vazio"); vazio.hidden = lista.length > 0; vazio.textContent = termo ? "Nenhum vídeo com esse nome." : tipoEscolha === "corte" ? "Os Shorts prontos aparecem aqui." : "Os vídeos longos prontos aparecem aqui.";
+  montarPaginas($("#tl-paginacao"), pagEscolha, paginas, (n) => { pagEscolha = n; renderEscolha(); scrollTo(0, 0); });
+}
+$$("#tl-tipos button").forEach((b) => b.addEventListener("click", () => { tipoEscolha = b.dataset.tipo; pagEscolha = 1; $$("#tl-tipos button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderEscolha(); }));
+$("#tl-busca").addEventListener("input", () => { pagEscolha = 1; renderEscolha(); });
+async function abrirTimeline(tipo, id) {
+  abrirAba("editor"); $("#tl-escolha").hidden = true; $("#st-mesa").hidden = false; $("#st-nome").textContent = "Preparando o projeto…";
+  try {
+    if (!S.fontes.length) [S.fontes, S.filtros] = await Promise.all([api("GET", "/api/estudio/fontes"), api("GET", "/api/filtros")]);
+    const r = await api("GET", `/api/estudio/${tipo}/${id}`);
+    videos.forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); }); videos.clear(); imagens.clear(); buffers.clear();
+    Object.assign(S, { aberto: true, tipo, id, p: r.projeto, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, sujo: false, sug: [], h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, painel: "midia" });
+    const m = $("#st-mesa"); m.dataset.modo = "video"; $("#st-m-video").setAttribute("aria-pressed", "true"); $("#st-m-capa").setAttribute("aria-pressed", "false"); $("#st-exportar").textContent = "Exportar"; $("#st-exportar").disabled = false; $("#st-progresso").hidden = true;
+    $("#st-nome").textContent = S.p.titulo; $("#st-salvo").textContent = "Projeto salvo";
+    botoes(); montarRail(); montarPainel(); montarInspetor(); montarCabecas(); ajustarTela(); requestAnimationFrame(() => { ajustarZoom(); pedirExato(); });
+    if (["fila", "gerando"].includes(r.exportacao?.estado)) acompanharExport();
+  } catch (e) { avisar(e.message); $("#st-mesa").hidden = true; $("#tl-escolha").hidden = false; }
+}
+function fechar() { pausar(); S.aberto = false; videos.forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); }); videos.clear(); $("#st-mesa").hidden = true; $("#tl-escolha").hidden = false; sinalEscolha = ""; renderEscolha(); }
+$("#st-voltar").addEventListener("click", async () => { await salvar(); fechar(); });
+window.abrirTimeline = abrirTimeline; window.pausarEditor = pausar;
+window.renderEditor = () => { if (!S.aberto && !$("#aba-editor").hidden) renderEscolha(); };
+window.__es = { S, irPara, duracao, itens, achar, mudou, antes, salvar, dividir };
+})();

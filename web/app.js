@@ -1,0 +1,1228 @@
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+const STATUS = { gravando: "Ao vivo", aguardando: "Offline", verificando: "Procurando", conectando: "Conectando", reconectando: "Reconectando", encerrado: "Encerrada", erro: "Com problema" };
+const LAYOUTS = { pip: "Jogo em tela cheia com a câmera em cima", dividido: "Câmera em cima e jogo embaixo", tela_cheia: "Só a câmera", inteiro: "Tela inteira" };
+const ETAPAS = [["capturando", "Guardando o trecho"], ["transcrevendo", "Transcrevendo"], ["enquadrando", "Enquadrando"], ["editando", "Montando o vídeo"]];
+const FINAIS = new Set(["pronto", "erro"]);
+
+let estado = null;
+let filtro = "postar";
+const cartoes = new Map();
+const faixas = new Map();
+
+function el(tag, props = {}, ...filhos) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "dados") Object.assign(n.dataset, v);
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null) n.setAttribute(k, v);
+  }
+  n.append(...filhos.filter((f) => f !== null && f !== undefined));
+  return n;
+}
+
+async function api(metodo, url, corpo) {
+  const r = await fetch(url, { method: metodo, headers: corpo ? { "Content-Type": "application/json" } : {}, body: corpo ? JSON.stringify(corpo) : undefined });
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || "Não foi possível concluir. Tente de novo.");
+  return dados;
+}
+
+let toastTempo;
+function avisar(texto) {
+  const t = $("#toast");
+  t.textContent = texto;
+  t.dataset.visivel = "true";
+  clearTimeout(toastTempo);
+  toastTempo = setTimeout(() => (t.dataset.visivel = "false"), 3200);
+}
+
+const duasCasas = (n) => String(Math.floor(n)).padStart(2, "0");
+function relogio(s) {
+  s = Math.max(0, s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `${h}:${duasCasas(m)}:${duasCasas(s % 60)}` : `${m}:${duasCasas(s % 60)}`;
+}
+const horaDe = (t) => new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+function haQuanto(t) {
+  const m = Math.floor((estado.agora - t) / 60);
+  if (m < 1) return "agora mesmo";
+  if (m < 60) return `há ${m} min`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `há ${h} h` : new Date(t * 1000).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+/* ---------- Lives ---------- */
+const CORES_GRAFICO = [
+  ["corte", "Virou corte", "Momento forte que gerou um corte"],
+  ["streamer", "Reação do streamer", "A voz ou o rosto do streamer foi o sinal mais forte"],
+  ["chat", "Chat agitado", "O chat foi o sinal mais forte, ou o momento estava calmo"],
+  ["jogo", "Ação no jogo", "O movimento na tela foi o sinal mais forte"],
+];
+function legendaGrafico() {
+  return el("ul", { class: "legenda-grafico", "aria-label": "O que significa cada cor do gráfico" },
+    ...CORES_GRAFICO.map(([cor, nome, ajuda]) => el("li", { title: ajuda }, el("i", { class: `cor-${cor}`, "aria-hidden": "true" }), nome)),
+    el("li", { title: "A barra precisa passar desta linha para virar corte" }, el("i", { class: "cor-linha", "aria-hidden": "true" }), "Nota para cortar"),
+    el("li", { title: "Clique na seta para abrir o corte" }, el("i", { class: "cor-seta", "aria-hidden": "true" }), "Corte feito"));
+}
+
+function criarFaixa(c) {
+  const canvas = el("canvas", { role: "img" });
+  const info = el("span", {}), limite = el("span", { class: "sismo-auto" });
+  const nome = el("h3"), sub = el("p"), selo = el("span", { class: "selo" });
+  const chat = el("ul", { class: "chat-vivo", "aria-label": "Chat da live" });
+  const cortar = el("button", { class: "botao principal", type: "button", onclick: async () => {
+    cortar.disabled = true;
+    try { await api("POST", `/api/canais/${c.id}/cortar`); avisar("Corte iniciado"); }
+    catch (e) { avisar(e.message); }
+    setTimeout(() => (cortar.disabled = false), 2500);
+  } }, "Cortar agora");
+  const camera = el("button", { class: "botao", type: "button", onclick: () => abrirCamera({ canal: c.id }) }, "Câmera");
+  const parar = el("button", { class: "botao fantasma", type: "button", onclick: () => confirmar(parar, "Confirmar", async () => {
+    await api("DELETE", `/api/canais/${c.id}`);
+    avisar("Live removida");
+    atualizar();
+  }) }, "Parar");
+  const n = el("article", { class: "live" },
+    el("header", { class: "live-topo" }, selo, el("div", { class: "live-nome" }, nome, sub), el("div", { class: "live-acoes" }, cortar, camera, parar)),
+    el("div", { class: "live-corpo" }, el("div", { class: "sismo" }, canvas, legendaGrafico(), el("p", { class: "sismo-info" }, info, limite)), chat));
+  canvas.addEventListener("click", (ev) => {
+    const r = canvas.getBoundingClientRect();
+    const item = faixas.get(c.id).pontoEm(ev.clientX - r.left);
+    if (item?.corte) abrirEditor(item.corte);
+  });
+  const faixa = { n, canvas, info, limite, nome, sub, selo, chat, cortar, dados: c, pontoEm: () => null };
+  new ResizeObserver(() => desenhar(faixa)).observe(canvas);
+  faixas.set(c.id, faixa);
+  return faixa;
+}
+
+function desenhar(f) {
+  const c = f.dados, cv = f.canvas, dpr = window.devicePixelRatio || 1;
+  const L = cv.clientWidth, A = cv.clientHeight;
+  if (!L || !A) return;
+  cv.width = L * dpr; cv.height = A * dpr;
+  const g = cv.getContext("2d");
+  g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const cor = (v) => css.getPropertyValue(v).trim();
+  const slots = Math.max(24, Math.min(90, Math.floor(L / 8)));
+  const serie = c.serie.slice(-slots);
+  const topo = 16, base = A - 1;
+  const maior = 100;
+  const y = (v) => base - (v / maior) * (base - topo);
+  const passo = L / slots, largura = Math.max(2, passo - 2);
+
+  g.fillStyle = cor("--fio");
+  g.fillRect(0, base, L, 1);
+  const pontos = [];
+  serie.forEach((p, i) => {
+    const x = L - (serie.length - i) * passo + 1;
+    const nota = p.nota || 0;
+    const altura = Math.max(2, base - y(nota));
+    g.fillStyle = p.corte || p.pico ? cor("--corte") : (p.jogo || 0) > Math.max(p.streamer || 0, p.chat || 0) ? cor("--sinal-jogo") : (p.streamer || 0) > (p.chat || 0) ? cor("--pronto") : cor("--sinal-chat");
+    g.beginPath();
+    if (g.roundRect) g.roundRect(x, base - altura, largura, altura, [Math.min(3, largura / 2), Math.min(3, largura / 2), 0, 0]); else g.rect(x, base - altura, largura, altura);
+    g.fill();
+    if (p.corte) {
+      g.beginPath();
+      g.moveTo(x + largura / 2 - 5, 2); g.lineTo(x + largura / 2 + 5, 2); g.lineTo(x + largura / 2, 10);
+      g.closePath(); g.fill();
+    }
+    pontos.push({ x, corte: p.corte });
+  });
+  if (c.limite && !c.aquecendo) {
+    g.strokeStyle = cor("--giz-medio");
+    g.setLineDash([4, 5]);
+    g.beginPath(); g.moveTo(0, Math.round(y(c.limite)) + .5); g.lineTo(L, Math.round(y(c.limite)) + .5); g.stroke();
+    g.setLineDash([]);
+  }
+  f.pontoEm = (px) => pontos.find((p) => p.corte && Math.abs(p.x - px) <= Math.max(passo, 12));
+  cv.style.cursor = pontos.some((p) => p.corte) ? "pointer" : "default";
+}
+
+function atualizarFaixa(c) {
+  const f = faixas.get(c.id) || criarFaixa(c);
+  f.dados = c;
+  f.n.dataset.status = c.status;
+  f.selo.textContent = c.status === "gravando" ? `Ao vivo ${relogio(c.gravado)}` : STATUS[c.status] || c.status;
+  f.nome.textContent = c.nome;
+  f.sub.textContent = c.status === "gravando" ? `${c.nome_plataforma}${c.titulo ? `: ${c.titulo}` : ""}` : `${c.nome_plataforma}. ${c.mensagem}`;
+  f.sub.title = f.sub.textContent;
+  f.cortar.disabled = c.status !== "gravando";
+  let info = "A força dos momentos aparece quando a live abrir";
+  let limite = "";
+  if (c.status === "gravando") {
+    if (c.aquecendo) info = "Aprendendo o ritmo da live";
+    else {
+      info = "";
+      const fonte = c.sinal === "audio" ? "chat indisponível" : `chat ${c.nota.chat}`;
+      f.info.replaceChildren(el("b", {}, `Momento ${c.nota.nota} de 100`), `: streamer ${c.nota.streamer}, ${fonte}, jogo ${c.nota.jogo}. Corta em ${c.limite}`);
+    }
+    limite = c.proximo_auto === null ? "Cortando só por reação do streamer e do chat" : `Cortando por reação. Melhor momento em até ${relogio(c.proximo_auto)}`;
+  }
+  if (info) f.info.textContent = info;
+  f.limite.textContent = limite;
+  f.canvas.setAttribute("aria-label", `Força do momento na live de ${c.nome}: ${c.nota.nota} de 100`);
+  const linhas = c.ultimas.slice(-8).map((m) => el("li", { title: m.texto }, el("b", {}, m.autor || "chat"), m.texto));
+  f.chat.replaceChildren(...(linhas.length ? linhas : [el("li", { class: "vazio" }, c.status === "gravando" ? "Aguardando mensagens do chat" : "O chat aparece aqui durante a live")]));
+  desenhar(f);
+  return f;
+}
+
+function renderLives() {
+  const area = $("#lives");
+  const ids = new Set(estado.canais.map((c) => c.id));
+  for (const [id, f] of faixas) if (!ids.has(id)) { f.n.remove(); faixas.delete(id); }
+  estado.canais.forEach((c, i) => {
+    const f = atualizarFaixa(c);
+    if (area.children[i] !== f.n) area.insertBefore(f.n, area.children[i] || null);
+  });
+}
+
+/* ---------- Agora ---------- */
+let assinaturaEventos = "";
+function renderAgora() {
+  const leg = estado.sistema.legenda, aviso = $("#aviso-legenda");
+  aviso.hidden = leg.estado === "pronto";
+  aviso.textContent = leg.estado === "carregando"
+    ? "Preparando a legenda automática. Na primeira vez, o download tem cerca de 500 MB."
+    : "A legenda automática não abriu. Os cortes saem sem texto até você reabrir o programa com internet.";
+  const emAndamento = estado.cortes.filter((c) => !FINAIS.has(c.status)).reverse();
+  $("#fila").replaceChildren(...emAndamento.map((c) => el("li", {}, el("b", {}, c.canal), el("span", {}, c.etapa))));
+  const assinatura = estado.eventos.length + ":" + (estado.eventos[0]?.t || 0);
+  if (assinatura === assinaturaEventos) return;
+  assinaturaEventos = assinatura;
+  const lista = $("#eventos"), rolagem = lista.scrollTop;
+  // Quem está lendo o histórico não perde o lugar quando chega um evento novo.
+  const ancora = rolagem > 0 ? [...lista.children].find((li) => li.offsetTop + li.offsetHeight > lista.offsetTop + rolagem) : null;
+  const folga = ancora ? ancora.offsetTop - lista.offsetTop - rolagem : 0;
+  const marca = ancora?.dataset.t;
+  lista.replaceChildren(...estado.eventos.map((e) =>
+    el("li", { dados: { tipo: e.tipo, t: e.t } }, el("time", {}, horaDe(e.t)), el("span", {}, e.texto))));
+  const mesmo = marca ? [...lista.children].find((li) => li.dataset.t === marca) : null;
+  lista.scrollTop = mesmo ? mesmo.offsetTop - lista.offsetTop - folga : rolagem;
+}
+
+/* ---------- Cortes ---------- */
+function cartao(c) {
+  const poster = el("div", { class: "poster" });
+  if (c.status === "pronto") {
+    poster.append(el("img", { src: `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}`, alt: "", loading: "lazy" }),
+      el("span", { class: "poster-reacao" }, c.postado ? "Postado" : c.reacao_rotulo),
+      el("span", { class: "poster-dur" }, relogio(c.duracao)));
+  } else if (c.status === "erro") {
+    poster.append(el("div", { class: "falhou" }, c.erro || "Não foi possível editar este corte."));
+  } else {
+    const atual = c.status === "fila" ? -1 : ETAPAS.findIndex(([k]) => k === c.status);
+    const passou = c.status === "fila" ? 1 : atual;
+    poster.append(el("ol", { class: "etapas" }, ...ETAPAS.map(([, nome], i) =>
+      el("li", { dados: { estado: i < passou ? "feito" : i === atual ? "atual" : "" } }, nome))));
+  }
+  const titulo = c.gancho || (c.status === "erro" ? "Corte com problema" : c.motivo);
+  return el("button", { class: "corte", type: "button", dados: { postado: String(!!c.postado) }, disabled: c.status === "pronto" ? null : undefined,
+    onclick: () => { if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); } },
+    poster, el("h3", {}, titulo), el("p", {}, `${c.canal}, ${haQuanto(c.criado)}`));
+}
+
+let falhoMarcado = null;
+async function removerFalho(c) {
+  if (falhoMarcado !== c.id) {
+    falhoMarcado = c.id;
+    avisar("Clique de novo para remover este corte com problema");
+    setTimeout(() => { if (falhoMarcado === c.id) falhoMarcado = null; }, 3500);
+    return;
+  }
+  falhoMarcado = null;
+  try { await api("DELETE", `/api/cortes/${c.id}`); avisar("Corte com problema removido"); atualizar(); }
+  catch (e) { avisar(e.message); }
+}
+
+let paginaCortes = 1;
+function desenharPaginas(caixa, atual, total, ir) {
+  const seta = (rotulo, destino, ativo) => { const b = el("button", { class: "botao fantasma", type: "button", onclick: () => ir(destino) }, rotulo); b.disabled = !ativo; return b; };
+  caixa.replaceChildren(seta("Anterior", atual - 1, atual > 1), ...numerosPagina(atual, total).map((n) => n === "…" ? el("span", { "aria-hidden": "true" }, "…")
+    : el("button", { class: "pagina", type: "button", "aria-label": `Página ${n}`, "aria-current": n === atual ? "page" : undefined, onclick: () => ir(n) }, String(n))), seta("Próxima", atual + 1, atual < total));
+}
+function montarPaginas(nav, atual, total, ir) {
+  nav.hidden = total < 2; desenharPaginas($("[data-paginas]", nav), atual, total, ir);
+}
+function renderCortes() {
+  renderFiltrosPasta();
+  const pastaVista = $("#filtro-pasta").value;
+  const prontos = pastaVista ? estado.cortes.filter((c) => c.pasta === pastaVista) : estado.cortes;
+  const postados = prontos.filter((c) => c.postado);
+  const postar = prontos.filter((c) => !c.postado);
+  $("#n-postar").textContent = postar.length; $("#n-postados").textContent = postados.length; $("#n-todos").textContent = prontos.length;
+  const todos = filtro === "postar" ? postar : filtro === "postados" ? postados : prontos;
+  const porPagina = +$("#cortes-por-pagina").value, paginas = Math.max(1, Math.ceil(todos.length / porPagina));
+  paginaCortes = Math.min(paginaCortes, paginas);
+  const inicioPagina = (paginaCortes - 1) * porPagina, lista = todos.slice(inicioPagina, inicioPagina + porPagina);
+  const nav = $("#cortes-paginacao");
+  nav.hidden = todos.length <= 12;
+  $("#cortes-contagem").textContent = todos.length ? `Mostrando ${inicioPagina + 1} a ${inicioPagina + lista.length} de ${todos.length}` : "";
+  const sinalPaginas = `${paginaCortes}/${paginas}`;
+  if (nav.dataset.sinal !== sinalPaginas) { nav.dataset.sinal = sinalPaginas; desenharPaginas($("#cortes-paginas"), paginaCortes, paginas, (n) => { paginaCortes = n; renderCortes(); $("#aba-cortes").scrollIntoView(); }); }
+  const grade = $("#grade");
+  const vivos = new Set(lista.map((c) => c.id));
+  for (const [id, item] of cartoes) if (!vivos.has(id)) { item.n.remove(); cartoes.delete(id); }
+  const minuto = Math.floor(estado.agora / 60);
+  lista.forEach((c, i) => {
+    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, minuto].join("|");
+    let item = cartoes.get(c.id);
+    if (!item || item.sinal !== sinal) {
+      const novo = cartao(c);
+      if (item) item.n.replaceWith(novo);
+      item = { n: novo, sinal };
+      cartoes.set(c.id, item);
+    }
+    if (grade.children[i] !== item.n) grade.insertBefore(item.n, grade.children[i] || null);
+  });
+  const vazio = $("#sem-cortes");
+  vazio.hidden = todos.length > 0;
+  vazio.textContent = filtro === "postados" ? "Os cortes marcados como postados ficam aqui."
+    : estado.canais.some((c) => c.status === "gravando") ? "O primeiro corte aparece quando o chat explodir. Se quiser, use Cortar agora."
+    : "Os cortes aparecem aqui assim que uma live estiver no ar.";
+}
+
+$("#cortes-por-pagina").addEventListener("change", () => { paginaCortes = 1; renderCortes(); });
+$("#filtro-pasta").addEventListener("change", () => { paginaCortes = 1; });
+$$("#aba-cortes .filtros button").forEach((b) => b.addEventListener("click", () => {
+  filtro = b.dataset.filtro; paginaCortes = 1;
+  $$("#aba-cortes .filtros button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  if (estado) renderCortes();
+}));
+
+function renderTudo() {
+  const temAlgo = estado.canais.length > 0 || estado.cortes.length > 0;
+  document.body.dataset.vazio = String(!temAlgo);
+  document.body.dataset.noAr = String(estado.canais.some((c) => c.status === "gravando"));
+  $("#mesa").hidden = estado.canais.length === 0;
+  const aoVivo = estado.canais.filter((c) => c.status === "gravando").length;
+  const edicao = estado.cortes.filter((c) => !FINAIS.has(c.status)).length;
+  $("#resumo").textContent = !temAlgo ? "" : [aoVivo ? `${aoVivo} ${aoVivo > 1 ? "lives" : "live"} no ar` : "Nenhuma live no ar", edicao ? `${edicao} em edição` : null].filter(Boolean).join(", ");
+  $("#n-vivo").textContent = aoVivo || "";
+  $("#n-cortes").textContent = estado.cortes.filter((c) => !c.postado).length || "";
+  renderLives(); renderAgora(); renderCortes(); renderRecentes(); renderPostagem(); renderLongos(); if (typeof renderEditor === "function") renderEditor();
+}
+
+async function atualizar() {
+  try { estado = await api("GET", "/api/estado"); renderTudo(); }
+  catch { $("#resumo").textContent = "Sem conexão com o programa. Confira se a janela do clipador está aberta."; }
+}
+setInterval(() => { if (!document.hidden) atualizar(); }, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });
+
+function confirmar(botao, rotulo, acao) {
+  if (botao.dataset.confirmar === "true") {
+    botao.dataset.confirmar = "false";
+    acao().catch((e) => avisar(e.message));
+    return;
+  }
+  const original = botao.textContent;
+  botao.dataset.confirmar = "true";
+  botao.textContent = rotulo;
+  setTimeout(() => { botao.dataset.confirmar = "false"; botao.textContent = original; }, 3500);
+}
+
+$("#form-link").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const campo = $("#link"), erro = $("#erro-link");
+  erro.hidden = true;
+  const link = campo.value.trim();
+  if (!link) { erro.textContent = "Cole o link de uma live para começar."; erro.hidden = false; campo.focus(); return; }
+  try { await api("POST", "/api/canais", { link, programar: $("#link-programar").checked }); campo.value = ""; $("#link-programar").checked = false; avisar("Live adicionada"); atualizar(); }
+  catch (e) { erro.textContent = e.message; erro.hidden = false; campo.focus(); }
+});
+
+/* ---------- Editor de corte ---------- */
+let corteAberto = null, vigia = null;
+
+function marcarAlterado() {}
+
+function preencherEditor(c) {
+  $("#ed-salvar").hidden = !!c.projeto_exportado;
+  corteAberto = c;
+  $("#ed-titulo").textContent = c.canal;
+  $("#ed-meta").textContent = `${c.nome_plataforma}, ${relogio(c.duracao)} de vídeo. ${c.motivo}.`;
+  $("#ed-gancho").value = c.gancho || "";
+  $("#ed-post").value = c.post || "";
+  $("#ed-estilo-legenda").value = c.estilo?.legenda || ""; $("#ed-estilo-gancho").value = c.estilo?.gancho || "";
+  $("#ed-layout").textContent = LAYOUTS[c.layout] || "Automático";
+  $("#ed-baixar").href = `/cortes/${c.id}/corte.mp4?baixar=1`;
+  $("#ed-postado").textContent = c.postado ? "Voltar para postar" : "Marcar como postado";
+  const video = $("#ed-video");
+  video.src = `/cortes/${c.id}/corte.mp4?v=${c.versao || 0}`;
+  video.poster = `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}`;
+  $("#ed-linhas").replaceChildren(...(c.grupos || []).map((g, i) => {
+    const texto = g.palavras.map((p) => p.p).join(" ");
+    return el("li", { dados: { ini: g.ini, fim: g.fim } },
+      el("button", { type: "button", "aria-label": `Ir para ${relogio(g.ini)}`, onclick: () => { video.currentTime = g.ini; video.play(); } }, relogio(g.ini)),
+      el("input", { value: texto, "aria-label": `Linha ${i + 1} da legenda`, oninput: marcarAlterado }));
+  }));
+  if (!c.grupos?.length) $("#ed-linhas").replaceChildren(el("li", { class: "dica" }, "Nenhuma fala foi reconhecida neste trecho."));
+}
+
+async function abrirEditor(id) {
+  try {
+    const c = await api("GET", `/api/cortes/${id}`);
+    preencherEditor(c);
+    $("#ed-refazendo").hidden = FINAIS.has(c.status);
+    $("#editor").showModal();
+    if (!FINAIS.has(c.status)) acompanharRefazer(id);
+  } catch (e) { avisar(e.message); }
+}
+
+function acompanharRefazer(id) {
+  clearInterval(vigia);
+  $("#ed-refazendo").hidden = false;
+  vigia = setInterval(async () => {
+    const c = await api("GET", `/api/cortes/${id}`).catch(() => null);
+    if (!c) return;
+    $("#ed-refazendo-texto").textContent = { fila: "Na fila de edição", enquadrando: "Enquadrando a câmera", editando: "Montando o vídeo" }[c.status] || "Refazendo o vídeo";
+    if (!FINAIS.has(c.status)) return;
+    clearInterval(vigia);
+    $("#ed-refazendo").hidden = true;
+    if (corteAberto?.id === id) preencherEditor(c);
+    avisar(c.status === "pronto" ? "Vídeo atualizado" : c.erro || "Não foi possível refazer o vídeo");
+  }, 800);
+}
+
+$("#ed-video").addEventListener("timeupdate", (ev) => {
+  const t = ev.target.currentTime;
+  $$("#ed-linhas li[data-ini]").forEach((l) => { l.dataset.ativa = String(t >= +l.dataset.ini && t < +l.dataset.fim + .3); });
+});
+$("#ed-gancho").addEventListener("input", marcarAlterado);
+
+$("#ed-post").addEventListener("change", async () => {
+  await api("PATCH", `/api/cortes/${corteAberto.id}`, { post: $("#ed-post").value }).catch((e) => avisar(e.message));
+});
+$("#ed-copiar").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("#ed-post").value); avisar("Texto copiado"); }
+  catch { $("#ed-post").select(); document.execCommand("copy"); avisar("Texto copiado"); }
+});
+$("#ed-postado").addEventListener("click", async () => {
+  const novo = !corteAberto.postado;
+  try {
+    const c = await api("PATCH", `/api/cortes/${corteAberto.id}`, { postado: novo });
+    corteAberto.postado = c.postado;
+    $("#ed-postado").textContent = c.postado ? "Voltar para postar" : "Marcar como postado";
+    avisar(c.postado ? "Marcado como postado" : "Voltou para a lista de postagem");
+    atualizar();
+  } catch (e) { avisar(e.message); }
+});
+$("#ed-salvar").addEventListener("click", async () => {
+  const grupos = $$("#ed-linhas li[data-ini] input").map((i) => ({ texto: i.value }));
+  try {
+    await api("PATCH", `/api/cortes/${corteAberto.id}`, { gancho: $("#ed-gancho").value, post: $("#ed-post").value, grupos, refazer: true, estilo: { legenda: $("#ed-estilo-legenda").value, gancho: $("#ed-estilo-gancho").value } });
+    acompanharRefazer(corteAberto.id);
+  } catch (e) { avisar(e.message); }
+});
+$("#ed-excluir").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar exclusão", async () => {
+  await api("DELETE", `/api/cortes/${corteAberto.id}`);
+  $("#editor").close();
+  avisar("Corte excluído");
+  atualizar();
+}));
+$("#ed-enquadrar").addEventListener("click", () => abrirCamera({ corte: corteAberto }));
+$("#editor").addEventListener("close", () => { clearInterval(vigia); $("#ed-video").pause(); $("#ed-video").removeAttribute("src"); $("#ed-video").load(); corteAberto = null; });
+
+$$("[data-fechar]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+
+/* ---------- Enquadramento ---------- */
+let alvoCamera = null, area = [0.02, 0.62, 0.26, 0.34];
+
+function posicionarMarcador() {
+  const m = $("#marcador");
+  m.style.left = `${area[0] * 100}%`; m.style.top = `${area[1] * 100}%`;
+  m.style.width = `${area[2] * 100}%`; m.style.height = `${area[3] * 100}%`;
+}
+
+function modoCamera() { return $('#form-camera input[name="modo"]:checked')?.value || "auto"; }
+
+function sincronizarModo() {
+  const modo = modoCamera(), marcar = modo === "dividido" && !$("#cam-quadro").hidden;
+  $("#marcador").hidden = !marcar;
+  $("#cam-dica").textContent = marcar ? "Arraste o quadro amarelo até a câmera do streamer. Puxe os cantos para ajustar o tamanho."
+    : modo === "auto" ? "Cada corte procura a câmera sozinho." : "";
+}
+$$('#form-camera input[name="modo"]').forEach((r) => r.addEventListener("change", sincronizarModo));
+
+function abrirCamera(alvo) {
+  alvoCamera = alvo;
+  let ajuste, src;
+  if (alvo.canal) {
+    const c = estado.canais.find((x) => x.id === alvo.canal);
+    ajuste = c?.camera; src = `/api/canais/${alvo.canal}/quadro.jpg?t=${Date.now()}`;
+    $("#cam-sub").textContent = `Vale para os próximos cortes de ${c?.nome}.`;
+  } else {
+    ajuste = alvo.corte.ajuste_camera; src = `/cortes/${alvo.corte.id}/quadro.jpg?v=${alvo.corte.versao || 0}`;
+    if (alvo.corte.plano?.moldura) ajuste = { modo: ajuste?.modo || "auto", rect: ajuste?.rect || alvo.corte.plano.moldura };
+    $("#cam-sub").textContent = "Vale só para este corte.";
+  }
+  area = ajuste?.rect ? [...ajuste.rect] : [0.02, 0.62, 0.26, 0.34];
+  const radio = $(`#form-camera input[value="${ajuste?.modo || "auto"}"]`);
+  if (radio) radio.checked = true;
+  const img = $("#cam-quadro");
+  img.hidden = false; $("#palco-vazio").hidden = true;
+  img.onerror = () => { img.hidden = true; $("#palco-vazio").hidden = false; sincronizarModo(); };
+  img.onload = () => { $("#palco").style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`; };
+  img.src = src;
+  posicionarMarcador(); sincronizarModo();
+  $("#janela-camera").showModal();
+}
+
+(function arrastar() {
+  const palco = $("#palco"), m = $("#marcador");
+  let inicio = null;
+  const limitar = (v, a, b) => Math.min(b, Math.max(a, v));
+  m.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault(); m.setPointerCapture(ev.pointerId);
+    inicio = { x: ev.clientX, y: ev.clientY, area: [...area], alca: ev.target.dataset.alca || null };
+  });
+  m.addEventListener("pointermove", (ev) => {
+    if (!inicio) return;
+    const r = palco.getBoundingClientRect();
+    const dx = (ev.clientX - inicio.x) / r.width, dy = (ev.clientY - inicio.y) / r.height;
+    let [x, y, w, h] = inicio.area;
+    const MIN = 0.06;
+    if (!inicio.alca) { x = limitar(x + dx, 0, 1 - w); y = limitar(y + dy, 0, 1 - h); }
+    else {
+      if (inicio.alca.includes("w")) { const nx = limitar(x + dx, 0, x + w - MIN); w += x - nx; x = nx; }
+      if (inicio.alca.includes("e")) w = limitar(w + dx, MIN, 1 - x);
+      if (inicio.alca.includes("n")) { const ny = limitar(y + dy, 0, y + h - MIN); h += y - ny; y = ny; }
+      if (inicio.alca.includes("s")) h = limitar(h + dy, MIN, 1 - y);
+    }
+    area = [x, y, w, h]; posicionarMarcador();
+  });
+  const soltar = () => (inicio = null);
+  m.addEventListener("pointerup", soltar); m.addEventListener("pointercancel", soltar);
+  m.addEventListener("keydown", (ev) => {
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+    if (!d) return;
+    ev.preventDefault();
+    let [x, y, w, h] = area;
+    if (ev.shiftKey) { w = limitar(w + d[0] * .01, .06, 1 - x); h = limitar(h + d[1] * .01, .06, 1 - y); }
+    else { x = limitar(x + d[0] * .01, 0, 1 - w); y = limitar(y + d[1] * .01, 0, 1 - h); }
+    area = [x, y, w, h]; posicionarMarcador();
+  });
+})();
+
+$("#form-camera").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const modo = modoCamera();
+  const ajuste = { modo, rect: modo === "dividido" && !$("#cam-quadro").hidden ? area.map((v) => +v.toFixed(4)) : null };
+  try {
+    if (alvoCamera.canal) {
+      await api("POST", `/api/canais/${alvoCamera.canal}/camera`, ajuste);
+      avisar("Enquadramento salvo");
+    } else {
+      await api("PATCH", `/api/cortes/${alvoCamera.corte.id}`, { camera: ajuste });
+      acompanharRefazer(alvoCamera.corte.id);
+    }
+    $("#janela-camera").close();
+    atualizar();
+  } catch (e) { avisar(e.message); }
+});
+
+/* ---------- Ajustes ---------- */
+$("#abrir-ajustes").addEventListener("click", () => {
+  const f = $("#form-ajustes"), c = estado?.config;
+  if (!c) return;
+  f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
+  f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
+  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.corte_garantido.value = String(c.corte_garantido);
+  $("#aj-erro").hidden = true;
+  $("#janela-ajustes").showModal();
+});
+$("#form-ajustes").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  try {
+    await api("POST", "/api/config", { sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
+  } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
+});
+
+atualizar();
+
+
+/* ---------- Postagem ---------- */
+const NOMES_ESTADO = { fila: "Na fila", enviando: "Enviando", agendado: "Agendado no YouTube", erro: "Falhou" };
+let itemAberto = null, assinaturaAgenda = "", horariosEditando = false, paginaAgenda = 1;
+const selecionados = new Set();
+
+function abrirAba(aba, rolar = true) {
+  $$(".abas button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.aba === aba)));
+  history.replaceState(null, "", aba === "vivo" ? location.pathname : `#${aba}`);
+  if (rolar) scrollTo(0, 0);
+  $("#aba-vivo").hidden = aba !== "vivo";
+  $("#aba-cortes").hidden = aba !== "cortes";
+  $("#aba-postagem").hidden = aba !== "postagem";
+  $("#aba-longos").hidden = aba !== "longos";
+  $("#aba-editor").hidden = aba !== "editor";
+  document.body.dataset.aba = aba;
+  if (aba !== "editor" && typeof pausarEditor === "function") pausarEditor();
+  if (aba === "editor" && estado && typeof renderEditor === "function") renderEditor();
+  if (aba === "vivo") faixas.forEach(desenhar);
+}
+$$(".abas button").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
+$("#ver-cortes").addEventListener("click", () => abrirAba("cortes"));
+function abrirSub(nome) {
+  $$(".subabas button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.sub === nome)));
+  $$("[data-painel]").forEach((p) => (p.hidden = p.dataset.painel !== nome));
+}
+$$(".subabas button").forEach((b) => b.addEventListener("click", () => abrirSub(b.dataset.sub)));
+(function abaInicial() {
+  const pedida = new URLSearchParams(location.search).get("aba") || location.hash.slice(1);
+  if (["cortes", "postagem", "longos", "editor"].includes(pedida)) abrirAba(pedida, false);
+  if (new URLSearchParams(location.search).get("aba")) abrirSub("canal");
+})();
+
+function nomeDia(t) {
+  const d = new Date(t * 1000), hoje = new Date(), amanha = new Date(Date.now() + 864e5);
+  if (d.toDateString() === hoje.toDateString()) return "Hoje";
+  if (d.toDateString() === amanha.toDateString()) return "Amanhã";
+  const texto = d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  return texto[0].toUpperCase() + texto.slice(1);
+}
+
+async function acaoItem(id, acao, aviso) {
+  try { await api("POST", `/api/postagem/itens/${id}/${acao}`); if (aviso) avisar(aviso); atualizar(); }
+  catch (e) { avisar(e.message); }
+}
+
+function linhaItem(item, pendentes) {
+  const pendente = item.estado === "fila" || item.estado === "erro";
+  const posicao = pendentes.indexOf(item.id);
+  const detalhe = item.video_antigo && !item.liberado && pendente ? "Já foi enviado antes. Escolha o que fazer no aviso acima" : item.estado === "enviando" ? `Enviando ${item.progresso}%` : item.estado === "erro" ? item.erro || NOMES_ESTADO.erro : `${NOMES_ESTADO[item.estado]}, ${item.canal}`;
+  const acoes = [];
+  if (item.estado === "erro") acoes.push(el("button", { class: "botao", type: "button", onclick: () => acaoItem(item.id, "tentar") }, "Tentar de novo"));
+  if (pendente) {
+    const subir = el("button", { class: "botao fantasma", type: "button", "aria-label": `Adiantar ${item.titulo}`, onclick: () => acaoItem(item.id, "subir") }, "Subir");
+    const descer = el("button", { class: "botao fantasma", type: "button", "aria-label": `Atrasar ${item.titulo}`, onclick: () => acaoItem(item.id, "descer") }, "Descer");
+    subir.disabled = posicao <= 0; descer.disabled = posicao >= pendentes.length - 1;
+    acoes.push(subir, descer);
+  }
+  if (item.video_id) acoes.push(el("a", { class: "botao fantasma", href: `https://studio.youtube.com/video/${item.video_id}/edit`, target: "_blank", rel: "noopener" }, "Abrir no Studio"));
+  else if (pendente && item.video_antigo) acoes.push(el("a", { class: "botao fantasma", href: `https://studio.youtube.com/video/${item.video_antigo}/edit`, target: "_blank", rel: "noopener" }, "Ver no canal antigo"));
+  const escolha = pendente ? el("input", { type: "checkbox", class: "item-marca", "aria-label": `Selecionar ${item.titulo}`, onchange: (ev) => {
+    if (ev.target.checked) selecionados.add(item.id); else selecionados.delete(item.id);
+    atualizarSelecao();
+  } }) : el("span");
+  if (pendente) escolha.checked = selecionados.has(item.id);
+  return el("article", { class: "item", dados: { estado: item.estado, id: item.id } }, escolha,
+    el("time", { class: "item-hora" }, horaDe(item.quando)),
+    el("button", { class: "item-capa", type: "button", "aria-label": `Assistir ${item.titulo}`, onclick: () => abrirItem(item.id) },
+      el("img", { src: `/cortes/${item.id}/capa.jpg?v=${item.versao || 0}`, alt: "", loading: "lazy" }), el("i", { "aria-hidden": "true" })),
+    el("button", { class: "item-texto", type: "button", onclick: () => abrirItem(item.id) }, el("b", {}, item.titulo), el("span", {}, detalhe)),
+    el("div", { class: "item-acoes" }, ...acoes));
+}
+
+function renderConta(p) {
+  const corpo = $("#conta-corpo"), conta = p.conta;
+  const chave = JSON.stringify([conta, p.devolviveis]);
+  if (corpo.dataset.chave === chave) return;
+  corpo.dataset.chave = chave;
+  const conectar = async (cliente) => {
+    try { const r = await api("POST", "/api/postagem/conta", cliente ? { cliente } : {}); if (r.aberto) avisar("Continue no navegador que abriu"); else location.href = r.url; }
+    catch (e) { avisar(e.message); }
+  };
+  if (conta.conectada) {
+    const teste = el("button", { class: "botao", type: "button", onclick: async () => {
+      teste.disabled = true; teste.textContent = "Enviando teste";
+      try { await api("POST", "/api/postagem/teste"); avisar("Teste enviado como vídeo privado"); }
+      catch (e) { avisar(e.message); }
+      teste.disabled = false; teste.textContent = "Enviar vídeo de teste";
+    } }, "Enviar vídeo de teste");
+    const sair = el("button", { class: "botao fantasma", type: "button", onclick: () => confirmar(sair, "Confirmar", async () => { await api("DELETE", "/api/postagem/conta"); avisar("Canal desconectado"); atualizar(); }) }, "Desconectar");
+    const blocos = [el("p", { class: "conta-nome" }, conta.canal?.nome || "Canal conectado"), el("div", { class: "conta-botoes" }, teste, sair)];
+    if (p.devolviveis > 0) {
+      const nome = p.devolviveis === 1 ? "o vídeo do canal antigo" : `os ${p.devolviveis} vídeos do canal antigo`;
+      const voltar = el("button", { class: "botao", type: "button", onclick: () => confirmar(voltar, "Confirmar", async () => {
+        try { const r = await api("POST", "/api/postagem/agendados/voltar"); avisar(r.total === 1 ? "1 vídeo voltou para a fila" : `${r.total} vídeos voltaram para a fila`); atualizar(); }
+        catch (e) { avisar(e.message); }
+      }) }, `Trazer ${nome} para a fila`);
+      blocos.push(el("p", { class: "dica" }, "Trocou de canal? Apague esses vídeos no canal antigo antes, senão eles também saem lá."), voltar);
+    }
+    corpo.replaceChildren(...blocos);
+    return;
+  }
+  const arquivo = el("input", { type: "file", accept: ".json,application/json", "aria-label": "Arquivo de credencial do Google Cloud" });
+  const botao = el("button", { class: "botao principal", type: "button", onclick: async () => {
+    const escolhido = arquivo.files[0];
+    if (!escolhido && !conta.tem_cliente) { avisar("Escolha o arquivo de credencial baixado do Google Cloud."); return; }
+    conectar(escolhido ? await escolhido.text() : null);
+  } }, "Conectar canal");
+  corpo.replaceChildren(el("p", { class: "dica" }, conta.tem_cliente ? "Credencial salva. Conecte o canal para continuar." : "Envie o arquivo de credencial do Google Cloud. O passo a passo está em CONFIGURAR-YOUTUBE.md."), arquivo, botao);
+}
+
+function linhaHorario(valor) {
+  const campo = el("input", { type: "time", value: valor, "aria-label": "Horário de postagem", oninput: () => (horariosEditando = true) });
+  const linha = el("div", { class: "horario" }, campo,
+    el("button", { type: "button", "aria-label": `Remover horário ${valor}`, onclick: () => { horariosEditando = true; linha.remove(); } }, "×"));
+  return linha;
+}
+
+function renderPostagem() {
+  const p = estado.postagem;
+  $("#n-postagem").textContent = p.total_fila || "";
+  renderConta(p);
+  $("#post-auditoria").checked = p.config.auditoria;
+  $("#post-automatico").checked = p.config.automatico;
+  $("#post-automatico").disabled = !p.config.auditoria || !p.conta.conectada;
+  if (!horariosEditando) {
+    const chave = p.config.horarios.join();
+    if ($("#horarios").dataset.chave !== chave) {
+      $("#horarios").dataset.chave = chave;
+      $("#horarios").replaceChildren(...p.config.horarios.map(linhaHorario));
+    }
+  }
+  const modoAgenda = p.config.modo || "horarios";
+  $$('input[name="post-modo"]').forEach((r) => (r.checked = r.value === modoAgenda));
+  ["horarios", "dia", "agora"].forEach((m) => ($(`#bloco-${m}`).hidden = m !== modoAgenda));
+  if (!$("#bloco-dia").contains(document.activeElement)) {
+    $("#dia-data").value = p.config.dia_unico || diaLocal(); $("#dia-data").min = diaLocal();
+    $("#dia-inicio").value = p.config.janela_inicio; $("#dia-fim").value = p.config.janela_fim;
+  }
+  if (document.activeElement !== $("#hor-quantos")) $("#hor-quantos").value = p.config.por_horario || 1;
+  const ritmo = modoAgenda === "agora" ? "Todos de uma vez" : modoAgenda === "dia" ? `Todos em ${(p.config.dia_unico || diaLocal()).split("-").reverse().slice(0, 2).join("/")}, das ${p.config.janela_inicio} às ${p.config.janela_fim}` : `${p.por_dia} por dia${p.config.por_horario > 1 ? ` (${p.config.por_horario} em cada horário)` : ""}`;
+  const modo = p.config.automatico ? "Envio automático ligado" : "Postagem manual pela agenda";
+  $("#agenda-resumo").textContent = `${ritmo}, ${p.total_fila} na fila, ${p.agendados} agendados. ${modo}.`;
+  const aviso = $("#post-aviso");
+  aviso.hidden = !p.aviso; aviso.textContent = p.aviso;
+  renderPastas(p);
+  const marcadas = p.pastas.filter((x) => x.ativa).length;
+  $("#sub-pastas").textContent = p.pastas.length ? `${marcadas} de ${p.pastas.length}` : "";
+  $("#sub-canal").hidden = p.conta.conectada;
+  const pastaAgenda = $("#agenda-pasta").value;
+  const itensVisiveis = pastaAgenda ? p.itens.filter((i) => i.pasta === pastaAgenda) : p.itens;
+  $("#post-repetidos").hidden = !p.repetidos;
+  $("#post-repetidos-texto").textContent = p.repetidos === 1 ? "1 Short da fila já foi enviado antes a outro canal. Ele não será postado até você decidir." : `${p.repetidos} Shorts da fila já foram enviados antes a outro canal. Eles não serão postados até você decidir.`;
+  $("#post-conferencia").hidden = !p.conferencia.quando;
+  if (p.conferencia.quando) $("#post-conferencia").textContent = `Fila conferida com o canal às ${horaDe(p.conferencia.quando)}${p.conferencia.tirados ? `. ${p.conferencia.tirados} já postados saíram da fila` : ""}.`;
+  const porPagina = +$("#agenda-por-pagina").value, totalPaginas = Math.max(1, Math.ceil(itensVisiveis.length / porPagina));
+  paginaAgenda = Math.min(paginaAgenda, totalPaginas);
+  const inicioPagina = (paginaAgenda - 1) * porPagina, itensPagina = itensVisiveis.slice(inicioPagina, inicioPagina + porPagina);
+  const sinal = JSON.stringify([pastaAgenda, paginaAgenda, porPagina, itensVisiveis.length, itensVisiveis.filter((i) => i.estado === "fila" || i.estado === "erro").map((i) => i.id), itensPagina.map((i) => [i.id, i.quando, i.estado, i.progresso, i.titulo, i.erro, i.liberado])]);
+  $("#agenda-vazia").hidden = itensVisiveis.length > 0;
+  if (sinal === assinaturaAgenda) return;
+  assinaturaAgenda = sinal;
+  const pendentes = itensVisiveis.filter((i) => i.estado === "fila" || i.estado === "erro").map((i) => i.id);
+  renderPaginacao(itensVisiveis.length, inicioPagina, itensPagina.length, totalPaginas);
+  const idsPendentes = new Set(p.itens.filter((i) => i.estado === "fila" || i.estado === "erro").map((i) => i.id));
+  [...selecionados].forEach((id) => { if (!idsPendentes.has(id)) selecionados.delete(id); });
+  $("#agenda-selecao").hidden = !idsPendentes.size;
+  const dias = new Map();
+  itensPagina.forEach((i) => { const d = nomeDia(i.quando); if (!dias.has(d)) dias.set(d, []); dias.get(d).push(i); });
+  $("#agenda-dias").replaceChildren(...[...dias].map(([dia, itens]) =>
+    el("section", { class: "dia" }, el("h2", {}, dia), ...itens.map((i) => linhaItem(i, pendentes)))));
+  atualizarSelecao();
+}
+
+async function abrirItem(id) {
+  const item = await api("GET", `/api/postagem/itens/${id}`).catch((e) => { avisar(e.message); return null; });
+  if (!item) return;
+  itemAberto = item;
+  const pendente = item.estado === "fila" || item.estado === "erro";
+  const duracaoItem = estado.postagem.itens.find((i) => i.id === id)?.duracao;
+  $("#it-quando").textContent = `${nomeDia(item.quando)} às ${horaDe(item.quando)}, ${relogio(duracaoItem)} de vídeo`;
+  $("#it-texto").value = item.titulo; $("#it-desc").value = item.descricao; $("#it-conta").textContent = item.titulo.length;
+  $("#it-texto").readOnly = $("#it-desc").readOnly = !pendente;
+  $("#it-baixar").href = `/cortes/${id}/corte.mp4?baixar=1`;
+  const resumoItem = estado.postagem.itens.find((i) => i.id === id), versao = resumoItem?.versao || 0;
+  $("#it-player").poster = `/cortes/${id}/capa.jpg?v=${versao}`; $("#it-player").src = `/cortes/${id}/corte.mp4?v=${versao}`;
+  ["#it-salvar", "#it-agendado", "#it-remover", "#it-apagar"].forEach((s) => ($(s).hidden = !pendente));
+  $("#it-voltar").hidden = item.estado !== "agendado" || item.canal_envio === estado.postagem.conta.canal?.id;
+  $("#it-erro").hidden = true;
+  $("#janela-item").showModal();
+}
+$("#it-texto").addEventListener("input", (e) => ($("#it-conta").textContent = e.target.value.length));
+async function copiar(texto, aviso) {
+  try { await navigator.clipboard.writeText(texto); avisar(aviso); } catch { avisar("Selecione o texto e copie manualmente"); }
+}
+$("#it-copiar-titulo").addEventListener("click", () => copiar($("#it-texto").value, "Título copiado"));
+$("#it-copiar-desc").addEventListener("click", () => copiar($("#it-desc").value, "Descrição copiada"));
+$("#form-item").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    await api("PATCH", `/api/postagem/itens/${itemAberto.id}`, { titulo: $("#it-texto").value, descricao: $("#it-desc").value });
+    $("#janela-item").close(); avisar("Textos salvos"); atualizar();
+  } catch (e) { $("#it-erro").textContent = e.message; $("#it-erro").hidden = false; }
+});
+$("#it-agendado").addEventListener("click", async () => { await acaoItem(itemAberto.id, "agendado", "Marcado como agendado"); $("#janela-item").close(); });
+$("#it-voltar").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar", async () => { await acaoItem(itemAberto.id, "voltar", "Vídeo voltou para a fila"); $("#janela-item").close(); }));
+$("#it-remover").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar", async () => { await acaoItem(itemAberto.id, "remover", "Vídeo tirado da fila"); $("#janela-item").close(); }));
+
+async function salvarPostagem(dados, aviso) {
+  try { await api("POST", "/api/postagem/config", dados); if (aviso) avisar(aviso); }
+  catch (e) { avisar(e.message); }
+  atualizar();
+}
+$("#post-auditoria").addEventListener("change", (e) => salvarPostagem({ auditoria: e.target.checked }));
+$("#post-automatico").addEventListener("change", (e) => salvarPostagem({ automatico: e.target.checked }, e.target.checked ? "Envio automático ligado" : "Envio automático desligado"));
+function diaLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const dadosDoDia = () => ({ modo: "dia", dia_unico: $("#dia-data").value || diaLocal(), janela_inicio: $("#dia-inicio").value, janela_fim: $("#dia-fim").value });
+$$('input[name="post-modo"]').forEach((r) => r.addEventListener("change", () => {
+  if (r.value === "dia") salvarPostagem(dadosDoDia(), "Todos os vídeos foram para um único dia");
+  else salvarPostagem({ modo: r.value }, r.value === "agora" ? "Todos os vídeos vão sair de uma vez" : "Agenda voltou para os horários");
+}));
+$("#bloco-dia").addEventListener("submit", (ev) => { ev.preventDefault(); document.activeElement?.blur(); salvarPostagem(dadosDoDia(), "Dia da postagem salvo"); });
+$("#hor-mais").addEventListener("click", () => {
+  horariosEditando = true; $("#horarios").append(linhaHorario("12:00")); $("#horarios").scrollTop = $("#horarios").scrollHeight;
+});
+$("#hor-rapido").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const minutos = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const inicio = minutos($("#hor-inicio").value), fim = minutos($("#hor-fim").value), passo = Number($("#hor-intervalo").value);
+  if (fim < inicio) { avisar("O horário final precisa ser depois do inicial."); return; }
+  const horarios = [];
+  for (let t = inicio; t <= fim; t += passo) horarios.push(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`);
+  horariosEditando = false; $("#horarios").dataset.chave = "";
+  const por_horario = Number($("#hor-quantos").value);
+  await salvarPostagem({ horarios, por_horario }, por_horario > 1 ? `${horarios.length} horários com ${por_horario} vídeos em cada` : `${horarios.length} horários por dia salvos`);
+});
+$("#hor-salvar").addEventListener("click", async () => {
+  const horarios = $$("#horarios input").map((i) => i.value).filter(Boolean);
+  horariosEditando = false; $("#horarios").dataset.chave = "";
+  await salvarPostagem({ horarios, por_horario: Number($("#hor-quantos").value) }, "Horários salvos");
+});
+if (new URLSearchParams(location.search).get("aba") === "postagem") { abrirAba("postagem"); history.replaceState(null, "", "/"); }
+
+
+/* ---------- Vídeos longos ---------- */
+const ATIVOS_GRAVADA = new Set(["fila", "lendo", "baixando", "chat", "analisando", "cortando"]);
+let assinaturaLongos = "", assinaturaGravadas = "", assinaturaSessoes = "", longoAberto = null;
+
+function barra(valor) {
+  return el("div", { class: "barra", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(valor || 0) },
+    el("span", { style: `width:${valor || 0}%` }));
+}
+
+function detalheGravada(g) {
+  if (g.status === "erro") return g.erro || "Não foi possível analisar esta gravação.";
+  if (g.status === "cancelada") return "Análise cancelada.";
+  const partes = [];
+  if (g.duracao) partes.push(`${relogio(g.duracao)} de live`);
+  if (g.chat === true) partes.push(`${g.mensagens.toLocaleString("pt-BR")} mensagens do chat`);
+  if (g.chat === false) partes.push("sem replay do chat, usando voz, rosto e jogo");
+  if (g.status === "pronto") partes.push(`${g.feitos} cortes prontos`);
+  return partes.join(", ") || "Preparando a análise.";
+}
+
+function linhaGravada(g) {
+  const ativo = ATIVOS_GRAVADA.has(g.status);
+  const acao = el("button", { class: "botao fantasma", type: "button", onclick: () => confirmar(acao, "Confirmar", async () => {
+    await api(ativo ? "POST" : "DELETE", ativo ? `/api/gravadas/${g.id}/cancelar` : `/api/gravadas/${g.id}`);
+    avisar(ativo ? "Cancelando a análise" : "Análise removida"); atualizar();
+  }) }, ativo ? "Cancelar" : "Remover");
+  return el("li", { class: "trabalho", dados: { status: g.status } },
+    el("div", { class: "trabalho-texto" }, el("b", { title: g.titulo }, g.titulo), el("span", {}, ativo ? `${g.etapa}. ${detalheGravada(g)}` : detalheGravada(g)), ativo ? barra(g.progresso) : null), acao);
+}
+
+function cartaoLongo(v) {
+  const pronto = v.status === "pronto";
+  const capa = el("div", { class: "longo-capa" });
+  if (pronto) capa.append(el("img", { src: `/longos/${v.id}/capa.jpg?v=${v.versao}`, alt: "", loading: "lazy" }), el("span", { class: "poster-dur" }, relogio(v.duracao)));
+  else if (v.status === "erro") capa.append(el("div", { class: "falhou" }, v.erro || "Não foi possível editar este vídeo."));
+  else capa.append(el("div", { class: "longo-editando" }, el("span", { class: "giro", "aria-hidden": "true" }), el("b", {}, v.etapa), barra(v.progresso), el("small", {}, `${v.progresso}%`)));
+  const conteudo = [capa, el("h3", {}, v.titulo), el("p", {}, pronto ? `${v.capitulos.length} capítulos, ${haQuanto(v.criado)}` : `${v.canal}, ${haQuanto(v.criado)}`)];
+  if (pronto || v.status === "erro") return el("button", { class: "longo", type: "button", onclick: () => abrirLongo(v.id) }, ...conteudo);
+  return el("article", { class: "longo" }, ...conteudo);
+}
+
+function renderLongos() {
+  const longos = estado.longos, gravadas = estado.gravadas, sessoes = estado.sessoes;
+  const emEdicao = longos.filter((v) => v.status !== "pronto" && v.status !== "erro").length;
+  $("#n-longos").textContent = emEdicao || longos.length || "";
+  renderAutoLongo();
+  const chaveSessoes = JSON.stringify(sessoes.map((s) => [s.id, s.cortes]));
+  if (chaveSessoes !== assinaturaSessoes) {
+    assinaturaSessoes = chaveSessoes;
+    const atual = $("#lg-sessao").value;
+    $("#lg-sessao").replaceChildren(...(sessoes.length ? sessoes.map((s) => el("option", { value: s.id }, `${s.canal}: ${s.cortes} cortes, ${relogio(s.duracao)} de vídeo`)) : [el("option", { value: "" }, "Nenhuma live com cortes prontos")]));
+    if (sessoes.some((s) => s.id === atual)) $("#lg-sessao").value = atual;
+    $("#lg-criar").disabled = !sessoes.length;
+  }
+  const chaveGravadas = JSON.stringify(gravadas.map((g) => [g.id, g.status, g.etapa, g.progresso, g.mensagens, g.feitos, g.erro]));
+  if (chaveGravadas !== assinaturaGravadas) {
+    assinaturaGravadas = chaveGravadas;
+    $("#sec-gravadas").hidden = !gravadas.length;
+    $("#lista-gravadas").replaceChildren(...gravadas.map(linhaGravada));
+  }
+  const minuto = Math.floor(estado.agora / 60);
+  const chave = JSON.stringify([minuto, longos.map((v) => [v.id, v.status, v.etapa, v.progresso, v.titulo, v.versao])]);
+  if (chave !== assinaturaLongos) {
+    assinaturaLongos = chave;
+    $("#longos-vazio").hidden = longos.length > 0;
+    $("#grade-longos").replaceChildren(...longos.map(cartaoLongo));
+  }
+  if (longoAberto) {
+    const v = longos.find((x) => x.id === longoAberto.id);
+    if (v) { longoAberto = v; textoEnvio(v); }
+  }
+}
+
+function textoEnvio(v) {
+  const e = v.envio, alvo = $("#jl-envio");
+  $("#jl-enviar").disabled = e?.estado === "enviando";
+  if (e?.estado === "enviando") alvo.textContent = `Enviando ${e.progresso || 0}%`;
+  else if (e?.estado === "enviado") alvo.textContent = e.capa === false ? "Vídeo enviado. Troque a miniatura no YouTube Studio." : "Vídeo enviado ao YouTube.";
+  else if (e?.estado === "erro") alvo.textContent = e.erro;
+  else alvo.textContent = "Deixe em branco para enviar como privado.";
+}
+
+function abrirLongo(id) {
+  const v = estado.longos.find((x) => x.id === id);
+  if (!v) return;
+  longoAberto = v;
+  const pronto = v.status === "pronto";
+  $("#jl-titulo").textContent = pronto ? "Vídeo longo" : "Vídeo com problema";
+  $("#jl-meta").textContent = pronto ? `${relogio(v.duracao)} de vídeo, ${v.capitulos.length} capítulos${v.aviso ? `. ${v.aviso}` : ""}` : v.erro || "";
+  $("#jl-nome").value = v.titulo; $("#jl-desc").value = v.descricao; $("#jl-erro").hidden = true; $("#jl-quando").value = "";
+  $$(".jl-video, .jl-textos, #jl-baixar, #jl-baixar-capa, #jl-enviar, #jl-timeline, #form-jl button[type=submit]").forEach((n) => (n.hidden = !pronto));
+  if (pronto) {
+    const player = $("#jl-player");
+    player.src = `/longos/${id}/video.mp4?v=${v.versao}`; player.poster = `/longos/${id}/capa.jpg?v=${v.versao}`;
+    $("#jl-capa").src = `/longos/${id}/capa.jpg?v=${v.versao}`;
+    $("#jl-baixar").href = `/longos/${id}/video.mp4?baixar=1`; $("#jl-baixar-capa").href = `/longos/${id}/capa.jpg?baixar=1`;
+    $("#jl-capitulos").replaceChildren(...v.capitulos.map((c) => el("li", {}, el("button", { type: "button", onclick: () => { player.currentTime = c.t; player.play(); } }, el("time", {}, relogio(c.t)), c.titulo))));
+    textoEnvio(v);
+  }
+  $("#janela-longo").showModal();
+}
+
+$("#janela-longo").addEventListener("close", () => { const p = $("#jl-player"); p.pause(); p.removeAttribute("src"); p.load(); longoAberto = null; });
+$("#jl-copiar-titulo").addEventListener("click", () => copiar($("#jl-nome").value, "Título copiado"));
+$("#jl-copiar-desc").addEventListener("click", () => copiar($("#jl-desc").value, "Descrição copiada"));
+$("#form-jl").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try { await api("PATCH", `/api/longos/${longoAberto.id}`, { titulo: $("#jl-nome").value, descricao: $("#jl-desc").value }); avisar("Textos salvos"); atualizar(); }
+  catch (e) { $("#jl-erro").textContent = e.message; $("#jl-erro").hidden = false; }
+});
+$("#jl-enviar").addEventListener("click", async () => {
+  $("#jl-erro").hidden = true;
+  const quando = $("#jl-quando").value ? new Date($("#jl-quando").value).getTime() / 1000 : null;
+  try {
+    await api("PATCH", `/api/longos/${longoAberto.id}`, { titulo: $("#jl-nome").value, descricao: $("#jl-desc").value });
+    await api("POST", `/api/longos/${longoAberto.id}/enviar`, { quando }); avisar("Envio iniciado"); atualizar();
+  } catch (e) { $("#jl-erro").textContent = e.message; $("#jl-erro").hidden = false; }
+});
+$("#jl-excluir").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar exclusão", async () => {
+  await api("DELETE", `/api/longos/${longoAberto.id}`); $("#janela-longo").close(); avisar("Vídeo excluído"); atualizar();
+}));
+$("#form-longo").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("#lg-erro").hidden = true;
+  try { await api("POST", "/api/longos", { sessao: $("#lg-sessao").value, minutos: +$("#lg-minutos").value }); avisar("Vídeo longo na fila de edição"); atualizar(); }
+  catch (e) { $("#lg-erro").textContent = e.message; $("#lg-erro").hidden = false; }
+});
+/* ---------- Vídeo enviado do computador ---------- */
+let videoEscolhido = null, envioAtual = null;
+const tamanhoTexto = (b) => b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1).replace(".", ",")} GB` : `${Math.max(1, Math.round(b / 1024 ** 2))} MB`;
+function erroEnvio(texto) { $("#gr-erro").textContent = texto; $("#gr-erro").hidden = !texto; }
+function mostrarVideo(arquivo) {
+  videoEscolhido = arquivo; const tem = Boolean(arquivo);
+  $("#gr-zona").hidden = tem; $("#gr-bloco-link").hidden = tem; $("#gr-escolhido").hidden = !tem; $("#gr-barra").hidden = true; $("#gr-tirar").textContent = "Trocar vídeo";
+  $("#gr-qualidade").disabled = tem;
+  if (tem) { $("#gr-nome").textContent = arquivo.name; $("#gr-info").textContent = tamanhoTexto(arquivo.size); $("#gr-link").value = ""; } else $("#gr-arquivo").value = "";
+}
+function escolherVideo(arquivo) { erroEnvio(""); if (arquivo) mostrarVideo(arquivo); }
+$("#gr-zona").addEventListener("click", () => $("#gr-arquivo").click());
+$("#ir-envio").addEventListener("click", () => { abrirAba("longos"); $("#form-gravada").scrollIntoView({ block: "center" }); $("#gr-arquivo").click(); });
+$("#gr-arquivo").addEventListener("change", (ev) => escolherVideo(ev.target.files[0]));
+$("#gr-tirar").addEventListener("click", () => { if (envioAtual) envioAtual.abort(); else mostrarVideo(null); });
+for (const tipo of ["dragenter", "dragover"]) $("#gr-zona").addEventListener(tipo, (ev) => { ev.preventDefault(); $("#gr-zona").dataset.sobre = "true"; });
+for (const tipo of ["dragleave", "drop"]) $("#gr-zona").addEventListener(tipo, () => { delete $("#gr-zona").dataset.sobre; });
+$("#gr-zona").addEventListener("drop", (ev) => { ev.preventDefault(); escolherVideo(ev.dataTransfer.files[0]); });
+/* Soltar um arquivo fora da área não pode trocar a tela do programa. */
+for (const tipo of ["dragover", "drop"]) window.addEventListener(tipo, (ev) => { if (ev.dataTransfer?.types?.includes("Files")) ev.preventDefault(); });
+function enviarVideo(arquivo) {
+  return new Promise((ok, falha) => {
+    const x = new XMLHttpRequest(); envioAtual = x;
+    x.open("POST", `/api/gravadas/envio?nome=${encodeURIComponent(arquivo.name)}`);
+    x.upload.onprogress = (ev) => { if (!ev.lengthComputable) return; const p = Math.round(ev.loaded / ev.total * 100); $("#gr-barra-v").style.width = `${p}%`; $("#gr-info").textContent = p < 100 ? `Enviando ${p}% de ${tamanhoTexto(ev.total)}` : "Conferindo o vídeo"; };
+    x.onload = () => { let d = {}; try { d = JSON.parse(x.responseText); } catch {} x.status < 300 ? ok(d) : falha(new Error(d.erro || "Não foi possível enviar o vídeo.")); };
+    x.onerror = () => falha(new Error("O envio foi interrompido. Tente de novo.")); x.onabort = () => falha(new Error(""));
+    x.send(arquivo);
+  }).finally(() => { envioAtual = null; });
+}
+$("#form-gravada").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); erroEnvio("");
+  if (videoEscolhido) {
+    const b = $("#gr-enviar"); b.disabled = true; $("#gr-barra").hidden = false; $("#gr-barra-v").style.width = "0%"; $("#gr-tirar").textContent = "Cancelar envio";
+    try {
+      await api("POST", "/api/gravadas/envio/conferir", { nome: videoEscolhido.name, tamanho: videoEscolhido.size });
+      const { envio } = await enviarVideo(videoEscolhido);
+      await api("POST", "/api/gravadas", { envio, momentos: +$("#gr-momentos").value, qualidade: 1080, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
+      mostrarVideo(null); avisar("Vídeo enviado. A análise começou"); atualizar();
+    } catch (e) { $("#gr-barra").hidden = true; $("#gr-tirar").textContent = "Trocar vídeo"; $("#gr-info").textContent = tamanhoTexto(videoEscolhido.size); erroEnvio(e.message); }
+    b.disabled = false; return;
+  }
+  if (!$("#gr-link").value.trim()) { erroEnvio("Escolha um vídeo ou cole o link da gravação."); return; }
+  try {
+    await api("POST", "/api/gravadas", { link: $("#gr-link").value, momentos: +$("#gr-momentos").value, qualidade: +$("#gr-qualidade").value, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
+    $("#gr-link").value = ""; avisar("Análise iniciada"); atualizar();
+  } catch (e) { $("#gr-erro").textContent = e.message; $("#gr-erro").hidden = false; }
+});
+
+
+/* ---------- Vídeo longo durante a live ---------- */
+function renderAutoLongo() {
+  const a = estado.longos_auto, ativo = $("#auto-longo-ativo"), minutos = $("#auto-longo-minutos");
+  if (document.activeElement !== ativo) ativo.checked = a.ativo;
+  if (document.activeElement !== minutos) minutos.value = String(a.minutos);
+  const live = a.lives[0], barraAuto = $("#auto-longo-barra");
+  barraAuto.hidden = !(a.ativo && live);
+  if (!a.ativo) $("#auto-longo-status").textContent = "Desligado. Os vídeos longos só são criados quando você pedir.";
+  else if (!live) $("#auto-longo-status").textContent = "Quando uma live estiver no ar, as partes são criadas aqui. Nada é postado sozinho.";
+  else {
+    const pct = Math.min(100, Math.round(live.acumulado / live.alvo * 100));
+    barraAuto.firstElementChild.style.width = `${pct}%`;
+    $("#auto-longo-status").textContent = `${live.canal}: parte ${live.parte} com ${relogio(live.acumulado)} de ${relogio(live.alvo)} em cortes. Nada é postado sozinho.`;
+  }
+}
+async function salvarAutoLongo() {
+  try { await api("POST", "/api/longos/auto", { ativo: $("#auto-longo-ativo").checked, minutos: +$("#auto-longo-minutos").value }); avisar("Criação automática salva"); atualizar(); }
+  catch (e) { avisar(e.message); }
+}
+$("#auto-longo-ativo").addEventListener("change", salvarAutoLongo);
+$("#auto-longo-minutos").addEventListener("change", salvarAutoLongo);
+
+/* ---------- Estilo do vídeo ---------- */
+const MODELOS_LEGENDA = [["destaque", "Destaque", "Palavra falada colorida"], ["caixa", "Caixa", "Palavra dentro de um bloco"], ["palavra", "Palavra", "Uma palavra por vez, sem maiúsculas"], ["impacto", "Impacto", "Uma palavra grande por vez"], ["neon", "Neon", "Texto com brilho"], ["faixa", "Faixa", "Fundo escuro atrás do texto"], ["classica", "Clássica", "Frase limpa, sem efeito"]];
+const MODELOS_GANCHO = [["faixa", "Faixa colorida", "Bloco na cor de destaque"], ["preto", "Faixa preta", "Fundo preto e texto colorido"], ["alerta", "Alerta", "Vermelho com texto branco"], ["branco", "Etiqueta branca", "Bloco branco inclinado"], ["contorno", "Contorno", "Letras grandes sem fundo"], ["neon", "Neon", "Letras com brilho"], ["nenhum", "Sem título", "Não mostra título no vídeo"]];
+const CORES_ESTILO = [["amarelo", "#ffc933", "Amarelo"], ["verde", "#39ff88", "Verde"], ["vermelho", "#ff4b5c", "Vermelho"], ["azul", "#38bdf8", "Azul"], ["rosa", "#ff5fcf", "Rosa"], ["laranja", "#ff8a1f", "Laranja"], ["branco", "#ffffff", "Branco"]];
+let tempoPrevia = null;
+
+const opcaoEstilo = (nome, [valor, titulo, ajuda]) => el("label", { class: "es-opcao" }, el("input", { type: "radio", name: nome, value: valor }), el("span", {}, el("b", {}, titulo), el("small", {}, ajuda)));
+$("#es-legendas").append(...MODELOS_LEGENDA.map((m) => opcaoEstilo("es-legenda", m)));
+$("#es-ganchos").append(...MODELOS_GANCHO.map((m) => opcaoEstilo("es-gancho", m)));
+$("#es-cores").append(...CORES_ESTILO.map(([valor, cor, nome]) => el("label", { class: "es-cor", title: nome }, el("input", { type: "radio", name: "es-cor", value: valor, "aria-label": nome }), el("span", { style: `background:${cor}` }))));
+$("#ed-estilo-legenda").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_LEGENDA.map(([v, t]) => el("option", { value: v }, t)));
+$("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_GANCHO.map(([v, t]) => el("option", { value: v }, t)));
+
+function estiloEscolhido() {
+  const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
+  return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked, ...posicoesEstilo };
+}
+function atualizarPrevia() {
+  clearTimeout(tempoPrevia);
+  tempoPrevia = setTimeout(() => {
+    const q = new URLSearchParams(estiloEscolhido()).toString();
+    $("#es-previa-v").src = `/api/estilo/previa.jpg?${q}&formato=v`;
+    $("#es-previa-h").src = `/api/estilo/previa.jpg?${q}&formato=h`;
+  }, 180);
+}
+$("#abrir-estilo").addEventListener("click", () => {
+  const e = estado?.config?.estilo;
+  if (!e) return;
+  [["es-legenda", e.legenda], ["es-gancho", e.gancho], ["es-cor", e.cor]].forEach(([n, v]) => { const r = $(`#form-estilo input[name="${n}"][value="${v}"]`); if (r) r.checked = true; });
+  $("#es-filtro").value = e.filtro || "nenhum"; $("#es-sons").checked = e.sons_auto !== false;
+  $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true;
+  atualizarPrevia(); $("#janela-estilo").showModal();
+});
+$("#form-estilo").addEventListener("change", atualizarPrevia);
+$("#form-estilo").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try { await api("POST", "/api/config", { estilo: estiloEscolhido() }); $("#janela-estilo").close(); avisar("Estilo salvo para os próximos vídeos"); atualizar(); }
+  catch (e) { $("#es-erro").textContent = e.message; $("#es-erro").hidden = false; }
+});
+
+
+/* ---------- Pastas ---------- */
+let assinaturaPastas = "", assinaturaFiltros = "";
+function nomePasta(p) {
+  const dia = new Date(p.desde * 1000).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return `${p.canal}, ${dia}${p.gravada ? ", gravada" : ""}`;
+}
+function renderFiltrosPasta() {
+  const lista = estado.postagem.pastas, chave = JSON.stringify(lista.map((p) => [p.id, p.cortes]));
+  if (chave === assinaturaFiltros) return;
+  assinaturaFiltros = chave;
+  [["#filtro-pasta", "Todas as pastas"], ["#agenda-pasta", "Todas as pastas da agenda"]].forEach(([alvo, todas]) => {
+    const campo = $(alvo), atual = campo.value;
+    campo.replaceChildren(el("option", { value: "" }, todas), ...lista.map((p) => el("option", { value: p.id }, `${nomePasta(p)} (${p.cortes})`)));
+    campo.value = lista.some((p) => p.id === atual) ? atual : "";
+  });
+}
+function renderPastas(p) {
+  renderFiltrosPasta();
+  const chave = JSON.stringify(p.pastas.map((x) => [x.id, x.ativa, x.cortes, x.na_fila, x.agendados]));
+  if (chave === assinaturaPastas) return;
+  assinaturaPastas = chave;
+  $("#lista-pastas").replaceChildren(...(p.pastas.length ? p.pastas.map((x) => {
+    const caixa = el("input", { type: "checkbox", onchange: async () => {
+      try { await api("POST", "/api/postagem/pastas", { pasta: x.id, ativa: caixa.checked }); avisar(caixa.checked ? "Pasta na agenda" : "Pasta fora da agenda"); atualizar(); }
+      catch (e) { caixa.checked = !caixa.checked; avisar(e.message); }
+    } });
+    caixa.checked = x.ativa;
+    const detalhe = x.ativa ? `${x.na_fila} na fila, ${x.agendados} agendados` : `${x.cortes} cortes guardados, fora da agenda`;
+    return el("li", { dados: { ativa: String(x.ativa) } }, el("label", { class: "marcar", title: x.titulo }, caixa, el("span", {}, el("b", {}, nomePasta(x)), el("small", {}, x.titulo ? `${x.titulo}. ${detalhe}` : detalhe))));
+  }) : [el("li", { class: "dica" }, "As pastas aparecem quando sair o primeiro corte.")]));
+}
+$("#filtro-pasta").addEventListener("change", () => { if (estado) renderCortes(); });
+$("#agenda-pasta").addEventListener("change", () => { paginaAgenda = 1; if (estado) renderPostagem(); });
+
+
+/* ---------- Paginação da agenda ---------- */
+function irParaPagina(n) {
+  paginaAgenda = n; renderPostagem();
+  $("#aba-postagem").scrollIntoView({ block: "start" });
+}
+function numerosPagina(atual, total) {
+  const lista = [];
+  for (let n = 1; n <= total; n++) if (n === 1 || n === total || Math.abs(n - atual) <= 1) lista.push(n);
+  return lista.flatMap((n, i) => (i && n - lista[i - 1] > 1 ? ["…", n] : [n]));
+}
+function renderPaginacao(total, inicio, naPagina, paginas) {
+  $("#agenda-paginacao").hidden = total === 0;
+  $("#agenda-contagem").textContent = total ? `Mostrando ${inicio + 1} a ${inicio + naPagina} de ${total}` : "";
+  const seta = (rotulo, destino, ativo) => { const b = el("button", { class: "botao fantasma", type: "button", onclick: () => irParaPagina(destino) }, rotulo); b.disabled = !ativo; return b; };
+  $("#agenda-paginas").replaceChildren(seta("Anterior", paginaAgenda - 1, paginaAgenda > 1),
+    ...numerosPagina(paginaAgenda, paginas).map((n) => n === "…" ? el("span", { "aria-hidden": "true" }, "…")
+      : el("button", { class: "pagina", type: "button", "aria-label": `Página ${n}`, "aria-current": n === paginaAgenda ? "page" : undefined, onclick: () => irParaPagina(n) }, String(n))),
+    seta("Próxima", paginaAgenda + 1, paginaAgenda < paginas));
+}
+$("#agenda-por-pagina").addEventListener("change", () => { paginaAgenda = 1; renderPostagem(); });
+async function decidirRepetidos(acao, aviso) {
+  try { const r = await api("POST", "/api/postagem/repetidos", { acao }); avisar(`${r.total} ${aviso}`); atualizar(); } catch (e) { avisar(e.message); }
+}
+$("#repetidos-tirar").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar", () => decidirRepetidos("tirar", "saíram da fila")));
+$("#repetidos-manter").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar", () => decidirRepetidos("manter", "liberados para este canal")));
+
+/* ---------- Arrastar legenda e título ---------- */
+const ALCAS_ESTILO = [
+  { palco: "v", nome: "Legenda", x: "legenda_x", y: "legenda_y", ancora: "translate(-50%, -100%)", largura: "76%", altura: "13%", lim: [.16, .84, .1, .985] },
+  { palco: "v", nome: "Título", x: "gancho_x", y: "gancho_y", ancora: "translate(-50%, 0)", largura: "76%", altura: "9%", gancho: true, lim: [.16, .84, .01, .88] },
+  { palco: "h", nome: "Legenda", x: "legenda_hx", y: "legenda_hy", ancora: "translate(-50%, -100%)", largura: "62%", altura: "13%", lim: [.2, .8, .12, .985] },
+  { palco: "h", nome: "Título", x: "gancho_hx", y: "gancho_hy", ancora: "translate(0, 0)", largura: "30%", altura: "11%", gancho: true, lim: [0, .7, .01, .86] },
+];
+let posicoesEstilo = {}, posicoesAuto = {};
+const valorPosicao = (chave) => posicoesEstilo[chave] ?? posicoesAuto[chave] ?? .5;
+function colocarAlca(a) {
+  a.n.style.left = `${valorPosicao(a.x) * 100}%`; a.n.style.top = `${valorPosicao(a.y) * 100}%`;
+}
+function colocarAlcas() {
+  const semTitulo = $('#form-estilo input[name="es-gancho"]:checked')?.value === "nenhum";
+  ALCAS_ESTILO.forEach((a) => { colocarAlca(a); a.n.hidden = !!a.gancho && semTitulo; });
+}
+function moverAlca(a, x, y) {
+  const limitar = (v, min, max) => Math.round(Math.min(max, Math.max(min, v)) * 10000) / 10000;
+  posicoesEstilo[a.x] = limitar(x, a.lim[0], a.lim[1]); posicoesEstilo[a.y] = limitar(y, a.lim[2], a.lim[3]);
+  colocarAlca(a);
+}
+ALCAS_ESTILO.forEach((a) => {
+  const palco = $(`#es-palco-${a.palco}`);
+  a.n = el("div", { class: "es-alca", tabindex: "0", role: "button", "aria-label": `${a.nome}. Arraste ou use as setas para mover.`, style: `width:${a.largura};height:${a.altura};transform:${a.ancora}` }, el("span", {}, a.nome));
+  palco.append(a.n);
+  let inicio = null;
+  a.n.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault(); a.n.setPointerCapture(ev.pointerId); a.n.focus();
+    inicio = { px: ev.clientX, py: ev.clientY, x: valorPosicao(a.x), y: valorPosicao(a.y) }; a.n.dataset.arrastando = "true";
+  });
+  a.n.addEventListener("pointermove", (ev) => {
+    if (!inicio) return;
+    const r = palco.getBoundingClientRect();
+    moverAlca(a, inicio.x + (ev.clientX - inicio.px) / r.width, inicio.y + (ev.clientY - inicio.py) / r.height);
+  });
+  const soltar = () => { if (!inicio) return; inicio = null; a.n.dataset.arrastando = "false"; atualizarPrevia(); };
+  a.n.addEventListener("pointerup", soltar); a.n.addEventListener("pointercancel", soltar);
+  a.n.addEventListener("keydown", (ev) => {
+    const d = { ArrowLeft: [-.01, 0], ArrowRight: [.01, 0], ArrowUp: [0, -.01], ArrowDown: [0, .01] }[ev.key];
+    if (!d) return;
+    ev.preventDefault(); moverAlca(a, valorPosicao(a.x) + d[0], valorPosicao(a.y) + d[1]); atualizarPrevia();
+  });
+});
+$("#es-restaurar").addEventListener("click", () => { posicoesEstilo = {}; colocarAlcas(); atualizarPrevia(); });
+$("#form-estilo").addEventListener("change", colocarAlcas);
+$("#abrir-estilo").addEventListener("click", async () => {
+  const e = estado?.config?.estilo || {};
+  posicoesEstilo = Object.fromEntries(ALCAS_ESTILO.flatMap((a) => [a.x, a.y]).filter((k) => e[k] !== null && e[k] !== undefined).map((k) => [k, e[k]]));
+  posicoesAuto = await api("GET", "/api/estilo/posicoes").catch(() => ({}));
+  colocarAlcas(); atualizarPrevia();
+});
+
+
+/* ---------- Prévia e exclusão de Shorts ---------- */
+function marcasDaPagina() { return $$("#agenda-dias .item-marca"); }
+function atualizarSelecao() {
+  const n = selecionados.size, marcas = marcasDaPagina(), geral = $("#selecionar-pagina");
+  $("#selecao-total").textContent = n ? `${n} ${n === 1 ? "selecionado" : "selecionados"}` : "";
+  $("#apagar-selecionados").disabled = !n;
+  geral.disabled = !marcas.length;
+  geral.checked = marcas.length > 0 && marcas.every((m) => m.checked);
+  geral.indeterminate = !geral.checked && marcas.some((m) => m.checked);
+}
+$("#selecionar-pagina").addEventListener("change", (ev) => {
+  marcasDaPagina().forEach((m) => {
+    m.checked = ev.target.checked;
+    const id = m.closest(".item").dataset.id;
+    if (m.checked) selecionados.add(id); else selecionados.delete(id);
+  });
+  atualizarSelecao();
+});
+async function apagarShorts(ids) {
+  const r = await api("POST", "/api/postagem/apagar", { ids });
+  ids.forEach((id) => selecionados.delete(id));
+  avisar(r.total === 1 ? "1 Short apagado" : `${r.total} Shorts apagados`);
+  atualizar();
+}
+$("#apagar-selecionados").addEventListener("click", (ev) => confirmar(ev.currentTarget, `Apagar ${selecionados.size} de vez`, () => apagarShorts([...selecionados])));
+$("#it-apagar").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Apagar de vez", async () => { await apagarShorts([itemAberto.id]); $("#janela-item").close(); }));
+$("#janela-item").addEventListener("close", () => { const p = $("#it-player"); p.pause(); p.removeAttribute("src"); p.load(); });
+
+
+/* ---------- Últimos cortes ---------- */
+let assinaturaRecentes = "";
+function renderRecentes() {
+  const lista = estado.cortes.filter((c) => c.status === "pronto").slice(0, 8);
+  const chave = JSON.stringify(lista.map((c) => [c.id, c.versao, c.gancho]));
+  $("#recentes").hidden = !lista.length;
+  if (chave === assinaturaRecentes) return;
+  assinaturaRecentes = chave;
+  $("#recentes-lista").replaceChildren(...lista.map((c) => el("button", { class: "recente", type: "button", onclick: () => abrirEditor(c.id) },
+    el("img", { src: `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}`, alt: "", loading: "lazy" }), el("span", {}, c.gancho || c.motivo))));
+}
+
+/* ---------- Atalhos para o editor ---------- */
+$("#ed-timeline").addEventListener("click", () => { const id = corteAberto.id; $("#editor").close(); abrirTimeline("corte", id); });
+$("#jl-timeline").addEventListener("click", () => { const id = longoAberto.id; $("#janela-longo").close(); abrirTimeline("longo", id); });
+$("#it-timeline").addEventListener("click", () => { const id = itemAberto.corte || itemAberto.id; $("#janela-item").close(); abrirTimeline("corte", id); });
+
+/* ---------- Programa ---------- */
+api("GET", "/api/programa").then((p) => { $("#aj-versao").textContent = `Versão ${p.versao}`; $("#aj-encerrar").hidden = !p.pode_encerrar;
+  $("#aj-fundo-rot").hidden = !p.disponivel; $("#aj-win-rot").hidden = !p.pode_iniciar_windows; $("#aj-fundo").checked = !!p.segundo_plano; $("#aj-win").checked = !!p.com_windows; }).catch(() => {});
+$("#aj-fundo").addEventListener("change", (ev) => api("POST", "/api/programa", { segundo_plano: ev.target.checked }).catch((e) => avisar(e.message)));
+$("#aj-win").addEventListener("change", (ev) => api("POST", "/api/programa", { com_windows: ev.target.checked }).catch((e) => avisar(e.message)));
+$("#aj-encerrar").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Confirmar", async () => {
+  await api("POST", "/api/encerrar", {}).catch(() => {}); document.body.replaceChildren(el("p", { class: "sem-cortes" }, "O Clipador foi fechado. Pode fechar esta aba."));
+}));
+
+/* ---------- Aprendizado ---------- */
+let tempoAprendizado;
+const NOMES_REACAO = { risada: "Risadas", choque: "Choque", hype: "Hype", clipe: "Pedidos de clipe", jogo: "Ação no jogo", streamer: "Reação do streamer", admirado: "Streamer admirado", destaque: "Melhor momento", manual: "Manual" };
+const NOMES_PREF = { tamanho: "Tamanho da legenda", cor: "Cor da legenda", cor_destaque: "Cor de destaque", y: "Altura da legenda", maiusculas: "Letras maiúsculas", palavra_a_palavra: "Uma palavra por vez", destaque: "Destaque de palavras", fonte: "Fonte", entrada: "Animação de entrada", saida: "Animação de saída", contorno: "Contorno", zoom_forca: "Força do zoom", volume_efeitos: "Volume dos efeitos", volume_fala: "Volume da fala", volume_musica: "Volume da música" };
+async function desenharAprendizado() {
+  const d = await api("GET", "/api/aprendizado"), p = d.perfil, c = $("#ap-corpo"), t = d.trabalho;
+  const chave = (k, rot, dica) => { const n = el("input", { type: "checkbox" }); n.checked = d.ativo[k]; n.addEventListener("change", async () => { await api("POST", "/api/aprendizado", { [k]: n.checked }); desenharAprendizado(); }); return el("label", { class: "marcar" }, n, el("span", {}, el("strong", {}, rot), el("small", {}, dica))); };
+  const envio = el("input", { type: "file", accept: "video/*", hidden: "" });
+  envio.addEventListener("change", async () => { const a = envio.files[0]; if (!a) return; avisar("Enviando o vídeo…"); const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || "Não foi possível enviar."); desenharAprendizado(); });
+  const visto = p ? [p.webcam ? `Jogo em tela cheia com a câmera em cima (${Math.round(p.webcam.w * 100)}% da largura)` : null, p.palavra_a_palavra ? "Legenda com uma palavra por vez" : null, p.legenda ? `Legenda a ${Math.round(p.legenda.y * 100)}% da altura` : null, p.barra ? "Barra fixa com o canal embaixo" : null, `Ritmo de ${Math.round(p.cortes_min)} trocas de cena por minuto`, `Duração perto de ${p.duracao} segundos`].filter(Boolean) : [];
+  const prefs = [...Object.entries(d.preferencias.legenda), ...Object.entries(d.preferencias.global)].map(([k, v]) => `${NOMES_PREF[k] || k}: ${v === true ? "sim" : v === false ? "não" : v}`), des = d.desempenho, tipos = Object.entries(des.tipos || {}).sort((a, b) => b[1].media - a[1].media);
+  c.replaceChildren(
+    el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Copiar o estilo destes vídeos", "Layout, legenda e ritmo. O vídeo é apagado depois da análise."),
+      envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), disabled: ["fila", "analisando"].includes(t.estado) ? "" : undefined }, ["fila", "analisando"].includes(t.estado) ? "Analisando o vídeo…" : "Ensinar com um vídeo"), t.estado === "erro" ? el("p", { class: "erro-campo" }, t.erro) : null,
+      el("ul", { class: "ap-lista" }, ...d.referencias.map((r) => el("li", {}, el("span", {}, r.nome), el("button", { class: "botao fantasma", type: "button", onclick: async () => { await api("DELETE", `/api/aprendizado/referencias/${r.id}`); desenharAprendizado(); } }, "Remover")))), visto.length ? el("ul", { class: "ap-visto" }, ...visto.map((x) => el("li", {}, x))) : null),
+    el("section", {}, el("h3", {}, "Suas edições"), chave("edicoes", "Aprender com o que eu mudo no Editor", "Uma mudança vira padrão quando se repete em 2 vídeos exportados."), el("p", { class: "dica" }, `${d.videos_editados} ${d.videos_editados === 1 ? "vídeo editado" : "vídeos editados"}.`), prefs.length ? el("ul", { class: "ap-visto" }, ...prefs.map((x) => el("li", {}, x))) : el("p", { class: "dica" }, "Nenhuma preferência repetida ainda.")),
+    el("section", {}, el("h3", {}, "Resultados do canal"), chave("resultados", "Priorizar o que dá mais visualizações", `Compara os Shorts publicados há mais de 2 dias. Cada tipo precisa de ${d.minimo} vídeos.`), tipos.length ? el("ul", { class: "ap-visto" }, ...tipos.map(([k, v]) => el("li", {}, `${NOMES_REACAO[k] || k}: ${v.media.toLocaleString("pt-BR")} visualizações em média (${v.n} ${v.n === 1 ? "vídeo" : "vídeos"})`))) : el("p", { class: "dica" }, "Ainda não há Shorts publicados suficientes para comparar.")),
+    el("button", { class: "botao perigo", type: "button", onclick: (ev) => confirmar(ev.currentTarget, "Apagar tudo que aprendeu", async () => { await api("POST", "/api/aprendizado/esquecer", {}); avisar("Aprendizado apagado"); desenharAprendizado(); }) }, "Esquecer tudo"));
+  clearTimeout(tempoAprendizado); if (["fila", "analisando"].includes(t.estado) && $("#janela-aprendizado").open) tempoAprendizado = setTimeout(desenharAprendizado, 2000);
+}
+$("#abrir-aprendizado").addEventListener("click", () => { $("#janela-aprendizado").showModal(); desenharAprendizado().catch((e) => avisar(e.message)); });
+$("#janela-aprendizado [data-fechar]").addEventListener("click", () => $("#janela-aprendizado").close());

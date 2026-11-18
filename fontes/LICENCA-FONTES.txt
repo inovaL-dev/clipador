@@ -1,0 +1,2 @@
+As fontes desta pasta são do Google Fonts e usam a licença SIL Open Font License 1.1 (ou Apache 2.0 no caso da Roboto).
+https://openfontlicense.org
