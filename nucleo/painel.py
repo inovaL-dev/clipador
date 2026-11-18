@@ -361,6 +361,10 @@ class Painel(BaseHTTPRequestHandler):
             return self._acao(lambda d: self.motor.aprendizado.definir(d))
         if caminho == "/api/aprendizado/esquecer":
             return self._acao(lambda d: self.motor.aprendizado.esquecer())
+        if caminho == "/api/atualizacao/verificar":
+            return self._acao(lambda d: self.motor.atualizacao.verificar())
+        if caminho == "/api/atualizacao/abrir":
+            return self._acao(lambda d: self.motor.atualizacao.abrir())
         if caminho == "/api/gravadas/envio":
             return self._receber_video()
         if caminho == "/api/gravadas/envio/conferir":

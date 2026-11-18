@@ -296,7 +296,34 @@ $$("#aba-cortes .filtros button").forEach((b) => b.addEventListener("click", () 
   if (estado) renderCortes();
 }));
 
+/* ---------- Aviso de versão nova ---------- */
+const CHAVE_IGNORADA = "clipador-atualizacao-ignorada";
+function versaoIgnorada() { try { return localStorage.getItem(CHAVE_IGNORADA); } catch { return null; } }
+function renderAtualizacao() {
+  const nova = estado.atualizacao?.nova, caixa = $("#av-atualizacao"), mostrar = Boolean(nova) && versaoIgnorada() !== nova.versao;
+  if (caixa.hidden === !mostrar && caixa.dataset.versao === (nova?.versao || "")) return;
+  caixa.hidden = !mostrar; caixa.dataset.versao = nova?.versao || "";
+  if (!nova) return;
+  $("#av-titulo").textContent = `Nova versão ${nova.versao} disponível`;
+  $("#av-notas").replaceChildren(...nova.notas.map((n) => el("li", {}, n)));
+}
+$("#av-depois").addEventListener("click", () => { try { localStorage.setItem(CHAVE_IGNORADA, $("#av-atualizacao").dataset.versao); } catch {} $("#av-atualizacao").hidden = true; });
+$("#av-baixar").addEventListener("click", async () => {
+  try { await api("POST", "/api/atualizacao/abrir"); $("#av-dica").textContent = "Quando o download terminar, feche o Clipador e abra o instalador."; $("#av-baixar").textContent = "Baixar de novo"; }
+  catch (e) { avisar(e.message); }
+});
+$("#aj-atualizar").addEventListener("click", async (ev) => {
+  const b = ev.currentTarget; b.disabled = true; b.textContent = "Procurando";
+  try {
+    const a = await api("POST", "/api/atualizacao/verificar");
+    if (a.nova) { try { localStorage.removeItem(CHAVE_IGNORADA); } catch {} estado.atualizacao = a; $("#janela-ajustes").close(); renderAtualizacao(); }
+    else avisar(a.erro ? "Não foi possível procurar agora. Confira a internet." : `Você já está na versão mais recente, ${a.atual}.`);
+  } catch (e) { avisar(e.message); }
+  b.disabled = false; b.textContent = "Procurar atualizações";
+});
+
 function renderTudo() {
+  renderAtualizacao();
   const temAlgo = estado.canais.length > 0 || estado.cortes.length > 0;
   document.body.dataset.vazio = String(!temAlgo);
   document.body.dataset.noAr = String(estado.canais.some((c) => c.status === "gravando"));

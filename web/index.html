@@ -560,6 +560,13 @@
   </div>
 </dialog>
 
+<aside class="aviso-atualizacao" id="av-atualizacao" aria-labelledby="av-titulo" hidden>
+  <h2 id="av-titulo"></h2>
+  <ul id="av-notas"></ul>
+  <p class="dica" id="av-dica">O download abre no navegador. Depois é só instalar por cima, sem perder seus vídeos.</p>
+  <div class="av-acoes"><button class="botao principal" type="button" id="av-baixar">Baixar atualização</button><button class="botao fantasma" type="button" id="av-depois">Depois</button></div>
+</aside>
+
 <dialog class="janela ajustes" id="janela-ajustes" aria-labelledby="aj-titulo">
   <form id="form-ajustes">
     <header class="editor-topo">
@@ -609,7 +616,7 @@
     <footer class="editor-acoes"><button class="botao principal" type="submit">Salvar ajustes</button>
       <label class="marcar" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo"><span>Continuar em segundo plano ao fechar</span></label>
       <label class="marcar" id="aj-win-rot" hidden><input type="checkbox" id="aj-win"><span>Abrir junto com o Windows</span></label>
-      <button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button><span class="dica" id="aj-versao"></span></footer>
+      <button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button><button class="botao" type="button" id="aj-atualizar">Procurar atualizações</button><span class="dica" id="aj-versao"></span></footer>
   </form>
 </dialog>
 

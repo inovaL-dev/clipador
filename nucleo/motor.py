@@ -23,6 +23,7 @@ from .biblioteca import Biblioteca, sugerir_sons
 from .estudio import Estudio, edicao_inicial
 from .chat import Chat
 from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_marcantes
+from .atualizacao import Atualizacao
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -114,6 +115,7 @@ class Motor:
         self.aprendizado = Aprendizado(self)
         self.longos = Longos(self)
         self.gravadas = Gravadas(self)
+        self.atualizacao = Atualizacao()
         threading.Thread(target=self._editor, daemon=True).start()
         for item in self._ler(self.dados / "canais.json", []):
             try:
@@ -344,7 +346,7 @@ class Motor:
         return {
             **base, "postagem": self.postagem.resumo(), "longos": self.longos.resumo(), "longos_auto": self.longos.resumo_auto(),
             "sessoes": [{k: v for k, v in s.items() if k != "ids"} for s in self.longos.sessoes()],
-            "gravadas": self.gravadas.resumo(),
+            "gravadas": self.gravadas.resumo(), "atualizacao": self.atualizacao.resumo(),
         }
 
     def _resumo_canal(self, c: CanalVivo) -> dict:

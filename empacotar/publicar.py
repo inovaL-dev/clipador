@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 import webbrowser
 import zipfile
@@ -92,6 +93,69 @@ def conferir_arquivos(git: str) -> None:
         raise Parar("Parei para proteger suas contas. Estes arquivos têm dados pessoais ou chaves:\n  " + "\n  ".join(sorted(set(ruins))))
 
 
+def ler_novidades() -> list[dict]:
+    return json.loads((RAIZ / "novidades.json").read_text(encoding="utf-8"))
+
+
+def numero(versao: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in versao.split("."))
+
+
+def preparar_lancamento(atual: str) -> str:
+    """Pergunta o número e as novidades e atualiza os arquivos da versão."""
+    partes = [int(p) for p in atual.split(".")]
+    partes[-1] += 1
+    sugestao = ".".join(map(str, partes))
+    nova = input(f"Versão atual: {atual}\nNúmero da nova versão [{sugestao}]: ").strip() or sugestao
+    if not re.fullmatch(r"\d+\.\d+\.\d+", nova) or numero(nova) <= numero(atual):
+        raise Parar(f"Use um número maior que {atual}, como {sugestao}.")
+    print("\nO que mudou? Escreva uma novidade por linha. Deixe a linha vazia para terminar.")
+    notas = []
+    while len(notas) < 8:
+        linha = input(f"{len(notas) + 1}. ").strip()
+        if not linha:
+            break
+        notas.append(linha[:200])
+    if not notas:
+        raise Parar("Escreva pelo menos uma novidade para avisar seus usuários.")
+    lista = [v for v in ler_novidades() if v["versao"] != nova]
+    lista.insert(0, {"versao": nova, "data": time.strftime("%Y-%m-%d"), "notas": notas})
+    (RAIZ / "novidades.json").write_text(json.dumps(lista, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    trocas = ((RAIZ / "nucleo" / "versao.py", r'VERSAO = "[^"]+"', f'VERSAO = "{nova}"'),
+              (RAIZ / "empacotar" / "instalador.iss", r'#define Versao "[^"]+"', f'#define Versao "{nova}"'),
+              (RAIZ / "README.md", r"vers%C3%A3o-[\d.]+-", f"vers%C3%A3o-{nova}-"))
+    for arquivo, padrao, novo in trocas:
+        dados = arquivo.read_bytes().decode("utf-8")
+        arquivo.write_bytes(re.sub(padrao, novo, dados, count=1).encode("utf-8"))
+    return nova
+
+
+def aguardar_instalador(gh: str, alvo: str, marca: str) -> bool:
+    """Os usuários só recebem o aviso depois que o instalador estiver pronto para baixar."""
+    pausa = float(os.environ.get("CLIPADOR_ESPERA", 30))
+    print("Aguardando o GitHub terminar o instalador. Deixe esta janela aberta, leva de 15 a 30 minutos.")
+    for _ in range(120):
+        if not rodar(gh, "release", "view", marca, "--repo", alvo, "--json", "tagName", ok=False).returncode:
+            return True
+        r = rodar(gh, "run", "list", "--repo", alvo, "--workflow", "instalador.yml", "--branch", marca, "--limit", "1", "--json", "status,conclusion", ok=False)
+        execucoes = json.loads(r.stdout or "[]") if not r.returncode else []
+        if execucoes and execucoes[0].get("status") == "completed" and execucoes[0].get("conclusion") != "success":
+            print(f"O GitHub não conseguiu criar o instalador. Veja em https://github.com/{alvo}/actions")
+            return False
+        time.sleep(pausa)
+    print("O instalador ainda não ficou pronto. Abra este arquivo de novo mais tarde para avisar os usuários.")
+    return False
+
+
+def ultima_liberada(gh: str, alvo: str) -> list[dict]:
+    """Histórico só com as versões que já têm instalador."""
+    lista = sorted(ler_novidades(), key=lambda v: numero(v["versao"]), reverse=True)
+    for n, v in enumerate(lista):
+        if not rodar(gh, "release", "view", f"v{v['versao']}", "--repo", alvo, "--json", "tagName", ok=False).returncode:
+            return lista[n:]
+    return []
+
+
 def publicar_site(git: str, gh: str, conta: dict) -> str:
     """Envia só a pasta site para o repositório público que vira o endereço do projeto."""
     dono = conta["login"]
@@ -106,6 +170,11 @@ def publicar_site(git: str, gh: str, conta: dict) -> str:
                 shutil.rmtree(item) if item.is_dir() else item.unlink()
         shutil.copytree(RAIZ / "site", copia, dirs_exist_ok=True)
         (copia / ".nojekyll").write_text("", encoding="utf-8")
+        historico = ultima_liberada(gh, f"{dono}/{REPOSITORIO}")
+        if historico:
+            baixar = f"https://github.com/{dono}/{REPOSITORIO}/releases/latest/download/Clipador-Instalador.exe"
+            atual = historico[0]
+            (copia / "versao.json").write_text(json.dumps({**atual, "baixar": baixar, "historico": historico}, ensure_ascii=False, indent=2), encoding="utf-8")
         rodar(git, "checkout", "-q", "-B", "main", pasta=copia)
         rodar(git, "config", "user.name", conta.get("name") or dono, pasta=copia)
         rodar(git, "config", "user.email", f"{conta['id']}+{dono}@users.noreply.github.com", pasta=copia)
@@ -119,6 +188,8 @@ def publicar_site(git: str, gh: str, conta: dict) -> str:
 
 def main() -> int:
     versao = re.search(r'VERSAO = "([^"]+)"', (RAIZ / "nucleo" / "versao.py").read_text(encoding="utf-8"))[1]
+    if "--lancar" in sys.argv:
+        versao = preparar_lancamento(versao)
     print(f"Publicando o Clipador {versao} em um repositório privado.\n")
     git, gh = achar_git(), achar_gh()
     os.environ["PATH"] = str(Path(git).parent) + os.pathsep + os.environ["PATH"]
@@ -168,7 +239,8 @@ def main() -> int:
     else:
         rodar(git, "tag", "-f", marca)
         rodar(git, "push", "origin", marca)
-        print("\nO GitHub começou a criar o instalador. Isso leva de 15 a 30 minutos.")
+        print("\nO GitHub começou a criar o instalador.")
+    aguardar_instalador(gh, alvo, marca)
     print("Publicando o site")
     site = publicar_site(git, gh, conta)
     print(f"\nPronto!\nRepositório privado: https://github.com/{alvo}\nSite público: {site} (pode levar alguns minutos para abrir)")

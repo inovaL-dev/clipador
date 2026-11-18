@@ -32,3 +32,7 @@ No Linux e no macOS, ative com `source .venv/bin/activate`.
 - A edição não pode destruir o vídeo original.
 - Vídeos longos nunca são postados sem revisão.
 - Nunca envie chaves, tokens, vídeos ou a pasta `dados`.
+
+## Lançar uma versão
+
+Abra `lancar-atualizacao.bat`, informe o número da versão e as novidades. O aviso aparece nos programas instalados depois que o instalador ficar pronto.
