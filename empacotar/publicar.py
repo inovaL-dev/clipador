@@ -144,15 +144,18 @@ def main() -> int:
     elif json.loads(atual.stdout)["visibility"] != "PRIVATE":
         raise Parar(f"O repositório {alvo} já existe e não é privado. Nada foi enviado.")
 
-    rodar(git, "add", "-A")
-    conferir_arquivos(git)
-    if rodar(git, "status", "--porcelain").stdout.strip():
-        rodar(git, "commit", "-m", f"Clipador {versao}")
     endereco = f"https://github.com/{alvo}.git"
     if rodar(git, "remote", "get-url", "origin", ok=False).returncode:
         rodar(git, "remote", "add", "origin", endereco)
     else:
         rodar(git, "remote", "set-url", "origin", endereco)
+    # Uma pasta extraída de novo continua a partir do que já está no GitHub.
+    if rodar(git, "rev-parse", "--verify", "HEAD", ok=False).returncode and not rodar(git, "fetch", "-q", "origin", "main", ok=False).returncode:
+        rodar(git, "reset", "-q", "--mixed", "FETCH_HEAD")
+    rodar(git, "add", "-A")
+    conferir_arquivos(git)
+    if rodar(git, "status", "--porcelain").stdout.strip():
+        rodar(git, "commit", "-m", f"Clipador {versao}")
     print("Enviando os arquivos")
     rodar(git, "push", "-u", "origin", "main")
 
