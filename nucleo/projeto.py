@@ -193,11 +193,12 @@ def importar_corte(meta: dict, motor) -> dict:
         efx["itens"].append(_efeito(momento, min(1.2, total - momento), "clarao", "Clarão na reação", .35, cena=cena))
     elif layout == "dividido" and plano.get("camera"):
         jogo = _faixa("video", "Jogo"); camera = _faixa("video", "Câmera")
-        camera["itens"].append(_item_video(mid, 0, total, 0, "Câmera", {"x": 540, "y": 378.5, "w": 1080, "h": 757, **_cortar_lados(plano["camera"], vw, vh), **_base(movs[0])}, _chaves(movs[0]), cena=cena))
-        jogo["itens"].append(_item_video(mid, 0, total, 0, "Jogo", {"x": 540, "y": 1341.5, "w": 1080, "h": 1157, **_cortar_lados(plano["jogo"], vw, vh), **_base(movs[1])}, _chaves(movs[1]), mudo=True, cena=cena))
+        hc = int(plano.get("altura_cam", 760))
+        camera["itens"].append(_item_video(mid, 0, total, 0, "Câmera", {"x": 540, "y": (hc - 3) / 2, "w": 1080, "h": hc - 3, **_cortar_lados(plano["camera"], vw, vh), **_base(movs[0])}, _chaves(movs[0]), cena=cena))
+        jogo["itens"].append(_item_video(mid, 0, total, 0, "Jogo", {"x": 540, "y": hc + 3 + (1917 - hc) / 2, "w": 1080, "h": 1917 - hc, **_cortar_lados(plano["jogo"], vw, vh), **_base(movs[1])}, _chaves(movs[1]), mudo=True, cena=cena))
         p["faixas"] += [jogo, camera]
-        efx["itens"].append(_efeito(momento, min(1.2, total - momento), "clarao", "Clarão na reação", .55, area=[0, 0, 1080, 757], cena=cena))
-        efx["itens"].append(_efeito(momento, min(1.2, total - momento), "tremor", "Tremor na reação", 6.0, area=[0, 0, 1080, 757], cena=cena))
+        efx["itens"].append(_efeito(momento, min(1.2, total - momento), "clarao", "Clarão na reação", .55, area=[0, 0, 1080, hc - 3], cena=cena))
+        efx["itens"].append(_efeito(momento, min(1.2, total - momento), "tremor", "Tremor na reação", 6.0, area=[0, 0, 1080, hc - 3], cena=cena))
     else:
         principal = _faixa("video", "Vídeo")
         if layout == "tela_cheia" and plano.get("recorte"):
@@ -231,7 +232,7 @@ def importar_corte(meta: dict, motor) -> dict:
         else:
             textos["itens"].append(_item_texto("texto", 0, total, meta["credito"], cred[0] + 170, cred[1], {"fonte": "Poppins-Bold", "tamanho": 28, "opacidade": 80, "contorno": 3, "alinhamento": "esquerda", "largura": 340}, "Crédito"))
     if meta.get("gancho") and est["gancho"] != "nenhum":
-        gx, gy = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, edicao.POSICAO_GANCHO.get(layout, 800))
+        gx, gy = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, int(plano.get("altura_cam", 760)) + 40 if layout == "dividido" else edicao.POSICAO_GANCHO.get(layout, 800))
         textos["itens"].append(_item_texto("texto", 0, min(est["tempo_gancho"] + .5, total), meta["gancho"], gx, gy, estilo_titulo(est, 54), "Título", papel="gancho"))
         giro = estilos.TITULOS_EXTRA.get(est["gancho"], (0,) * 9)[8] or (-2 if est["gancho"] == "branco" else 0)
         textos["itens"][-1]["t"]["rot"] = float(giro)

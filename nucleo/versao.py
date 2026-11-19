@@ -1,2 +1,2 @@
 """Versão mostrada no programa e no instalador."""
-VERSAO = "1.8.4"
+VERSAO = "1.8.5"

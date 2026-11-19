@@ -62,10 +62,32 @@ def _cortes_por_minuto(video: Path) -> float:
     return len(marcas) / max(1.0, n / fps) * 60
 
 
+def _faixa_inteira(cinzas: np.ndarray) -> float | None:
+    """Câmera de ponta a ponta no topo: uma linha horizontal fixa que corta a tela inteira."""
+    H, W = cinzas.shape[1:]
+    grad = np.stack([np.abs(cv2.Sobel(c, cv2.CV_32F, 0, 1, ksize=3)) for c in cinzas])
+    vy = grad.mean(axis=(0, 2))
+    a, b = int(H * .12), int(H * .5)
+    linha = int(np.argmax(vy[a:b])) + a
+    if vy[linha] < float(np.median(vy)) * 4:
+        return None
+    por_quadro = [int(np.argmax(g.mean(axis=1)[a:b])) + a for g in grad]
+    if np.mean(np.abs(np.array(por_quadro) - linha) <= max(2, H * .006)) < .5:
+        return None  # não é uma divisão fixa
+    perto = grad[:, max(0, linha - 1):linha + 2].max(axis=1).mean(axis=0)
+    base = np.median(grad.mean(axis=0), axis=0) + 1e-3
+    if float(np.mean(perto > base * 3)) < .8:
+        return None  # a linha não atravessa a tela
+    return linha / H
+
+
 def _achar_webcam(quadros: list[np.ndarray]) -> dict | None:
     """A webcam é a moldura que continua parada no topo enquanto o jogo muda."""
     cinzas = np.stack([cv2.cvtColor(q, cv2.COLOR_BGR2GRAY) for q in quadros]).astype(np.float32)
     H, W = cinzas.shape[1:]
+    inteira = _faixa_inteira(cinzas)
+    if inteira and .15 <= inteira <= .48:
+        return {"x": 0.0, "y": 0.0, "w": 1.0, "h": round(inteira, 4), "faixa": True}
     vx = np.mean([np.abs(cv2.Sobel(c[:int(H * .3)], cv2.CV_32F, 1, 0, ksize=3)).mean(axis=0) for c in cinzas], axis=0)
     fundo = float(np.median(vx)) + 1e-3
     meio = W // 2
@@ -576,7 +598,12 @@ class Aprendizado:
         if not p or not p["webcam"] or plano.get("layout") != "dividido" or plano.get("origem") == "manual":
             return plano
         vw, vh, _ = cam.dimensoes(fonte)
-        return plano_pip(plano, p["webcam"], vw, vh)
+        w = p["webcam"]
+        if w.get("w", 0) >= .6 and w.get("x", 1) <= .06 and w.get("y", 1) <= .02:
+            # Câmera ocupando o topo de ponta a ponta (medidas antigas achavam só parte da largura):
+            # divide a tela na altura aprendida, como no vídeo de exemplo, em vez de pôr uma janelinha.
+            return cam.redividir(plano, w["h"] * 1920, vw, vh)
+        return plano_pip(plano, w, vw, vh)
 
     # ------------------------------------------------------------ edições do usuário
 

@@ -180,24 +180,38 @@ def _recorte(x: float, y: float, w: float, h: float, largura: int, altura: int) 
     return {"w": cw, "h": ch, "x": cx, "y": cy}
 
 
-def enquadrar_camera(moldura: list[float], rosto: list[float] | None, largura: int, altura: int) -> dict:
-    """Maior área com a proporção da faixa superior, sem sair da moldura da webcam."""
+def enquadrar_camera(moldura: list[float], rosto: list[float] | None, largura: int, altura: int, aspecto: float = ASPECTO_CAMERA) -> dict:
+    """Maior área com a proporção da faixa superior, sem sair da moldura da webcam.
+
+    Quando a webcam não tem borda e a moldura achada fica larga demais (pegando chat ou o jogo do lado),
+    o recorte é limitado em volta do rosto, que fica sempre no centro."""
     x, y, w, h = moldura
+    if rosto:
+        rw, rh = rosto[2] * largura, rosto[3] * altura
+        maximo_w = rw * 4.2 / largura  # o rosto ocupa cerca de um quarto da largura, como nos cortes profissionais
+        cx_r = rosto[0] + rosto[2] / 2
+        if w > maximo_w * 1.15:
+            nw = maximo_w
+            x, w = float(np.clip(cx_r - nw / 2, 0, 1 - nw)), nw
+        maximo_h = rh * 3.4 / altura
+        if h > maximo_h * 1.15:
+            cy_r = rosto[1] + rosto[3] / 2
+            y, h = float(np.clip(cy_r - maximo_h * .45, 0, 1 - maximo_h)), maximo_h
     px_w, px_h = w * largura, h * altura
     cx, cy = (rosto[0] + rosto[2] / 2, rosto[1] + rosto[3] / 2) if rosto else (x + w / 2, y + h / 2)
-    if px_w / px_h > ASPECTO_CAMERA:
-        novo_w = px_h * ASPECTO_CAMERA / largura
+    if px_w / px_h > aspecto:
+        novo_w = px_h * aspecto / largura
         nx = float(np.clip(cx - novo_w / 2, x, x + w - novo_w))
         return _recorte(nx, y, novo_w, h, largura, altura)
-    novo_h = px_w / ASPECTO_CAMERA / altura
+    novo_h = px_w / aspecto / altura
     ny = float(np.clip(cy - novo_h * 0.42, y, y + h - novo_h))
     return _recorte(x, ny, w, novo_h, largura, altura)
 
 
-def enquadrar_jogo(moldura: list[float] | None, largura: int, altura: int) -> dict:
+def enquadrar_jogo(moldura: list[float] | None, largura: int, altura: int, aspecto: float = ASPECTO_JOGO) -> dict:
     """Centro da tela, deslocado para não repetir a webcam quando ela estiver no meio do caminho."""
-    if largura / altura > ASPECTO_JOGO:
-        w = altura * ASPECTO_JOGO / largura
+    if largura / altura > aspecto:
+        w = altura * aspecto / largura
         x = 0.5 - w / 2
         if moldura:
             cam0, cam1 = moldura[0], moldura[0] + moldura[2]
@@ -205,8 +219,17 @@ def enquadrar_jogo(moldura: list[float] | None, largura: int, altura: int) -> di
                 x = cam1 if (cam0 + cam1) / 2 < 0.5 else cam0 - w
                 x = float(np.clip(x, 0, 1 - w))
         return _recorte(x, 0, w, 1, largura, altura)
-    h = largura / ASPECTO_JOGO / altura
+    h = largura / aspecto / altura
     return _recorte(0, 0.5 - h / 2, 1, h, largura, altura)
+
+
+def redividir(plano: dict, altura_cam: int, largura: int, altura: int) -> dict:
+    """Mesma divisão câmera em cima e jogo embaixo, com a câmera na altura aprendida."""
+    hc = int(np.clip(round(altura_cam / 2) * 2, 480, 900))
+    if plano.get("layout") != "dividido" or not plano.get("moldura"):
+        return plano
+    return {**plano, "altura_cam": hc, "camera": enquadrar_camera(plano["moldura"], plano.get("rosto"), largura, altura, 1080 / hc),
+            "jogo": enquadrar_jogo(plano["moldura"], largura, altura, 1080 / (1920 - hc))}
 
 
 def planejar(video: Path, ajuste: dict | None = None) -> dict:

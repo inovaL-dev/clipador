@@ -97,10 +97,13 @@ def _sem_chaves(t: str) -> str:
 
 
 def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, duracao: float, layout: str,
-              estilo: dict | None = None) -> str:
+              estilo: dict | None = None, altura_cam: int | None = None) -> str:
     est = estilos.normalizar(estilo)
     credito_pos = POSICAO_CREDITO.get(layout, POSICAO_CREDITO["dividido"])
-    x_gancho, y_gancho = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, POSICAO_GANCHO.get(layout, 800))
+    gancho_padrao = POSICAO_GANCHO.get(layout, 800)
+    if layout == "dividido" and altura_cam:
+        credito_pos, gancho_padrao = f"\\an1\\pos(36,{int(altura_cam) - 16})", int(altura_cam) + 40
+    x_gancho, y_gancho = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, gancho_padrao)
     x_legenda, y_legenda = estilos.ponto(est, "legenda_x", "legenda_y", 1080, 1920, 540, BASE_LEGENDA)
     saida = [
         "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920",
@@ -157,12 +160,12 @@ def _filtro_video(plano: dict) -> str:
             f"[jogo][cam]overlay={p['x']}:{p['y']}"
         )
     if layout == "dividido":
-        c, j = plano["camera"], plano["jogo"]
+        c, j, hc = plano["camera"], plano["jogo"], int(plano.get("altura_cam", 760))
         return (
             "[0:v]split=2[c][j];"
-            f"[c]crop={c['w']}:{c['h']}:{c['x']}:{c['y']},scale=1080:760:flags=lanczos,unsharp=5:5:0.55:5:5:0,setsar=1[cam];"
-            f"[j]crop={j['w']}:{j['h']}:{j['x']}:{j['y']},scale=1080:1160:flags=lanczos,setsar=1[jogo];"
-            "[cam][jogo]vstack=inputs=2,drawbox=x=0:y=757:w=1080:h=6:color=black:t=fill"
+            f"[c]crop={c['w']}:{c['h']}:{c['x']}:{c['y']},scale=1080:{hc}:flags=lanczos,unsharp=5:5:0.55:5:5:0,setsar=1[cam];"
+            f"[j]crop={j['w']}:{j['h']}:{j['x']}:{j['y']},scale=1080:{1920 - hc}:flags=lanczos,setsar=1[jogo];"
+            f"[cam][jogo]vstack=inputs=2,drawbox=x=0:y={hc - 3}:w=1080:h=6:color=black:t=fill"
         )
     if layout == "tela_cheia":
         r = plano["recorte"]
@@ -298,7 +301,8 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     momento = min(max(0.3, momento), max(0.3, duracao - 0.5))
     layout = plano["layout"]
     pip = plano.get("pip") if layout == "pip" else None
-    regioes = [(pip["x"], pip["y"], pip["w"], pip["h"]), (0, pip["y"] + pip["h"], 1080, 1920 - pip["y"] - pip["h"])] if pip else REGIOES_SHORT.get(layout, [(0, 0, 1080, 1920)])
+    hc = int(plano.get("altura_cam", 760))
+    regioes = [(pip["x"], pip["y"], pip["w"], pip["h"]), (0, pip["y"] + pip["h"], 1080, 1920 - pip["y"] - pip["h"])] if pip else [(0, 0, 1080, hc - 3), (0, hc + 3, 1080, 1917 - hc)] if layout == "dividido" else REGIOES_SHORT.get(layout, [(0, 0, 1080, 1920)])
     movimentos = _agenda_short(layout, total, duracao, momento, picos)
     for mov in movimentos:
         mov.z = 1 + (mov.z - 1) * est["zoom_forca"] / 100
@@ -307,7 +311,7 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     try:
         efeitos.gravar(
         destino, _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento, focos),
-        total, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est), fonte,
+        total, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam")), fonte,
         whoosh=[0.0, *[f["t"] for f in focos]], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
         filtro_extra=_cor_do_video(est, ajuste) + f"fade=t=out:st={max(0.0, duracao - 0.25):.2f}:d=0.25",
         )
@@ -337,7 +341,7 @@ def _renderizar_simples(fonte: Path, pasta: Path, plano: dict, grupos: list[dict
     fim = max(0.0, duracao - 0.25)
     with tempfile.TemporaryDirectory(prefix="clipador_") as tmp:
         tmp = Path(tmp)
-        ass_texto = gerar_ass(grupos, gancho, contexto, credito, duracao, plano["layout"], estilo)
+        ass_texto = gerar_ass(grupos, gancho, contexto, credito, duracao, plano["layout"], estilo, plano.get("altura_cam"))
         (tmp / "legenda.ass").write_text(ass_texto, encoding="utf-8")
         estilos.copiar_fontes(ass_texto, tmp / "fontes")
         filtro = (

@@ -125,7 +125,8 @@ def painel(plano: dict) -> tuple[int, int, int, int]:
     """Onde o jogo aparece no vídeo vertical."""
     layout = plano.get("layout")
     if layout == "dividido":
-        return 0, 763, 1080, 1157
+        hc = int(plano.get("altura_cam", 760))
+        return 0, hc + 3, 1080, 1917 - hc
     if layout == "inteiro":
         return 0, 420, 1080, 1080
     return 0, 0, 1080, 1920
@@ -139,6 +140,22 @@ def _proibido(plano: dict, vw: int, vh: int, altura: int) -> np.ndarray | None:
     ex, ey = LARGURA / vw, altura / vh
     m[int(c["y"] * ey):int((c["y"] + c["h"]) * ey) + 1, int(c["x"] * ex):int((c["x"] + c["w"]) * ex) + 1] = True
     return m
+
+
+def _pega_webcam(q: dict, plano: dict, vw: int, vh: int) -> bool:
+    x0, y0, x1, y1 = q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]
+    r = plano.get("rosto")
+    if r:
+        cx, cy = (r[0] + r[2] / 2) * vw, (r[1] + r[3] / 2) * vh
+        if x0 <= cx <= x1 and y0 <= cy <= y1:
+            return True
+    m = plano.get("moldura")
+    if m:
+        mx0, my0, mx1, my1 = m[0] * vw, m[1] * vh, (m[0] + m[2]) * vw, (m[1] + m[3]) * vh
+        dentro = max(0, min(x1, mx1) - max(x0, mx0)) * max(0, min(y1, my1) - max(y0, my0))
+        if dentro > .3 * q["w"] * q["h"]:
+            return True
+    return False
 
 
 def achar_focos(fonte: Path, grupos: list[dict], plano: dict, duracao: float, momento: float | None = None) -> list[dict]:
@@ -166,5 +183,8 @@ def achar_focos(fonte: Path, grupos: list[dict], plano: dict, duracao: float, mo
         proibido = _proibido(plano, vw, vh, quadros[0].shape[0])
         alvo = next((a for a in (achar_hud(quadros, CANTOS[l], proibido) for l in g["lugares"]) if a), None) if g["lugares"] else achar_mudanca(quadros, proibido)
         if alvo:
-            focos.append({"t": round(ini, 3), "dur": round(dur, 3), "nome": g["nome"], **enquadrar(alvo, pw / ph, vw, vh)})
+            quadro = enquadrar(alvo, pw / ph, vw, vh)
+            if _pega_webcam(quadro, plano, vw, vh):
+                continue  # nunca aproximar a própria webcam: viraria uma segunda câmera no meio do vídeo
+            focos.append({"t": round(ini, 3), "dur": round(dur, 3), "nome": g["nome"], **quadro})
     return focos
