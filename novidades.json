@@ -1,5 +1,22 @@
 [
   {
+    "versao": "1.8.8",
+    "data": "2026-11-19",
+    "notas": [
+      "Se o programa ou o computador desligar, cortes, gravações e vídeos longos continuam de onde pararam.",
+      "Shorts com cenas emendadas também a partir de cortes prontos, vídeos enviados e lives gravadas."
+    ]
+  },
+  {
+    "versao": "1.8.7",
+    "data": "2026-11-19",
+    "notas": [
+      "As ondas de som ficam sempre dentro do clipe na timeline.",
+      "Ao arrastar uma faixa, a linha amarela aparece na borda certa, sem cortar o nome.",
+      "Clique duas vezes no nome de uma faixa para renomear."
+    ]
+  },
+  {
     "versao": "1.8.6",
     "data": "2026-11-19",
     "notas": [

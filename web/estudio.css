@@ -172,3 +172,9 @@ body[data-aba="editor"] main:has(.st-mesa:not([hidden])) { padding: .5rem; }
 /* Volume e entrada/saída suave no clipe de áudio, como no CapCut */
 .st-vol { position: absolute; left: 0; right: 0; z-index: 4; height: 10px; margin-top: -5px; cursor: ns-resize; touch-action: none; } .st-vol::after { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; background: rgb(255 201 51 / .001); } .st-vol:hover::after { background: rgb(255 201 51 / .5); }
 .st-fade { position: absolute; top: 2px; z-index: 5; width: 12px; height: 12px; margin-left: -6px; background: #fff; border: 2px solid var(--corte); border-radius: 50%; cursor: ew-resize; touch-action: none; box-shadow: 0 1px 3px rgb(0 0 0 / .6); } .st-fade:hover { transform: scale(1.25); }
+
+#st-cabecas { position: relative; } /* a linha de soltar fica na borda certa entre as faixas */
+.st-cab-linha { height: 3px; margin-top: -1px; border-radius: 2px; box-shadow: 0 0 0 1px rgb(0 0 0 / .4); }
+.st-cab-linha::before, .st-cab-linha::after { content: ""; position: absolute; top: -3px; width: 9px; height: 9px; background: var(--corte); border-radius: 50%; } .st-cab-linha::before { left: -2px; } .st-cab-linha::after { right: -2px; }
+.st-cab[data-arrastando] { outline: 1px dashed var(--corte); outline-offset: -2px; }
+.st-cab-nome { flex: 1; min-width: 0; height: 1.5rem; padding: 0 .375rem; color: var(--giz); background: var(--cabine); border: 1px solid var(--corte); border-radius: .25rem; font: inherit; font-weight: 600; }

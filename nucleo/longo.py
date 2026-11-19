@@ -548,10 +548,10 @@ class Longos:
             item = motor._ler(arq, None)
             if not item or "id" not in item:
                 continue
-            if item.get("pedido") == "timeline" and (arq.parent / "video.mp4").exists():
+            if item.get("pedido") == "timeline" and (arq.parent / "video.mp4").exists() and not item.get("edicao_pendente"):
                 item.update(status="pronto", etapa="Pronto", progresso=100, pedido=None, aviso="A última edição foi interrompida. Abra a timeline e gere o vídeo de novo.")
-            elif item["status"] not in ("pronto", "erro"):
-                item.update(status="erro", erro="O programa foi fechado durante a edição. Crie o vídeo de novo.")
+            elif item["status"] not in ("pronto", "erro") or item.get("pedido") == "timeline":
+                item.update(etapa="Continuando de onde parou", progresso=0, retomar=True)  # volta para a fila quando o programa terminar de abrir
             if (item.get("envio") or {}).get("estado") == "enviando":
                 item["envio"] = {"estado": "erro", "erro": "O envio foi interrompido."}
             self.itens[item["id"]] = item
@@ -755,6 +755,13 @@ class Longos:
                 item.update(status="erro", etapa="Com problema", erro=str(e)[:300])
                 self.motor.evento(item["canal"], "erro", "O vídeo longo não pôde ser editado")
             self._salvar(item)
+
+    def retomar(self) -> None:
+        for item in list(self.itens.values()):
+            if item.pop("retomar", None):
+                if item.get("pedido") != "timeline":
+                    item["status"] = "fila"
+                self.fila.put(item["id"])
 
     def blocos(self, item: dict) -> list[dict]:
         """Legendas do vídeo longo no tempo do vídeo completo."""

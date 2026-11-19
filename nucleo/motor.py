@@ -120,6 +120,11 @@ class Motor:
         self.montagens = Montagens(self)
         self.atualizacao = Atualizacao()
         threading.Thread(target=self._editor, daemon=True).start()
+        try:
+            self.retomar()
+        except Exception:
+            import traceback
+            traceback.print_exc()
         for item in self._ler(self.dados / "canais.json", []):
             try:
                 self.adicionar(item["link"], item.get("camera"), salvar=False, programar=bool(item.get("programar")))
@@ -149,15 +154,41 @@ class Motor:
         self._gravar(self.dados / "canais.json", itens)
 
     def _carregar_cortes(self) -> None:
+        """Lê os cortes salvos. O que estava no meio do caminho volta para a fila e continua de onde parou."""
+        self._retomar: list[tuple[str, str]] = []
         for arq in self.saida.glob("*/corte.json"):
             meta = self._ler(arq, None)
             if not meta or "id" not in meta:
                 continue
             if meta.get("status") not in ("pronto", "erro"):
-                pronto = (arq.parent / "corte.mp4").exists()
-                meta["status"] = "pronto" if pronto else "erro"
-                meta["erro"] = None if pronto else "O programa foi fechado durante a edição."
+                pasta = arq.parent
+                bruto = pasta / "bruto.ts"
+                if meta.get("montagem"):
+                    self._retomar.append(("montagem", meta["id"]))
+                elif bruto.exists() and bruto.stat().st_size > 200_000 and (cam.dimensoes(bruto)[2] if bruto.exists() else 0) >= 5:
+                    self._retomar.append(("novo", meta["id"]))
+                elif (pasta / "fonte.mp4").exists():
+                    self._retomar.append(("refazer", meta["id"]))
+                else:
+                    pronto = (pasta / "corte.mp4").exists()
+                    meta["status"], meta["erro"] = ("pronto", None) if pronto else ("erro", "O programa foi fechado antes de gravar este momento.")
+                if meta["status"] not in ("pronto", "erro"):
+                    meta.update(status="fila", erro=None, retomado=True)
             self.cortes[meta["id"]] = meta
+
+    def retomar(self) -> None:
+        """Depois de tudo pronto para trabalhar, devolve à fila o que foi interrompido."""
+        for tipo, ident in self._retomar:
+            if ident not in self.cortes:
+                continue
+            if tipo == "montagem":
+                self.montagens.fila.put(ident)
+            else:
+                self.fila.put((tipo, ident))
+        if self._retomar:
+            self.evento("Clipador", "info", f"Continuando {len(self._retomar)} {'corte' if len(self._retomar) == 1 else 'cortes'} de onde parou")
+        self.longos.retomar()
+        self.gravadas.retomar()
 
     def _pasta_para(self, meta: dict) -> str:
         """Cada live ou gravação tem a própria pasta; quedas curtas continuam na mesma."""

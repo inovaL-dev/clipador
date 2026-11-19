@@ -338,19 +338,29 @@ function montarCabecas() {
   const ordem = [...S.p.faixas].reverse();
   $("#st-cabecas").replaceChildren(...ordem.map((f) => { const ci = S.p.faixas.indexOf(f);
     const b = (txt, tit, on, fn) => { const n = el("button", { type: "button", title: tit, "aria-label": tit, dados: on ? { on: "1" } : {}, onclick: fn }); n.innerHTML = ICONES[txt] || txt; return n; };
-    return el("div", { class: "st-cab", style: `height:${altF(f)}px`, title: "Arraste para mudar a ordem. No teclado: Alt + seta para cima ou para baixo", tabindex: "0", onkeydown: (ev) => { if (ev.altKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) { ev.preventDefault(); ev.stopPropagation(); moverFaixa(ci, ev.key === "ArrowUp" ? 1 : -1); $(`#st-cabecas .st-cab:nth-child(${S.p.faixas.length - S.p.faixas.indexOf(f)})`)?.focus(); } }, dados: { tipo: f.tipo, ci } }, el("span", { class: "st-alca", "aria-hidden": "true" }), el("b", { title: f.nome }, f.nome),
+    const nome = el("b", { title: `${f.nome}. Clique duas vezes para renomear` }, f.nome);
+    nome.addEventListener("dblclick", (ev) => { ev.stopPropagation(); renomearFaixa(f, nome); });
+    return el("div", { class: "st-cab", style: `height:${altF(f)}px`, title: "Arraste para mudar a ordem. No teclado: Alt + seta para cima ou para baixo", tabindex: "0", onkeydown: (ev) => { if (ev.altKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) { ev.preventDefault(); ev.stopPropagation(); moverFaixa(ci, ev.key === "ArrowUp" ? 1 : -1); $(`#st-cabecas .st-cab:nth-child(${S.p.faixas.length - S.p.faixas.indexOf(f)})`)?.focus(); } }, dados: { tipo: f.tipo, ci } }, el("span", { class: "st-alca", "aria-hidden": "true" }), nome,
       f.tipo === "audio" ? b("som", "Silenciar faixa", f.muda, () => { antes(); f.muda = !f.muda; mudou(); montarCabecas(); }) : b("olho", "Esconder faixa", f.oculta, () => { antes(); f.oculta = !f.oculta; mudou(); montarCabecas(); }),
       b("trava", "Travar faixa", f.travada, () => { antes(); f.travada = !f.travada; mudou(); montarCabecas(); }), b("×", "Apagar faixa", false, () => { antes(); S.p.faixas.splice(ci, 1); mudou(true); montarCabecas(); })); }));
 }
 { // arrastar a faixa pelo nome para subir ou descer
   let ar = null; const cabs = $("#st-cabecas");
   const alvo = (y) => { const l = [...cabs.querySelectorAll(".st-cab")]; let n = l.length; for (const [k, c] of l.entries()) { const r = c.getBoundingClientRect(); if (y < r.top + r.height / 2) { n = k; break; } } return n; };
-  const linha = (n) => { const l = [...cabs.querySelectorAll(".st-cab")], cx = cabs.getBoundingClientRect(), r = n < l.length ? l[n].getBoundingClientRect().top : l[l.length - 1].getBoundingClientRect().bottom; ar.marca.style.top = `${r - cx.top - 1}px`; };
-  cabs.addEventListener("pointerdown", (ev) => { const c = ev.target.closest(".st-cab"); if (!c || ev.button !== 0 || ev.target.closest("button")) return; ev.preventDefault(); ar = { c, y0: ev.clientY, de: [...cabs.children].indexOf(c), ativo: false, marca: el("i", { class: "st-cab-linha" }) }; cabs.setPointerCapture(ev.pointerId); });
-  cabs.addEventListener("pointermove", (ev) => { if (!ar) return; if (!ar.ativo) { if (Math.abs(ev.clientY - ar.y0) < 4) return; ar.ativo = true; ar.c.dataset.arrastando = "1"; cabs.dataset.arrastando = "1"; cabs.append(ar.marca); } ar.para = alvo(ev.clientY); linha(ar.para); });
+  const linha = (n) => { const l = [...cabs.querySelectorAll(".st-cab")], y = n < l.length ? l[n].offsetTop : l[l.length - 1].offsetTop + l[l.length - 1].offsetHeight; ar.marca.style.top = `${y - 1}px`; };
+  cabs.addEventListener("pointerdown", (ev) => { const c = ev.target.closest(".st-cab"); if (!c || ev.button !== 0 || ev.target.closest("button")) return; ev.preventDefault(); ar = { c, y0: ev.clientY, de: [...cabs.children].indexOf(c), ativo: false, marca: el("i", { class: "st-cab-linha" }), id: ev.pointerId }; });
+  cabs.addEventListener("pointermove", (ev) => { if (!ar) return; if (!ar.ativo) { if (Math.abs(ev.clientY - ar.y0) < 4) return; ar.ativo = true; try { cabs.setPointerCapture(ar.id); } catch {} ar.c.dataset.arrastando = "1"; cabs.dataset.arrastando = "1"; cabs.append(ar.marca); } ar.para = alvo(ev.clientY); linha(ar.para); });
   const soltar = () => { if (!ar) return; const { ativo, de, para } = ar; ar.marca.remove(); delete cabs.dataset.arrastando; delete ar.c.dataset.arrastando; ar = null; if (!ativo || para == null) return;
     const ordem = [...S.p.faixas].reverse(), f = ordem[de], destino = para > de ? para - 1 : para; if (destino === de) return; antes(); ordem.splice(de, 1); ordem.splice(destino, 0, f); S.p.faixas = ordem.reverse(); mudou(true); montarCabecas(); };
   cabs.addEventListener("pointerup", soltar); cabs.addEventListener("pointercancel", soltar);
+  addEventListener("pointerup", () => { if (ar && !ar.ativo) ar = null; });
+}
+function renomearFaixa(f, nome) {
+  const campo = el("input", { class: "st-cab-nome", value: f.nome, maxlength: "30", "aria-label": "Nome da faixa" }); let feito = false;
+  const fim = (salvar) => { if (feito) return; feito = true; const v = campo.value.trim(); if (salvar && v && v !== f.nome) { antes(); f.nome = v; mudou(); } montarCabecas(); };
+  campo.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") fim(true); if (ev.key === "Escape") fim(false); });
+  campo.addEventListener("blur", () => fim(true)); campo.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  nome.replaceWith(campo); campo.focus(); campo.select();
 }
 function moverFaixa(i, d) { const j = i + d; if (j < 0 || j >= S.p.faixas.length) return; antes(); [S.p.faixas[i], S.p.faixas[j]] = [S.p.faixas[j], S.p.faixas[i]]; mudou(); montarCabecas(); }
 /* ---------- Pontos de animação, como no CapCut ---------- */
@@ -386,7 +396,7 @@ function montarLinha() {
     for (const i of f.itens) { if (i.ini + i.dur < de || i.ini > ate) continue;
       const s = S.sel.has(i.id), b = el("div", { class: `st-bl ${i.tipo}${s ? " sel" : ""}${s && arr?.modo === "mover" && arr.feito ? " arrastando" : ""}`, style: `left:${i.ini * S.px}px;width:${Math.max(3, i.dur * S.px)}px`, title: rotuloItem(i), dados: { i: i.id } }, el("span", {}, rotuloItem(i)));
       if (s && !f.travada && i.dur * S.px >= 30) b.append(el("em", { class: "a", dados: { b: "a" } }), el("em", { class: "b", dados: { b: "b" } }));
-      if (s && i.tipo === "audio" && !f.travada) { const h = altF(f), vol = i.volume ?? 100, fi = +i.fade_in || 0, fo = +i.fade_out || 0;
+      if (s && i.tipo === "audio" && !f.travada) { const h = altF(f) - 5, vol = i.volume ?? 100, fi = +i.fade_in || 0, fo = +i.fade_out || 0;
         b.append(el("i", { class: "st-vol", title: `Volume ${Math.round(vol)}%. Arraste para cima ou para baixo.`, style: `top:${4 + (1 - Math.min(200, vol) / 200) * (h - 8)}px`, dados: { vol: "1" } }),
           el("i", { class: "st-fade", title: `Entrada suave: ${String(arred(fi)).replace(".", ",")} s. Arraste para os lados.`, style: `left:${fi * S.px}px`, dados: { fade: "in" } }),
           el("i", { class: "st-fade", title: `Saída suave: ${String(arred(fo)).replace(".", ",")} s. Arraste para os lados.`, style: `left:${(i.dur - fo) * S.px}px`, dados: { fade: "out" } })); }
@@ -403,12 +413,13 @@ function montarLinha() {
   for (let t = Math.floor(esq / S.px / passo) * passo; t * S.px < esq + W; t += passo) { const x = t * S.px - esq; r0.beginPath(); r0.moveTo(x + .5, 16); r0.lineTo(x + .5, 24); r0.stroke(); r0.fillText(passo < 1 ? tempoTxt(t) : relogio(t), x + 3, 13); }
   r0.fillStyle = "#5ad1b3"; for (const m of S.p.marcadores || []) { const x = m * S.px - esq; r0.beginPath(); r0.moveTo(x - 5, 14); r0.lineTo(x + 5, 14); r0.lineTo(x, 23); r0.fill(); }
   const c = regua.getContext("2d"); c.scale(d, d);
-  let y = 0; c.fillStyle = "rgba(255,255,255,.42)";
-  for (const f of [...S.p.faixas].reverse()) { const h = altF(f);
+  let y = 0; c.fillStyle = "rgba(255,255,255,.42)"; const topoRegua = regua.getBoundingClientRect().top, linhasDom = [...trilhas.children];
+  for (const [k, f] of [...S.p.faixas].reverse().entries()) { const linhaDom = linhasDom[k]; let h = altF(f);
+    if (linhaDom) { const r = linhaDom.getBoundingClientRect(); y = r.top - topoRegua + 3; h = linhaDom.clientHeight - 6; } // a onda fica dentro do bloco, mesmo com bordas e zoom de faixa
     if (["video", "audio"].includes(f.tipo)) for (const i of f.itens) { if (i.mudo || i.tipo === "imagem" || i.tipo === "forma" || i.ini + i.dur < de || i.ini > ate) continue; const m = S.p.midias[i.midia], o = m && ondaDe(m); if (!o?.length || !m.dur) continue;
       const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); const aud = i.tipo === "audio", nivel = (u) => aud ? Math.min(2, ganhoEmItem(i, u)) : 1;
       for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, Math.min(1, v * nivel(u)) * (h - 10)); c.fillRect(x, y + h - 3 - a, 1.2, a); }
-      if (aud) { c.save(); c.strokeStyle = "rgba(255,201,51,.95)"; c.lineWidth = 1.5; c.beginPath(); for (let x = x0; x <= x1; x += 2) { const u = (x + esq) / S.px - i.ini, yy = y + 4 + (1 - nivel(u) / 2) * (h - 8); x === x0 ? c.moveTo(x, yy) : c.lineTo(x, yy); } c.stroke(); c.restore(); } }
+      if (aud) { c.save(); c.strokeStyle = "rgba(255,201,51,.95)"; c.lineWidth = 1.5; c.beginPath(); for (let x = x0; x <= x1; x += 2) { const u = (x + esq) / S.px - i.ini, yy = y + 3 + (1 - nivel(u) / 2) * (h - 6); x === x0 ? c.moveTo(x, yy) : c.lineTo(x, yy); } c.stroke(); c.restore(); } }
     y += h + 1; }
   moverAgulha(false);
   const n = S.sel.size, u = sel1(); $("#st-sel").textContent = n > 1 ? `${n} elementos selecionados` : u ? `${ROTULOS[u.tipo]}: ${tempoTxt(u.ini)} a ${tempoTxt(u.ini + u.dur)}` : "";

@@ -208,3 +208,4 @@ body[data-vazio="true"] .comando-vitrine { display: grid; justify-items: center;
 @media (prefers-reduced-motion: reduce) { .vt-legenda b, .vt-barra { animation: none; } }
 @media (max-width: 60rem) { body[data-vazio="true"] .comando { grid-template-columns: minmax(0, 1fr); } body[data-vazio="true"] .comando-vitrine { display: none; } }
 @media (max-width: 52rem) { body[data-vazio="true"] .passos::before { display: none; } body[data-vazio="true"] .comando-opcoes { flex-direction: column; align-items: flex-start; } }
+.mt-tipo { padding: 0; margin: 0; border: 0; }

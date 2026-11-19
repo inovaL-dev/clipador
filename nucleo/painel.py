@@ -412,7 +412,7 @@ class Painel(BaseHTTPRequestHandler):
         if caminho == "/api/montagens/estilo":
             return self._acao(lambda d: self.motor.montagens.pedir_estilo(d))
         if caminho == "/api/montagens":
-            return self._acao(lambda d: self.motor.montagens.pedir(str(d.get("pasta") or ""), int(d.get("cenas", 4))))
+            return self._acao(lambda d: self.motor.montagens.pedir(str(d.get("pasta") or ""), int(d.get("cenas", 4)), bool(d.get("emendado"))))
         if caminho == "/api/atualizacao/verificar":
             return self._acao(lambda d: self.motor.atualizacao.verificar())
         if caminho == "/api/atualizacao/abrir":

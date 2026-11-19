@@ -220,18 +220,34 @@ class Gravadas:
         self.trava = threading.RLock()
         self.vez = threading.Lock()
         self.envios = self.pasta / "envios"
-        shutil.rmtree(self.envios, ignore_errors=True)  # sobras de envios que não chegaram ao fim
         self.envios.mkdir(parents=True, exist_ok=True)
         self.recebidos: dict[str, dict] = {}
+        self._continuar: list[dict] = []
+        em_uso = set()
         for item in self.itens.values():
             if item["status"] not in ETAPAS_FINAIS:
-                pedido = "Envie o vídeo de novo." if item.get("envio") else "Cole o link de novo."
-                item.update(status="erro", etapa="Interrompida", erro=f"O programa foi fechado durante a análise. {pedido}")
-                shutil.rmtree(self.pasta / item["id"], ignore_errors=True)
+                if item.get("envio") and not Path(item["link"]).is_file():
+                    item.update(status="erro", etapa="Interrompida", erro="O programa foi fechado antes de o vídeo terminar de chegar. Envie o vídeo de novo.")
+                    continue
+                item.update(status="fila", etapa="Continuando de onde parou")  # a pasta com o que já foi baixado fica guardada
+                em_uso.add(Path(item["link"]).name)
+                self._continuar.append(item)
+        for sobra in self.envios.iterdir():  # sobras de envios que não chegaram ao fim
+            if sobra.name not in em_uso:
+                sobra.unlink(missing_ok=True) if sobra.is_file() else shutil.rmtree(sobra, ignore_errors=True)
 
     def _salvar(self) -> None:
         with self.trava:
             self.motor._gravar(self.arquivo, list(self.itens.values()))
+
+    def retomar(self) -> None:
+        for item in self._continuar:
+            self.paradas[item["id"]] = threading.Event()
+            threading.Thread(target=self._rodar, args=(item,), daemon=True).start()
+        if self._continuar:
+            self._salvar()
+            self.motor.evento("Gravações", "info", f"Continuando {len(self._continuar)} {'gravação' if len(self._continuar) == 1 else 'gravações'} de onde parou")
+        self._continuar = []
 
     def resumo(self) -> list[dict]:
         with self.trava:
@@ -367,24 +383,30 @@ class Gravadas:
         if duracao < (MINIMO_ENVIO if item.get("envio") else MINIMO_LINK):
             raise ValueError(f"O vídeo precisa ter pelo menos {MINIMO_ENVIO} segundos." if item.get("envio") else "A gravação precisa ter pelo menos 2 minutos.")
         item["duracao"] = round(duracao)
-        self._etapa(item, "chat", "Lendo o chat da live")
-        mensagens = self._chat(item, info, origem if local else None, pasta, duracao, parar)
-        item.update(mensagens=len(mensagens), chat=bool(mensagens))
-        self._etapa(item, "analisando", "Procurando os melhores momentos")
-        notas = analisar_video(video, duracao, agrupar_chat(mensagens), parar, lambda f: item.__setitem__("progresso", round(f * 100)))
-        espaco = max(20.0, min(ESPACO_MINIMO, duracao / (item["momentos"] + 1))) if item.get("envio") else ESPACO_MINIMO
-        momentos = escolher_momentos(notas, item["momentos"], espaco)
+        momentos = item.get("pontos")  # se o programa fechou depois da análise, não precisa analisar de novo
         if not momentos:
-            raise ValueError("Não encontrei momentos com som ou movimento nesta gravação.")
+            self._etapa(item, "chat", "Lendo o chat da live")
+            mensagens = self._chat(item, info, origem if local else None, pasta, duracao, parar)
+            item.update(mensagens=len(mensagens), chat=bool(mensagens))
+            self._etapa(item, "analisando", "Procurando os melhores momentos")
+            notas = analisar_video(video, duracao, agrupar_chat(mensagens), parar, lambda f: item.__setitem__("progresso", round(f * 100)))
+            espaco = max(20.0, min(ESPACO_MINIMO, duracao / (item["momentos"] + 1))) if item.get("envio") else ESPACO_MINIMO
+            momentos = escolher_momentos(notas, item["momentos"], espaco)
+            if not momentos:
+                raise ValueError("Não encontrei momentos com som ou movimento nesta gravação.")
+            item["pontos"] = momentos
         item["achados"] = len(momentos)
         self._etapa(item, "cortando", f"Cortando {len(momentos)} momentos")
-        ids = []
+        ids = [i for i in item.get("ids") or [] if i in self.motor.cortes]
         for n, momento in enumerate(momentos, 1):
+            if n <= len(item.get("ids") or []):
+                continue  # este momento já virou corte antes de o programa fechar
             if parar.is_set():
                 raise Cancelada()
             while self.motor.fila.qsize() >= 2 and not parar.is_set():
                 time.sleep(1)  # os cortes da live ao vivo têm prioridade
             ids.append(self.motor.corte_gravado(item, video, duracao, momento))
+            item["ids"] = list(ids)
             item["progresso"] = round(n / len(momentos) * 50)
             self._salvar()
         while any(self.motor.cortes.get(i, {}).get("status") not in ("pronto", "erro", None) for i in ids):

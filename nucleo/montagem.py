@@ -128,7 +128,7 @@ class Montagens:
         return [m for m in lista if m.get("pasta") == pasta and m.get("status") == "pronto" and not m.get("montagem") and float(m.get("duracao_fonte") or m.get("duracao") or 0) >= 8
                 and (self.motor.saida / m["id"] / "fonte.mp4").exists() and (not novos or (not m.get("montado") and m["criado"] >= self.inicio))]
 
-    def pedir(self, pasta: str, cenas: int) -> dict:
+    def pedir(self, pasta: str, cenas: int, emendado: bool = False) -> dict:
         if int(cenas) not in CENAS_MONTAGEM:
             raise ValueError("Escolha de 3 a 6 cenas para a montagem.")
         todos = self.candidatos(pasta)
@@ -136,6 +136,9 @@ class Montagens:
         base = livres if len(livres) >= int(cenas) else todos
         if len(base) < int(cenas):
             raise ValueError(f"Esta pasta precisa de pelo menos {cenas} cortes prontos.")
+        if emendado:  # os melhores momentos, na ordem em que aconteceram, só com o trecho da ação
+            fila = sorted(escolher(base, int(cenas)), key=lambda m: float(m.get("pos_live") if m.get("pos_live") is not None else m["criado"]))
+            return self._criar(pasta, fila, emendado=True)
         return self._criar(pasta, ordenar(escolher(base, int(cenas))))
 
     def pedir_estilo(self, dados: dict) -> dict:
@@ -252,8 +255,9 @@ class Montagens:
                 final["global"] = copy.deepcopy(p["global"])
             titulo = titulo or next((copy.deepcopy(i) for f in p["faixas"] for i in f["itens"] if i.get("papel") == "gancho"), None)
             total = comp.duracao_projeto(p)
-            if meta.get("emendado") and origem.get("nucleo"):
-                ini, fim = max(0.0, origem["nucleo"][0] - .4), min(total, origem["nucleo"][1] + .7)  # só o que aconteceu, sem enchimento
+            if meta.get("emendado"):
+                nucleo = origem.get("nucleo") or ctx.nucleo_da_acao(origem.get("grupos") or [], float(origem["momento_fonte"]) if origem.get("momento_fonte") is not None else total * .62, total)  # cortes antigos: calcula agora
+                ini, fim = max(0.0, nucleo[0] - .4), min(total, nucleo[1] + .7)  # só o que aconteceu, sem enchimento
             else:
                 ini, fim = janela(origem, alvo)
             fim = min(fim, total, ini + max(2.5, LIMITE - pos))

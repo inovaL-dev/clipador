@@ -630,6 +630,10 @@
     <div class="mt-corpo">
       <div class="bloco"><label for="mt-pasta">Live</label><select id="mt-pasta" required></select></div>
       <div class="bloco"><label for="mt-cenas">Cenas</label><select id="mt-cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
+      <fieldset class="modos coluna mt-tipo"><legend>Tipo</legend>
+        <label><input type="radio" name="mt-tipo" value="emendado" checked><span><b>Short com cenas emendadas</b>Só o trecho em que cada coisa aconteceu, na ordem da live, com transição, zoom e som</span></label>
+        <label><input type="radio" name="mt-tipo" value="melhores"><span><b>Os melhores momentos</b>Abre com o mais forte e fecha com o segundo mais forte</span></label>
+      </fieldset>
       <p class="erro-campo" id="mt-erro" role="alert" hidden></p>
     </div>
     <footer class="editor-acoes"><button class="botao principal" type="submit">Criar montagem</button></footer>

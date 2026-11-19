@@ -304,7 +304,7 @@ $("#abrir-montagem").addEventListener("click", () => {
 });
 $("#form-montagem").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  try { await api("POST", "/api/montagens", { pasta: $("#mt-pasta").value, cenas: +$("#mt-cenas").value }); $("#janela-montagem").close(); avisar("A montagem começou"); atualizar(); }
+  try { await api("POST", "/api/montagens", { pasta: $("#mt-pasta").value, cenas: +$("#mt-cenas").value, emendado: $('#form-montagem input[name="mt-tipo"]:checked')?.value === "emendado" }); $("#janela-montagem").close(); avisar("A montagem começou"); atualizar(); }
   catch (e) { $("#mt-erro").textContent = e.message; $("#mt-erro").hidden = false; }
 });
 
