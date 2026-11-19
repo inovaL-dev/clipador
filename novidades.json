@@ -1,5 +1,13 @@
 [
   {
+    "versao": "1.8.3",
+    "data": "2026-11-19",
+    "notas": [
+      "O aviso de sem conexão só aparece quando o programa para de responder de verdade.",
+      "Um erro em uma parte da tela não apaga as outras e fica anotado no registro."
+    ]
+  },
+  {
     "versao": "1.8.2",
     "data": "2026-11-19",
     "notas": [

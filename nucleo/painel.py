@@ -363,6 +363,14 @@ class Painel(BaseHTTPRequestHandler):
 
     def do_POST(self):
         caminho = urlsplit(self.path).path
+        if caminho == "/api/programa/erro":
+            corpo = self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 8000))
+            try:
+                d = json.loads(corpo or b"{}")
+                print(f"[tela] {str(d.get('msg'))[:300]}\n{str(d.get('pilha'))[:1500]}", flush=True)
+            except ValueError:
+                pass
+            return self._json({"ok": True})
         if caminho == "/api/programa/sinal":
             corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0))  # a conexão continua aberta para o próximo pedido
             try:

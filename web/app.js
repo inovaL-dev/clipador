@@ -342,8 +342,18 @@ $("#aj-atualizar").addEventListener("click", async (ev) => {
   b.disabled = false; b.textContent = "Procurar atualizações";
 });
 
+// Uma parte da tela com problema não derruba as outras, e o erro vai para o registro do programa.
+const errosAvisados = new Set();
+function avisarErroTela(onde, e) {
+  const msg = `${onde}: ${e?.message || e}`; console.error(msg, e);
+  if (errosAvisados.has(msg) || errosAvisados.size > 20) return; errosAvisados.add(msg);
+  fetch("/api/programa/erro", { method: "POST", body: JSON.stringify({ msg, pilha: String(e?.stack || "").slice(0, 1500), versao: document.documentElement.dataset.versao || "" }) }).catch(() => {});
+}
+addEventListener("error", (ev) => avisarErroTela("janela", ev.error || ev.message));
+addEventListener("unhandledrejection", (ev) => avisarErroTela("promessa", ev.reason));
+function seguro(nome, fn) { try { fn(); } catch (e) { avisarErroTela(nome, e); } }
 function renderTudo() {
-  renderAtualizacao();
+  seguro("atualizacao", renderAtualizacao);
   const temAlgo = estado.canais.length > 0 || estado.cortes.length > 0;
   document.body.dataset.vazio = String(!temAlgo);
   document.body.dataset.noAr = String(estado.canais.some((c) => c.status === "gravando"));
@@ -353,12 +363,22 @@ function renderTudo() {
   $("#resumo").textContent = !temAlgo ? "" : [aoVivo ? `${aoVivo} ${aoVivo > 1 ? "lives" : "live"} no ar` : "Nenhuma live no ar", edicao ? `${edicao} em edição` : null].filter(Boolean).join(", ");
   $("#n-vivo").textContent = aoVivo || "";
   $("#n-cortes").textContent = estado.cortes.filter((c) => !c.postado).length || "";
-  renderLives(); renderAgora(); renderCortes(); renderRecentes(); renderPostagem(); renderLongos(); if (typeof renderEditor === "function") renderEditor();
+  for (const [nome, fn] of [["lives", renderLives], ["agora", renderAgora], ["cortes", renderCortes], ["recentes", renderRecentes], ["postagem", renderPostagem], ["longos", renderLongos]]) seguro(nome, fn);
+  if (typeof renderEditor === "function") seguro("editor", renderEditor);
 }
 
+// Só avisa "sem conexão" quando o programa deixa de responder de verdade (várias tentativas seguidas),
+// e nunca dispara um pedido novo enquanto o anterior ainda está a caminho.
+let pedindoEstado = false, ultimoOk = Date.now();
+function conferirConexao() { if (Date.now() - ultimoOk > 15000) { document.body.dataset.semConexao = "1"; $("#resumo").textContent = "Sem resposta do programa. Se continuar assim, feche e abra o Clipador; as gravações seguem salvas."; } }
 async function atualizar() {
-  try { estado = await api("GET", "/api/estado"); renderTudo(); }
-  catch { $("#resumo").textContent = "Sem conexão com o programa. Confira se a janela do clipador está aberta."; }
+  conferirConexao(); if (pedindoEstado) return; pedindoEstado = true;
+  const parar = new AbortController(), relogio = setTimeout(() => parar.abort(), 12000);
+  try {
+    const r = await fetch("/api/estado", { signal: parar.signal, cache: "no-store" }); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    estado = await r.json(); ultimoOk = Date.now(); document.body.removeAttribute("data-sem-conexao");
+  } catch { conferirConexao(); return; } finally { clearTimeout(relogio); pedindoEstado = false; }
+  renderTudo();
 }
 setInterval(() => { if (!document.hidden) atualizar(); }, 1000);
 // Avisa o programa que a tela está viva. Quando a janela vai para trás ou é minimizada, avisa na hora,
