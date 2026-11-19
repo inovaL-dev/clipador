@@ -23,6 +23,8 @@ REPETICOES = 2      # uma escolha vira preferência depois de aparecer em 2 víd
 MINIMO_VIDEOS = 5   # menos que isso não diz nada sobre o que funciona no canal
 IDADE_MINIMA = 48 * 3600
 INTERVALO_CANAL = 6 * 3600
+LIMITE_EXEMPLOS = 200
+PARECIDO = 1.0      # abaixo dessa distância, dois exemplos pertencem ao mesmo modelo
 ANALISE_MAX = 180  # segundos analisados de cada vídeo de exemplo
 
 
@@ -217,6 +219,36 @@ def medir_video(video: Path, palavras: list[dict] | None = None) -> dict:
             "palavra_a_palavra": bool(leg and leg["largura"] < .3), "barra": _achar_barra(quadros), "palavras_s": round(len(palavras) / max(1.0, dur), 2) if palavras is not None else None, **edicao_medida}
 
 
+def distancia(a: dict, b: dict) -> float:
+    """Compara o jeito de editar de dois vídeos. Quanto menor, mais parecidos."""
+    d = float(bool(a.get("webcam")) != bool(b.get("webcam"))) + .6 * float(bool(a.get("palavra_a_palavra")) != bool(b.get("palavra_a_palavra")))
+    if a.get("cena_s") and b.get("cena_s"):
+        d += abs(float(np.log2(a["cena_s"] / b["cena_s"])))
+    if a.get("zooms_min") is not None and b.get("zooms_min") is not None:
+        d += min(1.0, abs(a["zooms_min"] - b["zooms_min"]) / 15) * .5
+    if a.get("sfx_cortes") is not None and b.get("sfx_cortes") is not None:
+        d += abs(a["sfx_cortes"] - b["sfx_cortes"]) * .8
+    ta, tb = a.get("transicoes") or {}, b.get("transicoes") or {}
+    if ta and tb and max(ta, key=ta.get) != max(tb, key=tb.get):
+        d += .7
+    if (a.get("legenda") or {}).get("y") and (b.get("legenda") or {}).get("y"):
+        d += min(1.0, abs(a["legenda"]["y"] - b["legenda"]["y"]) / .15) * .5
+    return d
+
+
+def nome_do_estilo(p: dict) -> str:
+    cena = p.get("cena_s") or 60 / max(1.0, p.get("cortes_min") or 10)
+    partes = ["Ritmo rápido" if cena < 3 else "Ritmo dinâmico" if cena < 6 else "Ritmo calmo"]
+    if p.get("webcam"):
+        partes.append("câmera em cima")
+    troca = (p.get("transicoes") or [None])[0]
+    if troca in ("clarao", "chicote"):
+        partes.append("com clarão" if troca == "clarao" else "com chicote")
+    if (p.get("zooms_min") or 0) >= 8:
+        partes.append("muito zoom")
+    return ", ".join(partes)
+
+
 def _par(v: float) -> int:
     return int(round(v / 2) * 2)
 
@@ -249,6 +281,10 @@ class Aprendizado:
             self.m.update(json.loads(self.arquivo.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             pass
+        self.m.setdefault("modelos", {}); self.m.setdefault("uso_modelos", {}); self.m.setdefault("pesos_modelos", {})
+        for r in self.m["referencias"]:
+            if r.get("modelo") not in self.m["modelos"]:
+                self._agrupar(r)
         self.trabalho: dict = {"estado": "parado"}
         self.fila_refs: list[dict] = []
         threading.Thread(target=self._vigiar_canal, daemon=True).start()
@@ -257,6 +293,96 @@ class Aprendizado:
         temp = self.arquivo.with_suffix(".tmp")
         temp.write_text(json.dumps(self.m, ensure_ascii=False), encoding="utf-8")
         temp.replace(self.arquivo)
+
+    # ------------------------------------------------------------ modelos aprendidos
+
+    def _exemplos(self, modelo: str) -> list[dict]:
+        return [r for r in self.m["referencias"] if r.get("modelo") == modelo]
+
+    def _agrupar(self, ref: dict) -> None:
+        """Coloca o exemplo no modelo mais parecido ou cria um modelo novo."""
+        melhor, menor = None, PARECIDO
+        for ident in self.m["modelos"]:
+            exemplos = self._exemplos(ident)
+            d = sum(distancia(ref["medidas"], e["medidas"]) for e in exemplos) / len(exemplos) if exemplos else PARECIDO
+            if d < menor:
+                melhor, menor = ident, d
+        if melhor is None:
+            melhor = uuid.uuid4().hex[:8]
+            self.m["modelos"][melhor] = {"nome": "", "manual": False, "ativo": True}
+        ref["modelo"] = melhor
+        self._nomear()
+
+    def _nomear(self) -> None:
+        usados: Counter = Counter()
+        for ident, modelo in self.m["modelos"].items():
+            if modelo.get("manual") or not self._exemplos(ident):
+                continue
+            base = nome_do_estilo(self.perfil(ident, sem_filtro=True) or {})
+            usados[base] += 1
+            modelo["nome"] = base if usados[base] == 1 else f"{base} {usados[base]}"
+
+    def ativos(self) -> list[str]:
+        if not self.m["ativo"]["referencias"]:
+            return []
+        return [i for i, m in self.m["modelos"].items() if m.get("ativo", True) and self._exemplos(i)]
+
+    def escolher_modelo(self, meta: dict | None = None) -> str | None:
+        """Reveza entre todos os modelos e usa mais os que trazem melhor resultado."""
+        lista = self.ativos()
+        if not lista:
+            return None
+        rapido = (meta or {}).get("reacao") in ("jogo", "hype", "choque", "streamer")
+        with self.trava:
+            uso = self.m["uso_modelos"]
+            total = sum(uso.get(i, 0) for i in lista) + 1
+            def prioridade(i: str) -> float:
+                p = self.perfil(i) or {}
+                cena = p.get("cena_s") or 6.0
+                encaixe = 1.2 if rapido == (cena < 5) else 1.0
+                alvo = float(self.m["pesos_modelos"].get(i, 1.0)) * float(np.sqrt(len(self._exemplos(i)))) * encaixe
+                return alvo / (uso.get(i, 0) / total + .02) if len(lista) > 1 else alvo
+            escolhido = max(lista, key=prioridade)
+            uso[escolhido] = uso.get(escolhido, 0) + 1
+            self._salvar()
+        return escolhido
+
+    def estilo_do_modelo(self, modelo: str | None) -> dict:
+        """O que muda no vídeo para seguir o modelo. O que você ajustou à mão continua valendo."""
+        p = self.perfil(modelo) if modelo else None
+        if not p:
+            return {}
+        novo: dict = {}
+        if p["palavra_a_palavra"]:
+            novo["legenda"] = "palavra"
+        if p["legenda"]:
+            novo["legenda_y"], novo["legenda_x"] = round(min(.9, p["legenda"]["y"] + p["legenda"]["altura"] / 2), 4), .5
+        if p["cortes_min"] >= 8:
+            novo["ritmo"] = round(float(np.clip(60 / p["cortes_min"] * 1.4, 2.5, 6.0)), 1)
+        if p.get("zoom_escala"):
+            novo["zoom_forca"] = int(np.clip(round((p["zoom_escala"] - 1) / .15 * 100), 60, 160))
+        pref = self.preferencias()
+        if "y" in pref["legenda"]:
+            novo.pop("legenda_y", None); novo.pop("legenda_x", None)
+        if "zoom_forca" in pref["global"]:
+            novo.pop("zoom_forca", None)
+        return novo
+
+    def definir_modelo(self, ident: str, dados: dict) -> dict:
+        modelo = self.m["modelos"][ident]
+        if isinstance(dados.get("nome"), str) and dados["nome"].strip():
+            modelo.update(nome=dados["nome"].strip()[:50], manual=True)
+        if "ativo" in dados:
+            modelo["ativo"] = bool(dados["ativo"])
+        self._salvar(); self.aplicar_estilo()
+        return self.resumo()
+
+    def remover_modelo(self, ident: str) -> dict:
+        del self.m["modelos"][ident]
+        self.m["referencias"] = [r for r in self.m["referencias"] if r.get("modelo") != ident]
+        self.m["uso_modelos"].pop(ident, None); self.m["pesos_modelos"].pop(ident, None)
+        self._nomear(); self._salvar(); self.aplicar_estilo()
+        return self.resumo()
 
     # ------------------------------------------------------------ vídeos de referência
 
@@ -295,8 +421,10 @@ class Aprendizado:
                 palavras = None
             medidas = medir_video(arq, palavras)
             with self.trava:
-                self.m["referencias"].append({"id": uuid.uuid4().hex[:10], "nome": t["nome"], "criado": time.time(), "medidas": medidas})
-                self.m["referencias"] = self.m["referencias"][-20:]
+                ref = {"id": uuid.uuid4().hex[:10], "nome": t["nome"], "criado": time.time(), "medidas": medidas}
+                self.m["referencias"].append(ref)
+                self.m["referencias"] = self.m["referencias"][-LIMITE_EXEMPLOS:]
+                self._agrupar(ref)
                 self._salvar()
             self.aplicar_estilo()
             self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs)} if self.fila_refs else {"estado": "pronto", "nome": t["nome"]}
@@ -305,10 +433,10 @@ class Aprendizado:
         finally:
             arq.unlink(missing_ok=True)  # guarda só as medidas, nunca o vídeo de outra pessoa
 
-    def perfil(self) -> dict | None:
-        """Junta todas as referências: vale o que aparece na maioria delas."""
-        refs = [r["medidas"] for r in self.m["referencias"]]
-        if not refs or not self.m["ativo"]["referencias"]:
+    def perfil(self, modelo: str | None = None, sem_filtro: bool = False) -> dict | None:
+        """Junta os exemplos de um modelo: vale o que aparece na maioria deles."""
+        refs = [r["medidas"] for r in self.m["referencias"] if modelo is None or r.get("modelo") == modelo]
+        if not refs or not (sem_filtro or self.m["ativo"]["referencias"]):
             return None
         webcams = [r["webcam"] for r in refs if r.get("webcam")]
         legendas = [r["legenda"] for r in refs if r.get("legenda")]
@@ -326,7 +454,9 @@ class Aprendizado:
 
     def aplicar_estilo(self) -> None:
         """Atualiza o estilo dos próximos vídeos, guardando o anterior para poder voltar."""
-        p, pref = self.perfil(), self.preferencias()
+        lista = self.ativos()
+        # Com vários modelos, cada vídeo recebe o seu; o padrão geral não vira uma mistura deles.
+        p, pref = (self.perfil(lista[0]) if len(lista) == 1 else None), self.preferencias()
         novo: dict = {}
         if p:
             if p["palavra_a_palavra"]:
@@ -361,8 +491,9 @@ class Aprendizado:
             self.motor.salvar_config({"estilo": final})
         self._salvar()
 
-    def ajustar_plano(self, plano: dict, fonte: Path) -> dict:
-        p = self.perfil()
+    def ajustar_plano(self, plano: dict, fonte: Path, modelo: str | None = None) -> dict:
+        lista = self.ativos()
+        p = self.perfil(modelo) if modelo else self.perfil(lista[0]) if len(lista) == 1 else None
         if not p or not p["webcam"] or plano.get("layout") != "dividido" or plano.get("origem") == "manual":
             return plano
         vw, vh, _ = cam.dimensoes(fonte)
@@ -424,7 +555,10 @@ class Aprendizado:
             return
         por_tipo: dict[str, list[int]] = {}
         por_tempo: dict[str, list[int]] = {}
+        por_modelo: dict[str, list[int]] = {}
         for meta, v in dados:
+            if meta.get("modelo"):
+                por_modelo.setdefault(meta["modelo"], []).append(v)
             por_tipo.setdefault(meta.get("reacao") or "destaque", []).append(v)
             d = float(meta.get("duracao") or 0)
             por_tempo.setdefault("até 30 s" if d <= 30 else "30 a 45 s" if d <= 45 else "mais de 45 s", []).append(v)
@@ -432,6 +566,8 @@ class Aprendizado:
             self.m["desempenho"] = {"videos": len(dados), "media": round(media), "tipos": {k: {"n": len(l), "media": round(sum(l) / len(l))} for k, l in por_tipo.items()},
                                     "duracoes": {k: {"n": len(l), "media": round(sum(l) / len(l))} for k, l in por_tempo.items()}}
             self.m["pesos"] = {k: round(float(np.clip((sum(l) / len(l)) / media, .7, 1.3)), 2) for k, l in por_tipo.items() if len(l) >= MINIMO_VIDEOS}
+            self.m["desempenho"]["modelos"] = {k: {"n": len(l), "media": round(sum(l) / len(l))} for k, l in por_modelo.items()}
+            self.m["pesos_modelos"] = {k: round(float(np.clip((sum(l) / len(l)) / media, .5, 1.6)), 2) for k, l in por_modelo.items() if len(l) >= MINIMO_VIDEOS}
             self.m["canal_em"] = time.time()
             self._salvar()
 
@@ -458,13 +594,15 @@ class Aprendizado:
 
     def remover(self, ident: str) -> dict:
         self.m["referencias"] = [r for r in self.m["referencias"] if r["id"] != ident]
-        self._salvar(); self.aplicar_estilo()
+        for vazio in [i for i in self.m["modelos"] if not self._exemplos(i)]:
+            del self.m["modelos"][vazio]
+        self._nomear(); self._salvar(); self.aplicar_estilo()
         return self.resumo()
 
     def esquecer(self) -> dict:
         antes = self.m.get("estilo_antes")
         aplicado = self.m.get("estilo_aplicado") or {}
-        self.m.update(referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
+        self.m.update(modelos={}, uso_modelos={}, pesos_modelos={}, referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
         self._salvar()
         atual = dict(self.motor.config["estilo"])
         volta = {k: (antes or {}).get(k) for k, v in aplicado.items() if atual.get(k) == v}
@@ -474,5 +612,8 @@ class Aprendizado:
 
     def resumo(self) -> dict:
         pref = self.preferencias()
-        return {"ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
+        dados_modelos = (self.m["desempenho"] or {}).get("modelos") or {}
+        modelos = [{"id": i, "nome": m.get("nome") or "Modelo", "ativo": m.get("ativo", True), "uso": self.m["uso_modelos"].get(i, 0), "perfil": self.perfil(i, sem_filtro=True), "resultado": dados_modelos.get(i),
+                    "exemplos": [{"id": r["id"], "nome": r["nome"]} for r in self._exemplos(i)]} for i, m in self.m["modelos"].items() if self._exemplos(i)]
+        return {"modelos": modelos, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
                 "referencias": [{"id": r["id"], "nome": r["nome"], "medidas": r["medidas"]} for r in self.m["referencias"]], "desempenho": self.m["desempenho"], "pesos": self.m["pesos"], "minimo": MINIMO_VIDEOS}

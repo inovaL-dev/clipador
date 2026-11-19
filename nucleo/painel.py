@@ -359,6 +359,8 @@ class Painel(BaseHTTPRequestHandler):
                 return self._erro(str(e))
         if caminho == "/api/aprendizado":
             return self._acao(lambda d: self.motor.aprendizado.definir(d))
+        if m := re.fullmatch(r"/api/aprendizado/modelos/([\w-]+)", caminho):
+            return self._acao(lambda d: self.motor.aprendizado.definir_modelo(m[1], d))
         if caminho == "/api/aprendizado/esquecer":
             return self._acao(lambda d: self.motor.aprendizado.esquecer())
         if caminho == "/api/montagens":
@@ -452,6 +454,8 @@ class Painel(BaseHTTPRequestHandler):
             return self._acao(lambda d: self.motor.remover(m[1]))
         if m := re.fullmatch(r"/api/sons/([\w-]+)", caminho):
             return self._acao(lambda d: self.motor.biblioteca.remover(m[1]))
+        if m := re.fullmatch(r"/api/aprendizado/modelos/([\w-]+)", caminho):
+            return self._acao(lambda d: self.motor.aprendizado.remover_modelo(m[1]))
         if m := re.fullmatch(r"/api/aprendizado/referencias/([\w-]+)", caminho):
             return self._acao(lambda d: self.motor.aprendizado.remover(m[1]))
         if m := re.fullmatch(r"/api/estudio/presets/([\w-]+)", caminho):

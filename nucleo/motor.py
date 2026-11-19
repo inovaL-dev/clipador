@@ -698,8 +698,16 @@ class Motor:
         )
         meta["grupos"] = ctx.agrupar_legenda(trecho)
         meta["duracao_fonte"] = round(duracao, 3)
+        modelo = self.aprendizado.escolher_modelo(meta)
+        perfil_modelo = self.aprendizado.perfil(modelo) if modelo else None
+        if modelo:
+            meta["modelo"] = modelo
+            meta["estilo"] = {**self.aprendizado.estilo_do_modelo(modelo), **(meta.get("estilo") or {})}
         if est.normalizar(self.config["estilo"])["sons_auto"]:
-            meta["edicao"] = edicao_inicial(duracao, sugerir_sons(meta["grupos"], duracao, meta["momento_fonte"], meta.get("reacao")))
+            sons = sugerir_sons(meta["grupos"], duracao, meta["momento_fonte"], meta.get("reacao"))
+            if perfil_modelo and perfil_modelo.get("sfx_cortes") is not None and perfil_modelo["sfx_cortes"] < .2:
+                sons = sons[:1]  # este modelo quase não usa efeitos sonoros
+            meta["edicao"] = edicao_inicial(duracao, sons)
         meta["replanejar"] = True
         edicao.executar(
             ["ffmpeg", "-v", "error", "-y", "-ss", f"{min(momento - ini, duracao - 0.5):.2f}", "-i", str(fonte),
@@ -765,7 +773,7 @@ class Motor:
         if meta.get("replanejar") or not meta.get("plano"):
             self._etapa(meta, "enquadrando")
             try:
-                meta["plano"] = self.aprendizado.ajustar_plano(cam.planejar(fonte, meta.get("ajuste_camera")), fonte)
+                meta["plano"] = self.aprendizado.ajustar_plano(cam.planejar(fonte, meta.get("ajuste_camera")), fonte, meta.get("modelo"))
             except Exception:
                 meta["plano"] = {"layout": "inteiro", "origem": "auto"}
             meta["layout"] = meta["plano"]["layout"]

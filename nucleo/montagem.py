@@ -160,7 +160,8 @@ class Montagens:
         origens = [motor.cortes[i] for i in meta["origens"] if i in motor.cortes]
         if len(origens) < 2:
             raise ValueError("Os cortes usados nesta montagem foram apagados.")
-        perfil = motor.aprendizado.perfil()
+        meta["modelo"] = meta.get("modelo") or motor.aprendizado.escolher_modelo(meta)
+        perfil = motor.aprendizado.perfil(meta["modelo"]) if meta["modelo"] else None
         alvo = float(min(12.0, max(5.5, min((perfil or {}).get("cena_s") or 10.0, LIMITE / len(origens)))))
         trocas = sequencia_trocas(perfil)
         volume_som = .55 if perfil and (perfil.get("sfx_cortes") or 1) < .2 else 1.0
