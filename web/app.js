@@ -370,7 +370,7 @@ function renderTudo() {
 // Só avisa "sem conexão" quando o programa deixa de responder de verdade (várias tentativas seguidas),
 // e nunca dispara um pedido novo enquanto o anterior ainda está a caminho.
 let pedindoEstado = false, ultimoOk = Date.now();
-function conferirConexao() { if (Date.now() - ultimoOk > 15000) { document.body.dataset.semConexao = "1"; $("#resumo").textContent = "Sem resposta do programa. Se continuar assim, feche e abra o Clipador; as gravações seguem salvas."; } }
+function conferirConexao() { if (Date.now() - ultimoOk > 30000) { document.body.dataset.semConexao = "1"; $("#resumo").textContent = "Sem resposta do programa. Se continuar assim, feche e abra o Clipador; as gravações seguem salvas."; } }
 async function atualizar() {
   conferirConexao(); if (pedindoEstado) return; pedindoEstado = true;
   const parar = new AbortController(), relogio = setTimeout(() => parar.abort(), 12000);

@@ -26,6 +26,9 @@ mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("text/javascript", ".js")
 
 
+
+from .painel_json import para_json  # noqa: E402
+
 class Painel(BaseHTTPRequestHandler):
     server_version = "Clipador"
     protocol_version = "HTTP/1.1"
@@ -44,7 +47,7 @@ class Painel(BaseHTTPRequestHandler):
     # ------------------------------------------------------------ respostas
 
     def _json(self, dados, codigo=200):
-        corpo = json.dumps(dados, ensure_ascii=False).encode("utf-8")
+        corpo = json.dumps(dados, ensure_ascii=False, default=para_json).encode("utf-8")
         self.send_response(codigo)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
@@ -135,7 +138,12 @@ class Painel(BaseHTTPRequestHandler):
         if caminho == "/oauth/retorno":
             return self._retorno_oauth(parse_qs(partes.query))
         if caminho == "/api/estado":
-            return self._json(self.motor.estado())
+            try:
+                return self._json(self.motor.estado())
+            except Exception:
+                import traceback
+                print("[estado] " + traceback.format_exc(), flush=True)
+                return self._erro("O programa não conseguiu montar a tela. O motivo foi anotado no registro.", 500)
         if m := re.fullmatch(r"/web/([\w.-]+(?:/[\w.-]+)?)", caminho):
             alvo = (WEB / m[1]).resolve()
             if WEB.resolve() in alvo.parents:

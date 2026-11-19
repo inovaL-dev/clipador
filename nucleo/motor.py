@@ -139,7 +139,8 @@ class Motor:
     def _gravar(arquivo: Path, dados) -> None:
         with _TRAVA_ARQUIVOS:
             tmp = arquivo.with_suffix(".tmp")
-            tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+            from .painel_json import para_json
+            tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=1, default=para_json), encoding="utf-8")
             tmp.replace(arquivo)
 
     def _salvar_canais(self) -> None:
@@ -353,11 +354,21 @@ class Motor:
                 "sistema": {"legenda": self.legenda, "fila": self.fila.qsize()},
             }
         # Fora da trava do motor: a postagem usa as duas travas sempre na mesma ordem.
-        return {
-            **base, "postagem": self.postagem.resumo(), "longos": self.longos.resumo(), "longos_auto": self.longos.resumo_auto(),
-            "sessoes": [{k: v for k, v in s.items() if k != "ids"} for s in self.longos.sessoes()],
-            "gravadas": self.gravadas.resumo(), "atualizacao": self.atualizacao.resumo(),
+        # Cada parte é montada à parte: um problema em uma delas não apaga a tela inteira.
+        partes = {
+            "postagem": (self.postagem.resumo, {"itens": [], "conta": {}, "dias": []}), "longos": (self.longos.resumo, []), "longos_auto": (self.longos.resumo_auto, {"ativo": False, "minutos": 10, "lives": []}),
+            "sessoes": (lambda: [{k: v for k, v in s.items() if k != "ids"} for s in self.longos.sessoes()], []),
+            "gravadas": (self.gravadas.resumo, []), "atualizacao": (self.atualizacao.resumo, {}),
         }
+        saida = dict(base)
+        for nome, (fazer, vazio) in partes.items():
+            try:
+                saida[nome] = fazer()
+            except Exception:
+                import traceback
+                print(f"[estado:{nome}] " + traceback.format_exc(), flush=True)
+                saida[nome] = vazio
+        return saida
 
     def _resumo_canal(self, c: CanalVivo) -> dict:
         pont = c.pont
@@ -630,7 +641,7 @@ class Motor:
         try:
             from faster_whisper import WhisperModel
 
-            self._modelo = WhisperModel(nome, device="cpu", compute_type="int8", num_workers=2)
+            self._modelo = WhisperModel(nome, device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
             self.legenda = {"estado": "pronto", "nome": nome}
         except Exception as e:
             self._modelo = None

@@ -124,7 +124,7 @@ async function tocarSom(i, f) {
   const a = await bufferDe(i.midia); if (!a || !S.tocando) return;
   const c = audioCtx(), src = c.createBufferSource(), gn = c.createGain();
   src.buffer = a; gn.gain.value = ganhoEm(i, S.t);
-  src.connect(gn).connect(c.destination); const salto = Math.max(0, S.t - i.ini); src.start(0, (i.entrada || 0) + salto, Math.max(.01, i.dur - salto)); tocandoSons.add(src);
+  src.connect(gn).connect(c.destination); const salto = Math.max(0, S.t - i.ini), vel = i.velocidade || 1; src.playbackRate.value = vel; src.start(0, (i.entrada || 0) + salto * vel, Math.max(.01, (i.dur - salto) * vel)); tocandoSons.add(src);
   const vivo = { id: i.id, gn }; ganhosVivos.add(vivo); src.onended = () => { tocandoSons.delete(src); ganhosVivos.delete(vivo); };
 }
 function tocar(vel = 1) {
@@ -469,7 +469,9 @@ faixasEl.addEventListener("pointermove", (ev) => {
     const d = novo - base.ini, min = Math.min(...arr.grupo.map((g0) => g0.ini)), dd = Math.max(-min, d);
     arr.grupo.forEach((g0) => { g0.o.ini = arred(g0.ini + dd); }); mostrarGuia(novo !== cru ? (usaFim ? novo + base.dur : novo) : null);
     let aviso = "";
-    if (arr.grupo.length === 1) { const alvo = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => n.classList?.contains("st-trilha")); const fx = alvo && S.p.faixas.find((x) => x.id === alvo.dataset.f);
+    if (arr.grupo.length === 1) { const alvo = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => n.classList?.contains("st-trilha")); let fx = alvo && S.p.faixas.find((x) => x.id === alvo.dataset.f);
+      const fora = !alvo && foraDasFaixas(ev.clientY); // espaço vazio acima ou abaixo: cria uma faixa nova, como no CapCut
+      if (fora && !(arr.f.itens.length === 1 && arr.f.criada === fora)) { fx = faixaNova(arr.i.tipo === "imagem" || arr.i.tipo === "forma" ? "video" : arr.i.tipo, fora); fx.criada = fora; montarCabecas(); }
       if (fx && fx !== arr.f && compativel(fx, arr.i) && !fx.travada) { arr.f.itens.splice(arr.f.itens.indexOf(arr.i), 1); fx.itens.push(arr.i); arr.f = fx; arr.origens.add(fx); } else if (fx && fx !== arr.f) aviso = `${ROTULOS[arr.i.tipo]} não entra na faixa ${fx.nome}`; S.alvoF = arr.f.id; }
     mostrarDica(ev, aviso || `${tempoTxt(arr.i.ini)} em ${arr.f.nome}`);
   } else for (const g0 of arr.grupo) { const o = g0.o, m = o.midia && S.p.midias[o.midia], vel = o.velocidade || 1;
@@ -504,6 +506,7 @@ function assentar() {
     const livre = S.p.faixas.find((x) => x !== f && x.tipo === f.tipo && !x.travada && compativel(x, o) && !bate(x, o)) || novaFaixa(f.tipo);
     f.itens.splice(f.itens.indexOf(o), 1); livre.itens.push(o); arr.origens.add(f); }
   for (const f of arr.origens) if (!f.itens.length && S.p.faixas.filter((x) => x.tipo === f.tipo).length > 1) S.p.faixas.splice(S.p.faixas.indexOf(f), 1);
+  for (const f of S.p.faixas) if (f.criada) { if (!f.itens.length) S.p.faixas.splice(S.p.faixas.indexOf(f), 1); delete f.criada; }
 }
 faixasEl.addEventListener("pointerup", soltar); faixasEl.addEventListener("pointercancel", soltar);
 sobre.addEventListener("pointerdown", () => document.activeElement?.blur?.(), true);
@@ -525,6 +528,14 @@ function apagarJuntando() { const l = selecionados(); if (!l.length) return; cor
 $("#st-abrir-tr").addEventListener("click", () => abrirPainel("transicoes")); $("#st-dividir").addEventListener("click", dividir); $("#st-duplicar").addEventListener("click", duplicar); $("#st-apagar").addEventListener("click", () => (cap() ? apagarCamada() : apagar())); $("#st-fechar-vao").addEventListener("click", apagarJuntando);
 $("#st-desfazer").addEventListener("click", desfazer); $("#st-refazer").addEventListener("click", refazer); $("#st-salvar").addEventListener("click", () => { S.sujo = true; salvar(); });
 $("#st-nova-faixa").addEventListener("change", (ev) => { const t = ev.target.value; ev.target.value = ""; if (!t) return; antes(); novaFaixa(t); mudou(); montarCabecas(); });
+function separarAudio(i) { // como no CapCut: o som vira um clipe próprio, e o vídeo fica mudo
+  const m = S.p.midias[i.midia]; if (!m) return; antes();
+  const a = { id: nid(), tipo: "audio", categoria: "voz", nome: `Áudio: ${i.nome || m.nome || "vídeo"}`, midia: i.midia, ini: i.ini, dur: i.dur, entrada: i.entrada || 0, velocidade: i.velocidade || 1, volume: i.volume ?? 100, cena: i.cena };
+  const livre = S.p.faixas.find((f) => f.tipo === "audio" && !f.travada && !f.itens.some((x) => x.ini < a.ini + a.dur && x.ini + x.dur > a.ini));
+  (livre || faixaNova("audio", "baixo")).itens.push(a); i.mudo = true; S.sel = new Set([a.id]); mudou(true); montarCabecas(); selecaoMudou(); avisar("Áudio separado. Agora dá para mover, cortar e mudar o volume dele à parte.");
+}
+function foraDasFaixas(y) { const l = $$("#st-trilhas .st-trilha"); if (!l.length) return null; const a = l[0].getBoundingClientRect(), b = l[l.length - 1].getBoundingClientRect(); return y > b.bottom + 3 ? "baixo" : y < a.top - 3 && y > rolagem.getBoundingClientRect().top + 24 ? "cima" : null; }
+function faixaNova(tipo, onde) { const f = novaFaixa(tipo); if (onde === "baixo") { S.p.faixas.splice(S.p.faixas.indexOf(f), 1); S.p.faixas.unshift(f); } return f; }
 function novaFaixa(tipo) { const f = { id: nid("f"), tipo, nome: { video: "Vídeo", texto: "Textos", legenda: "Legendas", efeito: "Efeitos", audio: "Áudio" }[tipo] + " " + (S.p.faixas.filter((x) => x.tipo === tipo).length + 1), oculta: false, muda: false, travada: false, itens: [] };
   const n = S.p.faixas.map((x) => x.tipo).lastIndexOf(tipo); S.p.faixas.splice(n < 0 ? S.p.faixas.length : n + 1, 0, f); return f; }
 function ferramenta(f) { S.ferr = f; faixasEl.dataset.ferr = f; $("#st-f-sel").setAttribute("aria-pressed", String(f === "sel")); $("#st-f-lamina").setAttribute("aria-pressed", String(f === "lamina")); }
@@ -686,7 +697,8 @@ function montarInspetor() {
   const legs = l.filter((x) => ["legenda", "texto"].includes(x.tipo));
   if (!i && legs.length !== l.length) { c.replaceChildren(el("h2", {}, `${l.length} elementos`), el("p", { class: "dica" }, "Use Dividir, Duplicar ou Apagar na timeline.")); return; }
   const b = i || legs[0], blocos = [el("h2", {}, i ? `${ROTULOS[i.tipo]}` : `${l.length} textos selecionados`)];
-  if (i?.tipo === "video") blocos.push(sec("", btn("Reenquadrar vídeo", () => abrirReenquadrar(i), "botao principal rq-abrir"), el("p", { class: "dica" }, "Mostre as laterais que ficaram de fora.")));
+  if (i?.tipo === "video") blocos.push(sec("", btn("Reenquadrar vídeo", () => abrirReenquadrar(i), "botao principal rq-abrir"), el("p", { class: "dica" }, "Mostre as laterais que ficaram de fora."),
+    i.mudo ? el("p", { class: "dica" }, "O som deste vídeo está desligado ou já foi separado.") : btn("Separar áudio", () => separarAudio(i), "botao rq-abrir")));
   if (i) blocos.push(secTempo(i));
   if (["video", "imagem", "forma"].includes(b.tipo)) {
     blocos.push(sec("Posição e tamanho", campoT(b, "x", "X", { min: -S.p.largura, max: S.p.largura * 2 }), campoT(b, "y", "Y", { min: -S.p.altura, max: S.p.altura * 2 }), campoT(b, "escala", "Escala", { min: .05, max: 5, step: .01 }), campoT(b, "rot", "Rotação", { min: -180, max: 180 }), campoT(b, "opac", "Opacidade", { min: 0, max: 100 }), campoT(b, "w", "Largura", { min: 10, max: S.p.largura * 2 }), campoT(b, "h", "Altura", { min: 10, max: S.p.altura * 2 }),
@@ -739,9 +751,17 @@ function usarMidia(m) {
   colocar("video", { tipo: m.tipo, nome: m.nome, midia: m.id, dur: arred(m.tipo === "video" ? m.dur : 5), entrada: 0, velocidade: 1, volume: 100, t: { x: W / 2, y: H / 2, w: arred((m.lar || W) * e, 1), h: arred((m.alt || H) * e, 1), escala: 1, rot: 0, opac: 100, zoom: 1, zx: .5, zy: .5, cl: 0, ct: 0, cr: 0, cb: 0 }, kf: {} });
 }
 function envioArquivos(accept, fn) { const n = el("input", { type: "file", accept, multiple: "", hidden: "" }); n.addEventListener("change", async () => { for (const a of [...n.files]) { $("#st-salvo").textContent = `Enviando ${a.name}…`; try { const r = await fetch(`/api/estudio/midia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); if (!r.ok) throw new Error(d.erro); fn(d); } catch (e) { avisar(e.message); } } $("#st-salvo").textContent = ""; n.value = ""; }); return n; }
+function arrastavelMidia(m, n) { n.addEventListener("dragstart", (ev) => { somArrastado = { midia: m }; ev.dataTransfer.setData("text/plain", m.nome || ""); ev.dataTransfer.effectAllowed = "copy"; }); n.addEventListener("dragend", () => { somArrastado = null; fimArraste(); }); return n; }
+function porMidia(m, t, faixa, fora) {
+  const tipoF = m.tipo === "audio" ? "audio" : "video", antesT = S.t; S.t = t; usarMidia(m); S.t = antesT; const [f0, i] = achar([...S.sel][0]); if (!i) return;
+  const livre = (f) => f && f.tipo === tipoF && !f.travada && !f.itens.some((x) => x !== i && x.ini < i.ini + i.dur && x.ini + x.dur > i.ini);
+  const alvo = fora ? faixaNova(tipoF, fora) : livre(faixa) ? faixa : null;
+  if (alvo && alvo !== f0) { f0.itens.splice(f0.itens.indexOf(i), 1); alvo.itens.push(i); if (!f0.itens.length && S.p.faixas.filter((x) => x.tipo === f0.tipo).length > 1) S.p.faixas.splice(S.p.faixas.indexOf(f0), 1); mudou(true); montarCabecas(); }
+  irPara(t);
+}
 function pMidia() {
   const inp = envioArquivos("image/*,video/*,audio/*", usarMidia), l = Object.values(S.p.midias).filter((m) => m.raiz !== "som");
-  return [el("h2", {}, "Mídia"), btn("Enviar imagem, vídeo ou áudio", () => inp.click(), "botao destaque"), inp, el("div", { class: "st-midias" }, ...l.map((m) => el("button", { class: "st-midia", type: "button", title: "Adicionar na agulha", onclick: () => usarMidia(m) }, m.tipo === "imagem" ? el("img", { src: urlMidia(m), alt: "", loading: "lazy" }) : m.tipo === "video" ? el("video", { src: `${urlMidia(m)}#t=1`, preload: "metadata", muted: "" }) : null, el("span", {}, m.nome || ROTULOS[m.tipo]))))];
+  return [el("h2", {}, "Mídia"), btn("Enviar imagem, vídeo ou áudio", () => inp.click(), "botao destaque"), inp, el("p", { class: "dica" }, "Clique para pôr na agulha ou arraste para a timeline. Solte no espaço vazio para criar outra faixa."), el("div", { class: "st-midias" }, ...l.map((m) => arrastavelMidia(m, el("button", { class: "st-midia", type: "button", draggable: "true", title: "Clique ou arraste para a timeline", onclick: () => usarMidia(m) }, m.tipo === "imagem" ? el("img", { src: urlMidia(m), alt: "", loading: "lazy" }) : m.tipo === "video" ? el("video", { src: `${urlMidia(m)}#t=1`, preload: "metadata", muted: "" }) : null, el("span", {}, m.nome || ROTULOS[m.tipo])))))];
 }
 function trabalho(nome, corpo, b, fim) {
   const txt = b.textContent; b.disabled = true; b.textContent = "Ouvindo o vídeo…"; const fimB = () => { b.disabled = false; b.textContent = txt; };
@@ -910,11 +930,11 @@ function ouvirSom(id, b) {
   a.addEventListener("ended", () => { b.removeAttribute("data-tocando"); somTocando = null; }); a.play().catch((e) => { delete b.dataset.carregando; console.warn("som", e.name, e.message); }); somTocando = { id, a };
 }
 const durSom = (id) => new Promise((ok, falha) => { const a = new Audio(`/sons/${id}.wav`); a.preload = "metadata"; a.addEventListener("loadedmetadata", () => ok(a.duration), { once: true }); a.addEventListener("error", falha, { once: true }); });
-async function porSom(s, musica, ini, faixa) {
+async function porSom(s, musica, ini, faixa, fora) {
   let d; try { d = await durSom(s.id); } catch { avisar("Não foi possível preparar o som."); return; }
   const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; antes();
   const livre = (f, a, b) => f && f.tipo === "audio" && !f.travada && !f.itens.some((x) => x.ini < b && x.ini + x.dur > a);
-  const f = livre(faixa, ini, ini + d) ? faixa : faixaLivre("audio", ini, d), item = { id: nid(), tipo: "audio", categoria: musica ? "musica" : "efeito", nome: s.nome, midia: m.id, ini: arred(ini), dur: arred(d), entrada: 0, volume: musica ? 30 : 70, ...(musica ? { fade_in: .4, fade_out: Math.min(1.5, d / 2) } : {}) };
+  const f = fora ? faixaNova("audio", fora) : livre(faixa, ini, ini + d) ? faixa : faixaLivre("audio", ini, d), item = { id: nid(), tipo: "audio", categoria: musica ? "musica" : "efeito", nome: s.nome, midia: m.id, ini: arred(ini), dur: arred(d), entrada: 0, volume: musica ? 30 : 70, ...(musica ? { fade_in: .4, fade_out: Math.min(1.5, d / 2) } : {}) };
   f.itens.push(item); S.sel = new Set([item.id]); mudou(true); montarCabecas(); avisar(`${s.nome} na timeline em ${tempoTxt(ini)}`);
 }
 function cartaoSom(s, musica, extra) {
@@ -927,11 +947,11 @@ function cartaoSom(s, musica, extra) {
 }
 { // a timeline recebe os sons arrastados
   const linha = el("div", { class: "st-som-alvo", hidden: "" }); document.body.append(linha);
-  const ponto = (ev) => { const r = faixasEl.getBoundingClientRect(), t = lim((ev.clientX - r.left) / S.px, 0, duracao() + 30), cab = [...$$("#st-cabecas .st-cab")].find((c) => { const b = c.getBoundingClientRect(); return ev.clientY >= b.top && ev.clientY < b.bottom; }); return { t: arred(t), faixa: cab ? S.p.faixas[+cab.dataset.ci] : null }; };
+  const ponto = (ev) => { const r = faixasEl.getBoundingClientRect(), t = lim((ev.clientX - r.left) / S.px, 0, duracao() + 30), cab = [...$$("#st-cabecas .st-cab")].find((c) => { const b = c.getBoundingClientRect(); return ev.clientY >= b.top && ev.clientY < b.bottom; }); return { t: arred(t), faixa: cab ? S.p.faixas[+cab.dataset.ci] : null, fora: cab ? null : foraDasFaixas(ev.clientY) }; };
   rolagem.addEventListener("dragover", (ev) => { if (!somArrastado) return; ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; const { t } = ponto(ev), r = rolagem.getBoundingClientRect(), x = faixasEl.getBoundingClientRect().left + t * S.px;
     Object.assign(linha.style, { left: `${x}px`, top: `${r.top}px`, height: `${r.height}px` }); linha.dataset.t = tempoTxt(t); linha.hidden = false; });
   rolagem.addEventListener("dragleave", (ev) => { if (!rolagem.contains(ev.relatedTarget)) linha.hidden = true; });
-  rolagem.addEventListener("drop", (ev) => { if (!somArrastado) return; ev.preventDefault(); linha.hidden = true; const { t, faixa } = ponto(ev), { s, musica } = somArrastado; somArrastado = null; porSom(s, musica, t, faixa); });
+  rolagem.addEventListener("drop", (ev) => { if (!somArrastado) return; ev.preventDefault(); linha.hidden = true; const { t, faixa, fora } = ponto(ev), arrastado = somArrastado; somArrastado = null; if (arrastado.midia) porMidia(arrastado.midia, t, faixa, fora); else porSom(arrastado.s, arrastado.musica, t, faixa, fora); });
   window.fimArraste = () => { linha.hidden = true; };
 }
 function fimArraste() { window.fimArraste?.(); }
