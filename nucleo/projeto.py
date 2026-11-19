@@ -12,6 +12,7 @@ import numpy as np
 
 from . import camera as cam
 from . import edicao, efeitos, estilos
+from . import foco as foco_tela
 from . import longo as lg
 from .compositor import duracao_projeto, valor
 
@@ -195,6 +196,15 @@ def importar_corte(meta: dict, motor) -> dict:
         p["faixas"].append(principal)
         efx["itens"].append(_efeito(momento, min(1.2, total - momento), "clarao", "Clarão na reação", .45, cena=cena))
         efx["itens"].append(_efeito(momento, min(1.2, total - momento), "tremor", "Tremor na reação", 6.0, cena=cena))
+    if meta.get("focos"):
+        faixa_foco = _faixa("video", "Foco")
+        px, py, pw, ph = foco_tela.painel(plano)
+        for f in meta["focos"]:
+            d = float(f["dur"])
+            faixa_foco["itens"].append(_item_video(mid, f["t"], d, f["t"], f"Foco: {f['nome']}", {"x": px + pw / 2, "y": py + ph / 2, "w": pw, "h": ph, "cl": f["x"] / vw, "ct": f["y"] / vh, "cr": 1 - (f["x"] + f["w"]) / vw, "cb": 1 - (f["y"] + f["h"]) / vh},
+                                                   {"escala": [{"t": 0.0, "v": .84, "e": "suave"}, {"t": .2, "v": 1.0, "e": "suave"}, {"t": round(d - .16, 3), "v": 1.0, "e": "suave"}, {"t": round(d, 3), "v": .84, "e": "suave"}],
+                                                    "opac": [{"t": 0.0, "v": 0.0, "e": "linear"}, {"t": .12, "v": 100.0, "e": "linear"}, {"t": round(d - .1, 3), "v": 100.0, "e": "linear"}, {"t": round(d, 3), "v": 0.0, "e": "linear"}]}, mudo=True, cena=cena))
+        p["faixas"].insert(len(p["faixas"]) - 1 if layout == "pip" else len(p["faixas"]), faixa_foco)
     efx["itens"].append(_efeito(0, total, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
     efx["itens"].append(_efeito(max(0, total - .25), min(.25, total), "escurecer", "Escurecer no final"))
     textos = _faixa("texto", "Textos")
@@ -210,7 +220,7 @@ def importar_corte(meta: dict, motor) -> dict:
     leg = _faixa("legenda", "Legendas")
     leg["itens"] = legendas_de(meta.get("grupos") or [], 0, total, cena)
     audio = _faixa("audio", "Efeitos sonoros")
-    sons = ed.get("sons") if ed else [{"som": "whoosh_rapido", "t": 0.0, "volume": .3}, {"som": "boom_grave", "t": momento, "volume": .42}]
+    sons = ed.get("sons") if ed else [{"som": "whoosh_rapido", "t": 0.0, "volume": .3}, {"som": "boom_grave", "t": momento, "volume": .42}, *[{"som": "zoom_in", "t": f["t"], "volume": .36} for f in meta.get("focos") or []]]
     for s in sons or []:
         if motor.biblioteca.existe(s["som"]):
             audio["itens"].append(_som(p["midias"], s["som"], motor.biblioteca.nome(s["som"]), float(s["t"]), float(s["volume"]), motor.biblioteca, cena))

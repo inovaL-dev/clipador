@@ -80,7 +80,7 @@ def criar_trechos(cortes: list[dict], saida: Path) -> list[dict]:
     for m in cortes:
         fonte = saida / m["id"] / "fonte.mp4"
         duracao = float(m.get("duracao_fonte") or m.get("duracao") or 0)
-        if m.get("status") != "pronto" or duracao < 6 or not fonte.exists():
+        if m.get("status") != "pronto" or m.get("montagem") or duracao < 6 or not fonte.exists():
             continue
         momento = m.get("momento_fonte")
         trechos.append({
@@ -624,7 +624,7 @@ class Longos:
         with self.motor.trava:
             cortes = sorted(self.motor.cortes.values(), key=lambda x: x["criado"])
         for m in cortes:
-            if m.get("status") != "pronto":
+            if m.get("status") != "pronto" or m.get("montagem"):
                 continue
             chave = m.get("pasta") or "sem-pasta"
             g = grupos.setdefault(chave, {"id": chave, "canal_id": m.get("canal_id") or "", "canal": m.get("canal"), "titulo": m.get("titulo_live") or "", "cortes": 0,

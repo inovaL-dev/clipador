@@ -10,6 +10,7 @@ from pathlib import Path
 import cv2
 
 from . import efeitos, estilos, filtros
+from . import foco
 from .contexto import quebrar_linhas
 from .plataformas import sem_janela
 
@@ -222,7 +223,43 @@ def _reacao_grande(quadro: np.ndarray, pip: dict, p: float) -> None:
     quadro[y0:y0 + nh, x0:x0 + nw] = grande[:quadro.shape[0] - y0]
 
 
-def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movimento], total: int, cor: tuple[int, int, int], pip: dict | None = None, momento: float = 0.0):
+def _preparar_focos(video: Path, focos: list[dict], plano: dict, pasta: Path) -> list[dict]:
+    """Recorta em alta qualidade cada ponto da tela que o streamer citou."""
+    px, py, pw, ph = foco.painel(plano)
+    prontos = []
+    for n, f in enumerate(focos):
+        destino = pasta / f"foco_{n}.mp4"
+        try:
+            executar(["ffmpeg", "-v", "error", "-y", "-ss", f"{f['t']:.3f}", "-i", str(video), "-t", f"{f['dur'] + .2:.3f}", "-an",
+                      "-vf", f"crop={f['w']}:{f['h']}:{f['x']}:{f['y']},scale={pw // 2 * 2}:{ph // 2 * 2}:flags=lanczos,unsharp=5:5:0.7:5:5:0,fps={efeitos.FPS}",
+                      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "12", str(destino)])
+        except RuntimeError:
+            destino.unlink(missing_ok=True)  # o vídeo continua normal, só sem esta aproximação
+            continue
+        prontos.append({**f, "arquivo": destino, "painel": (px, py, pw, ph), "video": None, "ultimo": None})
+    return prontos
+
+
+def _colar_foco(quadro: np.ndarray, f: dict, t: float) -> None:
+    if f["video"] is None:
+        f["video"] = cv2.VideoCapture(str(f["arquivo"]))
+    ok, img = f["video"].read()
+    img = img if ok else f["ultimo"]
+    if img is None:
+        return
+    f["ultimo"] = img
+    px, py, pw, ph = f["painel"]
+    p = max(0.0, min(1.0, (t - f["t"]) / .2, (f["t"] + f["dur"] - t) / .16))
+    e = .84 + .16 * (1 - (1 - p) ** 3)
+    nw, nh = int(pw * e) // 2 * 2, int(ph * e) // 2 * 2
+    peq = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
+    cv2.rectangle(peq, (0, 0), (nw - 1, nh - 1), (68, 181, 242), 8)
+    x, y = px + (pw - nw) // 2, py + (ph - nh) // 2
+    area = quadro[y:y + nh, x:x + nw]
+    quadro[y:y + nh, x:x + nw] = cv2.addWeighted(peq, min(1.0, p * 1.8), area, 1 - min(1.0, p * 1.8), 0)
+
+
+def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movimento], total: int, cor: tuple[int, int, int], pip: dict | None = None, momento: float = 0.0, focos: list[dict] | None = None):
     for i, quadro in enumerate(origem):
         if pip:  # o jogo aproxima na tela inteira e a webcam continua por cima
             x, y, w, h = pip["x"], pip["y"], pip["w"], pip["h"]
@@ -233,6 +270,13 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
             for (x, y, w, h), mov in zip(regioes, movimentos):
                 parte = efeitos.aplicar(quadro[y:y + h, x:x + w], mov.matriz(i, w, h))
                 quadro[y:y + h, x:x + w] = efeitos.clarear(parte, float(mov.clarao[i]))
+        agora = i / efeitos.FPS
+        for f in focos or []:
+            if f["t"] <= agora < f["t"] + f["dur"]:
+                webcam = quadro[pip["y"]:pip["y"] + pip["h"], pip["x"]:pip["x"] + pip["w"]].copy() if pip else None
+                _colar_foco(quadro, f, agora)
+                if pip:
+                    quadro[pip["y"]:pip["y"] + pip["h"], pip["x"]:pip["x"] + pip["w"]] = webcam
         if pip:
             t = i / efeitos.FPS - momento
             if -.05 <= t <= 1.9:
@@ -243,9 +287,10 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
 
 def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: list[dict], gancho: str, contexto: str,
                               credito: str, duracao: float, momento: float | None, estilo: dict | None,
-                              ajuste: dict | None = None) -> None:
+                              ajuste: dict | None = None, focos: list[dict] | None = None) -> None:
     est = estilos.normalizar(estilo)
     ajuste = ajuste or {}
+    focos = _preparar_focos(fonte, focos, plano, pasta) if focos else []
     total = max(1, round(duracao * efeitos.FPS))
     picos = efeitos.batidas(fonte, duracao=duracao, espaco=est["ritmo"])
     if momento is None:
@@ -259,20 +304,26 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
         mov.z = 1 + (mov.z - 1) * est["zoom_forca"] / 100
     filtro = f"{_filtro_video(plano)},fps={efeitos.FPS},format=bgr24[v]"
     destino = pasta / "corte_novo.mp4"
-    efeitos.gravar(
-        destino, _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento),
+    try:
+        efeitos.gravar(
+        destino, _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento, focos),
         total, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est), fonte,
-        whoosh=[0.0], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
+        whoosh=[0.0, *[f["t"] for f in focos]], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
         filtro_extra=_cor_do_video(est, ajuste) + f"fade=t=out:st={max(0.0, duracao - 0.25):.2f}:d=0.25",
-    )
+        )
+    finally:
+        for f in focos:
+            if f["video"] is not None:
+                f["video"].release()
+            Path(f["arquivo"]).unlink(missing_ok=True)
     destino.replace(pasta / "corte.mp4")
 
 
 def renderizar(fonte: Path, pasta: Path, plano: dict, grupos: list[dict], gancho: str, contexto: str,
                credito: str, duracao: float, momento: float | None = None, estilo: dict | None = None,
-               ajuste: dict | None = None) -> None:
+               ajuste: dict | None = None, focos: list[dict] | None = None) -> None:
     try:
-        _renderizar_com_movimento(fonte, pasta, plano, grupos, gancho, contexto, credito, duracao, momento, estilo, ajuste)
+        _renderizar_com_movimento(fonte, pasta, plano, grupos, gancho, contexto, credito, duracao, momento, estilo, ajuste, focos)
     except Exception:
         (pasta / "corte_novo.mp4").unlink(missing_ok=True)
         if ajuste:  # a versão simples perderia os sons e o filtro escolhidos na timeline

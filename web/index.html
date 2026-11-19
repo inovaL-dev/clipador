@@ -88,8 +88,10 @@
       <div class="filtros" role="group" aria-label="Filtrar cortes">
         <button type="button" data-filtro="postar" aria-pressed="true">Para postar <span id="n-postar"></span></button>
         <button type="button" data-filtro="postados" aria-pressed="false">Postados <span id="n-postados"></span></button>
+        <button type="button" data-filtro="montagens" aria-pressed="false">Montagens <span id="n-montagens"></span></button>
         <button type="button" data-filtro="todos" aria-pressed="false">Todos <span id="n-todos"></span></button>
       </div>
+      <button class="botao destaque" type="button" id="abrir-montagem">Criar montagem</button>
       <label class="filtro-pasta"><span class="so-leitor">Pasta</span><select id="filtro-pasta"></select></label>
     </div>
     <div class="grade" id="grade"></div>
@@ -560,6 +562,18 @@
   </div>
 </dialog>
 
+<dialog class="janela janela-montagem" id="janela-montagem" aria-labelledby="mt-titulo">
+  <form id="form-montagem">
+    <header class="editor-topo"><div><h2 id="mt-titulo">Criar montagem</h2><p>Junta os momentos mais fortes em um Short, com trocas rápidas e efeitos sonoros.</p></div><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+    <div class="mt-corpo">
+      <div class="bloco"><label for="mt-pasta">Live</label><select id="mt-pasta" required></select></div>
+      <div class="bloco"><label for="mt-cenas">Cenas</label><select id="mt-cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
+      <p class="erro-campo" id="mt-erro" role="alert" hidden></p>
+    </div>
+    <footer class="editor-acoes"><button class="botao principal" type="submit">Criar montagem</button></footer>
+  </form>
+</dialog>
+
 <aside class="aviso-atualizacao" id="av-atualizacao" aria-labelledby="av-titulo" hidden>
   <h2 id="av-titulo"></h2>
   <ul id="av-notas"></ul>
@@ -612,6 +626,12 @@
         </select>
       </div>
     </div>
+    <fieldset class="aj-montagem">
+      <legend>Edição dinâmica</legend>
+      <label class="marcar"><input type="checkbox" name="montagem_auto"><span>Criar montagens com os melhores momentos da live</span></label>
+      <div class="bloco"><label for="aj-cenas">Cenas em cada montagem</label><select id="aj-cenas" name="montagem_cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
+      <label class="marcar"><input type="checkbox" name="foco_auto"><span>Aproximar o que o streamer mostrar, como estrelas, mapa e dinheiro</span></label>
+    </fieldset>
     <p class="erro-campo" id="aj-erro" role="alert" hidden></p>
     <footer class="editor-acoes"><button class="botao principal" type="submit">Salvar ajustes</button>
       <label class="marcar" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo"><span>Continuar em segundo plano ao fechar</span></label>

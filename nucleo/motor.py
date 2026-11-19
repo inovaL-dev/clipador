@@ -24,6 +24,8 @@ from .estudio import Estudio, edicao_inicial
 from .chat import Chat
 from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_marcantes
 from .atualizacao import Atualizacao
+from .foco import achar_focos
+from .montagem import CENAS_MONTAGEM, Montagens
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -53,7 +55,7 @@ ETAPAS = {
 _TRAVA_ARQUIVOS = threading.Lock()
 CONFIG_PADRAO = {
     "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": "small", "idioma": "pt",
-    "corte_garantido": 3, "estilo": est.PADRAO,
+    "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 4, "foco_auto": True,
 }
 ROTULOS_EXTRAS = {
     "manual": "Manual", "destaque": "Melhor momento", "streamer": "Reação do streamer",
@@ -115,6 +117,7 @@ class Motor:
         self.aprendizado = Aprendizado(self)
         self.longos = Longos(self)
         self.gravadas = Gravadas(self)
+        self.montagens = Montagens(self)
         self.atualizacao = Atualizacao()
         threading.Thread(target=self._editor, daemon=True).start()
         for item in self._ler(self.dados / "canais.json", []):
@@ -262,6 +265,13 @@ class Motor:
             cfg["corte_garantido"] = int(novos["corte_garantido"])
         if isinstance(novos.get("estilo"), dict):
             cfg["estilo"] = est.validar(novos["estilo"])
+        for chave in ("montagem_auto", "foco_auto"):
+            if chave in novos:
+                cfg[chave] = bool(novos[chave])
+        if "montagem_cenas" in novos:
+            if int(novos["montagem_cenas"]) not in CENAS_MONTAGEM:
+                raise ValueError("Escolha de 3 a 6 cenas para a montagem.")
+            cfg["montagem_cenas"] = int(novos["montagem_cenas"])
         minimo = float(novos.get("duracao_min", cfg["duracao_min"]))
         maximo = float(novos.get("duracao_max", cfg["duracao_max"]))
         if not 10 <= minimo <= maximo <= 180:
@@ -652,6 +662,8 @@ class Motor:
                     self._refazer(meta)
                 self._etapa(meta, "pronto")
                 self.evento(meta["canal"], "pronto", f"Corte pronto: {meta['gancho']}")
+                if tipo == "novo":
+                    self.montagens.corte_pronto(meta)
             except Exception as e:
                 self._etapa(meta, "erro", str(e)[:300])
                 self.evento(meta["canal"], "erro", "Um corte não pôde ser editado")
@@ -742,6 +754,7 @@ class Motor:
             if palavras:
                 ajustados.append({"ini": palavras[0]["ini"], "fim": palavras[-1]["fim"], "palavras": palavras})
         meta["grupos"], meta["duracao"] = ajustados, round(duracao - inicio, 2)
+        meta.pop("focos", None)  # os tempos mudaram junto com o início do vídeo
         if meta.get("momento_fonte") is not None:
             meta["momento_fonte"] = round(max(0.0, float(meta["momento_fonte"]) - inicio), 2)
         self._refazer(meta)
@@ -758,6 +771,14 @@ class Motor:
             meta["layout"] = meta["plano"]["layout"]
             meta["replanejar"] = False
         self._etapa(meta, "editando")
+        if "focos" not in meta:
+            try:
+                meta["focos"] = achar_focos(fonte, meta.get("grupos") or [], meta["plano"], float(meta.get("duracao_fonte") or meta["duracao"]), meta.get("momento_fonte")) if self.config.get("foco_auto", True) else []
+            except Exception:
+                meta["focos"] = []
+            if meta["focos"] and meta.get("edicao"):
+                meta["edicao"]["sons"] = [*meta["edicao"]["sons"], *[{"som": "zoom_in", "t": f["t"], "volume": .36} for f in meta["focos"]]]
+        focos = meta["focos"]
         titulo = meta.get("titulo_live") or ""
         contexto = ctx._encurtar(titulo, 46) if titulo else f"{meta['canal']} ao vivo no {meta['nome_plataforma']}"
         video, grupos, duracao, momento, ajuste = fonte, meta["grupos"], meta["duracao"], meta.get("momento_fonte"), None
@@ -770,12 +791,13 @@ class Motor:
                 video = tl.montar_fonte(fonte, ed["cortes"], pasta / "montagem.mp4", total)
                 grupos = tl.mapear_grupos(meta["grupos"], ed["cortes"])
                 momento = None if momento is None else tl.saida_de(float(momento), ed["cortes"])
+                focos = [{**f, "t": round(tl.saida_de(f["t"], ed["cortes"]), 3)} for f in focos if any(a <= f["t"] and f["t"] + f["dur"] <= b for a, b in ed["cortes"])]
                 tl.criar_trilha(ed["sons"], ed["cortes"], duracao, self.biblioteca, pasta / "sons.wav")
                 ajuste = {"filtro": ed.get("filtro"), "intensidade": ed.get("intensidade", 100), "volume": ed.get("volume", 100), "trilha": pasta / "sons.wav"}
                 meta["duracao"] = round(duracao, 2)
             edicao.renderizar(
                 video, pasta, meta["plano"], grupos, meta["gancho"], contexto, meta["credito"], duracao,
-                momento, est.normalizar(meta.get("estilo"), self.config["estilo"]), ajuste,
+                momento, est.normalizar(meta.get("estilo"), self.config["estilo"]), ajuste, focos,
             )
         finally:
             for temporario in ("montagem.mp4", "sons.wav"):

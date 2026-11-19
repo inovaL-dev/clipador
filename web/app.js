@@ -257,7 +257,9 @@ function renderCortes() {
   const postados = prontos.filter((c) => c.postado);
   const postar = prontos.filter((c) => !c.postado);
   $("#n-postar").textContent = postar.length; $("#n-postados").textContent = postados.length; $("#n-todos").textContent = prontos.length;
-  const todos = filtro === "postar" ? postar : filtro === "postados" ? postados : prontos;
+  const montagens = prontos.filter((c) => c.montagem);
+  $("#n-montagens").textContent = montagens.length;
+  const todos = filtro === "postar" ? postar : filtro === "postados" ? postados : filtro === "montagens" ? montagens : prontos;
   const porPagina = +$("#cortes-por-pagina").value, paginas = Math.max(1, Math.ceil(todos.length / porPagina));
   paginaCortes = Math.min(paginaCortes, paginas);
   const inicioPagina = (paginaCortes - 1) * porPagina, lista = todos.slice(inicioPagina, inicioPagina + porPagina);
@@ -283,10 +285,28 @@ function renderCortes() {
   });
   const vazio = $("#sem-cortes");
   vazio.hidden = todos.length > 0;
-  vazio.textContent = filtro === "postados" ? "Os cortes marcados como postados ficam aqui."
+  vazio.textContent = filtro === "montagens" ? "Clique em Criar montagem para juntar os melhores momentos em um só vídeo." : filtro === "postados" ? "Os cortes marcados como postados ficam aqui."
     : estado.canais.some((c) => c.status === "gravando") ? "O primeiro corte aparece quando o chat explodir. Se quiser, use Cortar agora."
     : "Os cortes aparecem aqui assim que uma live estiver no ar.";
 }
+
+/* ---------- Montagem com várias cenas ---------- */
+function pastasDaMontagem() {
+  const contagem = new Map();
+  estado.cortes.forEach((c) => { if (c.status === "pronto" && !c.montagem && c.pasta) contagem.set(c.pasta, (contagem.get(c.pasta) || 0) + 1); });
+  return [...contagem.entries()].map(([id, n]) => ({ id, n, nome: estado.cortes.find((c) => c.pasta === id)?.canal || "Live" }));
+}
+$("#abrir-montagem").addEventListener("click", () => {
+  const lista = pastasDaMontagem(), sel = $("#mt-pasta");
+  sel.replaceChildren(...lista.map((p) => el("option", { value: p.id }, `${p.nome}: ${p.n} ${p.n === 1 ? "corte" : "cortes"}`)));
+  if (lista.some((p) => p.id === $("#filtro-pasta").value)) sel.value = $("#filtro-pasta").value;
+  $("#mt-cenas").value = String(estado.config.montagem_cenas || 4); $("#mt-erro").hidden = true; $("#janela-montagem").showModal();
+});
+$("#form-montagem").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try { await api("POST", "/api/montagens", { pasta: $("#mt-pasta").value, cenas: +$("#mt-cenas").value }); $("#janela-montagem").close(); avisar("A montagem começou"); atualizar(); }
+  catch (e) { $("#mt-erro").textContent = e.message; $("#mt-erro").hidden = false; }
+});
 
 $("#cortes-por-pagina").addEventListener("change", () => { paginaCortes = 1; renderCortes(); });
 $("#filtro-pasta").addEventListener("change", () => { paginaCortes = 1; });
@@ -562,6 +582,7 @@ $("#abrir-ajustes").addEventListener("click", () => {
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
   f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.corte_garantido.value = String(c.corte_garantido);
+  f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 4); f.foco_auto.checked = c.foco_auto !== false;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
 });
@@ -569,7 +590,7 @@ $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   try {
-    await api("POST", "/api/config", { sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
     $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
   } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
 });
@@ -1233,18 +1254,19 @@ $("#aj-encerrar").addEventListener("click", (ev) => confirmar(ev.currentTarget, 
 
 /* ---------- Aprendizado ---------- */
 let tempoAprendizado;
+const NOMES_TROCA = { corte: "corte seco", chicote: "chicote", clarao: "clarão", suave: "passagem suave" };
 const NOMES_REACAO = { risada: "Risadas", choque: "Choque", hype: "Hype", clipe: "Pedidos de clipe", jogo: "Ação no jogo", streamer: "Reação do streamer", admirado: "Streamer admirado", destaque: "Melhor momento", manual: "Manual" };
 const NOMES_PREF = { tamanho: "Tamanho da legenda", cor: "Cor da legenda", cor_destaque: "Cor de destaque", y: "Altura da legenda", maiusculas: "Letras maiúsculas", palavra_a_palavra: "Uma palavra por vez", destaque: "Destaque de palavras", fonte: "Fonte", entrada: "Animação de entrada", saida: "Animação de saída", contorno: "Contorno", zoom_forca: "Força do zoom", volume_efeitos: "Volume dos efeitos", volume_fala: "Volume da fala", volume_musica: "Volume da música" };
 async function desenharAprendizado() {
   const d = await api("GET", "/api/aprendizado"), p = d.perfil, c = $("#ap-corpo"), t = d.trabalho;
   const chave = (k, rot, dica) => { const n = el("input", { type: "checkbox" }); n.checked = d.ativo[k]; n.addEventListener("change", async () => { await api("POST", "/api/aprendizado", { [k]: n.checked }); desenharAprendizado(); }); return el("label", { class: "marcar" }, n, el("span", {}, el("strong", {}, rot), el("small", {}, dica))); };
-  const envio = el("input", { type: "file", accept: "video/*", hidden: "" });
-  envio.addEventListener("change", async () => { const a = envio.files[0]; if (!a) return; avisar("Enviando o vídeo…"); const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || "Não foi possível enviar."); desenharAprendizado(); });
-  const visto = p ? [p.webcam ? `Jogo em tela cheia com a câmera em cima (${Math.round(p.webcam.w * 100)}% da largura)` : null, p.palavra_a_palavra ? "Legenda com uma palavra por vez" : null, p.legenda ? `Legenda a ${Math.round(p.legenda.y * 100)}% da altura` : null, p.barra ? "Barra fixa com o canal embaixo" : null, `Ritmo de ${Math.round(p.cortes_min)} trocas de cena por minuto`, `Duração perto de ${p.duracao} segundos`].filter(Boolean) : [];
+  const envio = el("input", { type: "file", accept: "video/*", hidden: "", multiple: "" });
+  envio.addEventListener("change", async () => { const lista = [...envio.files]; for (const [n, a] of lista.entries()) { avisar(`Enviando o vídeo ${n + 1} de ${lista.length}`); const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || "Não foi possível enviar."); } desenharAprendizado(); });
+  const visto = p ? [p.webcam ? `Jogo em tela cheia com a câmera em cima (${Math.round(p.webcam.w * 100)}% da largura)` : null, p.palavra_a_palavra ? "Legenda com uma palavra por vez" : null, p.legenda ? `Legenda a ${Math.round(p.legenda.y * 100)}% da altura` : null, p.barra ? "Barra fixa com o canal embaixo" : null, `Ritmo de ${Math.round(p.cortes_min)} trocas de cena por minuto`, p.cena_s ? `Cada cena dura cerca de ${String(p.cena_s).replace(".", ",")} segundos` : null, p.zooms_min ? `${Math.round(p.zooms_min)} zooms por minuto` : null, p.transicoes?.length ? `Transição mais usada: ${NOMES_TROCA[p.transicoes[0]] || p.transicoes[0]}` : null, p.sfx_cortes != null ? `Efeito sonoro em ${Math.round(p.sfx_cortes * 100)}% das trocas de cena` : null, `Duração perto de ${p.duracao} segundos`].filter(Boolean) : [];
   const prefs = [...Object.entries(d.preferencias.legenda), ...Object.entries(d.preferencias.global)].map(([k, v]) => `${NOMES_PREF[k] || k}: ${v === true ? "sim" : v === false ? "não" : v}`), des = d.desempenho, tipos = Object.entries(des.tipos || {}).sort((a, b) => b[1].media - a[1].media);
   c.replaceChildren(
-    el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Copiar o estilo destes vídeos", "Layout, legenda e ritmo. O vídeo é apagado depois da análise."),
-      envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), disabled: ["fila", "analisando"].includes(t.estado) ? "" : undefined }, ["fila", "analisando"].includes(t.estado) ? "Analisando o vídeo…" : "Ensinar com um vídeo"), t.estado === "erro" ? el("p", { class: "erro-campo" }, t.erro) : null,
+    el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Copiar o estilo destes vídeos", "Layout, legenda, ritmo, zooms, transições e efeitos sonoros. Os vídeos são apagados depois da análise."),
+      envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), }, ["fila", "analisando"].includes(t.estado) ? `Analisando ${t.restantes > 1 ? `${t.restantes} vídeos` : "o vídeo"}…` : "Ensinar com vídeos"), t.erro ? el("p", { class: "erro-campo" }, t.erro) : null,
       el("ul", { class: "ap-lista" }, ...d.referencias.map((r) => el("li", {}, el("span", {}, r.nome), el("button", { class: "botao fantasma", type: "button", onclick: async () => { await api("DELETE", `/api/aprendizado/referencias/${r.id}`); desenharAprendizado(); } }, "Remover")))), visto.length ? el("ul", { class: "ap-visto" }, ...visto.map((x) => el("li", {}, x))) : null),
     el("section", {}, el("h3", {}, "Suas edições"), chave("edicoes", "Aprender com o que eu mudo no Editor", "Uma mudança vira padrão quando se repete em 2 vídeos exportados."), el("p", { class: "dica" }, `${d.videos_editados} ${d.videos_editados === 1 ? "vídeo editado" : "vídeos editados"}.`), prefs.length ? el("ul", { class: "ap-visto" }, ...prefs.map((x) => el("li", {}, x))) : el("p", { class: "dica" }, "Nenhuma preferência repetida ainda.")),
     el("section", {}, el("h3", {}, "Resultados do canal"), chave("resultados", "Priorizar o que dá mais visualizações", `Compara os Shorts publicados há mais de 2 dias. Cada tipo precisa de ${d.minimo} vídeos.`), tipos.length ? el("ul", { class: "ap-visto" }, ...tipos.map(([k, v]) => el("li", {}, `${NOMES_REACAO[k] || k}: ${v.media.toLocaleString("pt-BR")} visualizações em média (${v.n} ${v.n === 1 ? "vídeo" : "vídeos"})`))) : el("p", { class: "dica" }, "Ainda não há Shorts publicados suficientes para comparar.")),

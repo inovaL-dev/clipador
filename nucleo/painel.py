@@ -361,6 +361,8 @@ class Painel(BaseHTTPRequestHandler):
             return self._acao(lambda d: self.motor.aprendizado.definir(d))
         if caminho == "/api/aprendizado/esquecer":
             return self._acao(lambda d: self.motor.aprendizado.esquecer())
+        if caminho == "/api/montagens":
+            return self._acao(lambda d: self.motor.montagens.pedir(str(d.get("pasta") or ""), int(d.get("cenas", 4))))
         if caminho == "/api/atualizacao/verificar":
             return self._acao(lambda d: self.motor.atualizacao.verificar())
         if caminho == "/api/atualizacao/abrir":

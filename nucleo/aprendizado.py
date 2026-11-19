@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import subprocess
 import threading
 import time
 import uuid
@@ -14,6 +15,7 @@ import numpy as np
 
 from . import camera as cam
 from . import edicao, estilos
+from .plataformas import sem_janela
 
 CHAVES_LEGENDA = ("tamanho", "cor", "cor_destaque", "y", "maiusculas", "palavra_a_palavra", "destaque", "fonte", "entrada", "saida", "contorno")
 CHAVES_GLOBAIS = ("zoom_forca", "volume_efeitos", "volume_fala", "volume_musica")
@@ -21,6 +23,7 @@ REPETICOES = 2      # uma escolha vira preferência depois de aparecer em 2 víd
 MINIMO_VIDEOS = 5   # menos que isso não diz nada sobre o que funciona no canal
 IDADE_MINIMA = 48 * 3600
 INTERVALO_CANAL = 6 * 3600
+ANALISE_MAX = 180  # segundos analisados de cada vídeo de exemplo
 
 
 def _amostras(video: Path, quantidade: int = 60) -> tuple[list[np.ndarray], float]:
@@ -103,13 +106,115 @@ def _achar_barra(quadros: list[np.ndarray]) -> bool:
     return float((parte.std(axis=0) < 14).mean()) > .3
 
 
+def _picos_de_som(video: Path) -> tuple[list[float], list[str]]:
+    """Encontra golpes de som agudos e separa os que crescem (whoosh) dos secos (impacto)."""
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-t", str(ANALISE_MAX), "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"], capture_output=True, **sem_janela()).stdout
+    audio = np.frombuffer(pcm[: len(pcm) // 2 * 2], np.int16).astype(np.float32) / 32768
+    if len(audio) < 16000:
+        return [], []
+    tam, passo = 512, 256
+    janelas = np.lib.stride_tricks.sliding_window_view(audio, tam)[::passo] * np.hanning(tam)
+    agudo = np.abs(np.fft.rfft(janelas, axis=1))[:, 48:].sum(axis=1)
+    fluxo = np.maximum(0, np.diff(agudo, prepend=agudo[0]))
+    corte = max(float(np.median(fluxo) + 8 * (np.median(np.abs(fluxo - np.median(fluxo))) + 1e-6)), float(np.median(agudo)) * 3, 1.5)
+    tempos, tipos, ultimo = [], [], -9
+    for n in np.flatnonzero(fluxo > corte):
+        if n - ultimo < 16:
+            continue
+        ultimo = int(n)
+        topo = float(agudo[n:n + 8].max()) + 1e-6
+        tempos.append(n * passo / 16000); tipos.append("whoosh" if float(agudo[max(0, n - 10)]) > topo * .3 else "impacto")
+    return tempos, tipos
+
+
+def medir_edicao(video: Path) -> dict:
+    """Mede como o vídeo foi editado: trocas de cena, transições, zooms e efeitos sonoros."""
+    v = cv2.VideoCapture(str(video))
+    fps = v.get(cv2.CAP_PROP_FPS) or 30
+    passo, n, cinzas = max(1, round(fps / 15)), 0, []
+    while v.grab() and n / fps < ANALISE_MAX:
+        if n % passo == 0:
+            ok, q = v.retrieve()
+            if not ok:
+                break
+            cinzas.append(cv2.cvtColor(cv2.resize(q, (135, 240), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY))
+        n += 1
+    v.release()
+    dt = passo / fps
+    if len(cinzas) < 20:
+        return {}
+    area = [c[50:205].astype(np.float32) for c in cinzas]  # ignora legenda fixa e barra do canal
+    dif = np.array([0.0, *[float(np.abs(a - b).mean()) for a, b in zip(area, area[1:])]])
+    borrado = [cv2.resize(a, (27, 31), interpolation=cv2.INTER_AREA).flatten() for a in area]
+    parecido = lambda i: float(np.corrcoef(borrado[i - 1], borrado[i])[0, 1]) if borrado[i - 1].std() > 1 and borrado[i].std() > 1 else 0.0
+    def continua(i: int) -> bool:
+        """Em zoom e movimento os mesmos pontos seguem visíveis no quadro seguinte."""
+        pts = cv2.goodFeaturesToTrack(cinzas[i - 1], 60, .02, 6)
+        if pts is None or len(pts) < 10:
+            return False
+        novos, ok, erro = cv2.calcOpticalFlowPyrLK(cinzas[i - 1], cinzas[i], pts, None, winSize=(21, 21), maxLevel=3)
+        bons = (ok.flatten() == 1) & (erro.flatten() < 14)
+        if int(bons.sum()) < 10:
+            return False
+        _, dentro = cv2.estimateAffinePartial2D(pts[bons].reshape(-1, 2), novos[bons].reshape(-1, 2), ransacReprojThreshold=2.5)
+        return dentro is not None and float(dentro.sum()) / len(pts) >= .5
+
+    cortes: list[int] = []
+    for i in np.flatnonzero(dif > 26):  # zoom e movimento mantêm a imagem parecida; troca de cena não
+        if (not cortes or i - cortes[-1] > 5) and parecido(int(i)) < .62 and not continua(int(i)):
+            cortes.append(int(i))
+    tipos: Counter = Counter()
+    for i in cortes:
+        a, b = max(0, i - 3), min(len(area) - 1, i + 3)
+        largura = int((dif[a:b + 1] > 11).sum())
+        claro = max(float(area[j].mean()) for j in range(a, b + 1)) - max(float(area[a].mean()), float(area[b].mean()))
+        if claro > 30:
+            tipos["clarao"] += 1
+        elif largura <= 2:
+            tipos["corte"] += 1
+        else:
+            desl, _ = cv2.phaseCorrelate(area[max(0, i - 1)], area[min(len(area) - 1, i + 1)])
+            tipos["chicote" if float(np.hypot(*desl)) > 7 else "suave"] += 1
+    escalas = np.ones(len(cinzas))
+    separados = set(j for i in cortes for j in range(i - 1, i + 2))
+    for i in range(1, len(cinzas)):
+        if i in separados:
+            continue
+        pts = cv2.goodFeaturesToTrack(cinzas[i - 1], 40, .02, 8)
+        if pts is None or len(pts) < 8:
+            continue
+        novos, ok, _ = cv2.calcOpticalFlowPyrLK(cinzas[i - 1], cinzas[i], pts, None, winSize=(15, 15), maxLevel=2)
+        bons = ok.flatten() == 1
+        if int(bons.sum()) < 8:
+            continue
+        m, _ = cv2.estimateAffinePartial2D(pts[bons].reshape(-1, 2), novos[bons].reshape(-1, 2))
+        if m is not None:
+            escalas[i] = float(np.hypot(m[0, 0], m[1, 0]))
+    zooms: list[float] = []
+    i, janela = 0, 8
+    while i + janela < len(escalas):
+        z = float(np.prod(escalas[i:i + janela]))
+        if 1.07 <= z <= 1.9:
+            zooms.append(z); i += 15
+        else:
+            i += 1
+    picos, sons = _picos_de_som(video)
+    marcas = [c * dt for c in cortes]
+    com_som = sum(any(abs(p - t) <= .2 for p in picos) for t in marcas)
+    dur = max(1.0, len(cinzas) * dt)
+    return {"zooms_min": round(len(zooms) / dur * 60, 1), "zoom_escala": round(float(np.median(zooms)), 3) if zooms else None, "cena_s": round(dur / (len(cortes) + 1), 1),
+            "transicoes": {k: round(v / max(1, len(cortes)), 2) for k, v in tipos.items()}, "sfx_cortes": round(com_som / len(marcas), 2) if marcas else None, "sfx_min": round(len(picos) / dur * 60, 1),
+            "whoosh": round(sons.count("whoosh") / len(sons), 2) if sons else None}
+
+
 def medir_video(video: Path, palavras: list[dict] | None = None) -> dict:
     quadros, dur = _amostras(video)
     if len(quadros) < 8:
         raise ValueError("Não consegui ler este vídeo.")
     leg = _achar_legenda(quadros)
-    return {"duracao": round(dur, 1), "vertical": True, "cortes_min": round(_cortes_por_minuto(video), 1), "webcam": _achar_webcam(quadros), "legenda": leg,
-            "palavra_a_palavra": bool(leg and leg["largura"] < .3), "barra": _achar_barra(quadros), "palavras_s": round(len(palavras) / max(1.0, dur), 2) if palavras is not None else None}
+    edicao_medida = medir_edicao(video)
+    return {"duracao": round(dur, 1), "vertical": True, "cortes_min": round(60 / edicao_medida["cena_s"], 1) if edicao_medida.get("cena_s") else round(_cortes_por_minuto(video), 1), "webcam": _achar_webcam(quadros), "legenda": leg,
+            "palavra_a_palavra": bool(leg and leg["largura"] < .3), "barra": _achar_barra(quadros), "palavras_s": round(len(palavras) / max(1.0, dur), 2) if palavras is not None else None, **edicao_medida}
 
 
 def _par(v: float) -> int:
@@ -145,6 +250,7 @@ class Aprendizado:
         except (OSError, ValueError):
             pass
         self.trabalho: dict = {"estado": "parado"}
+        self.fila_refs: list[dict] = []
         threading.Thread(target=self._vigiar_canal, daemon=True).start()
 
     def _salvar(self) -> None:
@@ -155,8 +261,6 @@ class Aprendizado:
     # ------------------------------------------------------------ vídeos de referência
 
     def receber(self, nome: str, corpo, tamanho: int) -> dict:
-        if self.trabalho.get("estado") in ("fila", "analisando"):
-            raise ValueError("Aguarde terminar a análise do vídeo anterior.")
         if Path(nome).suffix.lower() not in (".mp4", ".mov", ".mkv", ".webm", ".m4v"):
             raise ValueError("Envie um vídeo MP4, MOV, MKV ou WEBM.")
         arq = self.pasta / f"analise_{uuid.uuid4().hex[:10]}{Path(nome).suffix.lower()}"
@@ -167,14 +271,21 @@ class Aprendizado:
                 if not bloco:
                     break
                 f.write(bloco); restante -= len(bloco)
-        self.trabalho = {"estado": "fila", "nome": Path(nome).stem[:60], "arquivo": str(arq)}
+        if restante > 0:
+            arq.unlink(missing_ok=True)
+            raise ValueError("O envio foi interrompido. Tente de novo.")
+        self.fila_refs.append({"nome": Path(nome).stem[:60], "arquivo": str(arq)})
+        if self.trabalho.get("estado") != "analisando":
+            self.trabalho = {"estado": "fila", "nome": Path(nome).stem[:60], "restantes": len(self.fila_refs)}
         self.motor.fila.put(("aprender", "referencia"))
         return self.resumo()
 
     def executar(self) -> None:
-        t = self.trabalho
+        if not self.fila_refs:
+            return
+        t = self.fila_refs.pop(0)
         arq = Path(t["arquivo"])
-        t["estado"] = "analisando"
+        self.trabalho = {"estado": "analisando", "nome": t["nome"], "restantes": len(self.fila_refs) + 1}
         try:
             palavras = None
             try:
@@ -188,9 +299,9 @@ class Aprendizado:
                 self.m["referencias"] = self.m["referencias"][-20:]
                 self._salvar()
             self.aplicar_estilo()
-            self.trabalho = {"estado": "pronto", "nome": t["nome"]}
+            self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs)} if self.fila_refs else {"estado": "pronto", "nome": t["nome"]}
         except Exception as e:
-            self.trabalho = {"estado": "erro", "erro": str(e)[:200]}
+            self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs), "erro": f"{t['nome']}: {str(e)[:160]}"} if self.fila_refs else {"estado": "erro", "erro": f"{t['nome']}: {str(e)[:160]}"}
         finally:
             arq.unlink(missing_ok=True)  # guarda só as medidas, nunca o vídeo de outra pessoa
 
@@ -202,10 +313,16 @@ class Aprendizado:
         webcams = [r["webcam"] for r in refs if r.get("webcam")]
         legendas = [r["legenda"] for r in refs if r.get("legenda")]
         mediana = lambda l, k: round(statistics.median(x[k] for x in l), 4)
+        meio = lambda k: (lambda l: round(statistics.median(l), 3) if l else None)([r[k] for r in refs if r.get(k) is not None])
+        trocas: Counter = Counter()
+        for r in refs:
+            trocas.update(r.get("transicoes") or {})
         return {"webcam": {k: mediana(webcams, k) for k in ("x", "y", "w", "h")} if len(webcams) * 2 >= len(refs) else None,
                 "legenda": {k: mediana(legendas, k) for k in ("y", "altura", "amarelo")} if legendas else None,
                 "palavra_a_palavra": sum(bool(r.get("palavra_a_palavra")) for r in refs) * 2 >= len(refs), "barra": sum(bool(r.get("barra")) for r in refs) * 2 >= len(refs),
-                "cortes_min": round(statistics.median(r["cortes_min"] for r in refs), 1), "duracao": round(statistics.median(r["duracao"] for r in refs)), "referencias": len(refs)}
+                "cortes_min": round(statistics.median(r["cortes_min"] for r in refs), 1), "duracao": round(statistics.median(r["duracao"] for r in refs)), "referencias": len(refs),
+                "zooms_min": meio("zooms_min"), "zoom_escala": meio("zoom_escala"), "cena_s": meio("cena_s"), "sfx_cortes": meio("sfx_cortes"), "sfx_min": meio("sfx_min"), "whoosh": meio("whoosh"),
+                "transicoes": [k for k, _ in trocas.most_common()]}
 
     def aplicar_estilo(self) -> None:
         """Atualiza o estilo dos próximos vídeos, guardando o anterior para poder voltar."""
@@ -218,6 +335,8 @@ class Aprendizado:
                 novo["legenda_y"], novo["legenda_x"] = round(min(.9, p["legenda"]["y"] + p["legenda"]["altura"] / 2), 4), .5
             if p["cortes_min"] >= 8:
                 novo["ritmo"] = round(float(np.clip(60 / p["cortes_min"] * 1.4, 2.5, 6.0)), 1)
+            if p.get("zoom_escala"):
+                novo["zoom_forca"] = int(np.clip(round((p["zoom_escala"] - 1) / .15 * 100), 60, 160))
         leg = pref.get("legenda", {})
         if "y" in leg:
             novo["legenda_y"], novo["legenda_x"] = round(leg["y"] / 1920, 4), .5
