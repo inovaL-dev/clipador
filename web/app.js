@@ -583,7 +583,7 @@ $("#abrir-ajustes").addEventListener("click", () => {
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
   f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.corte_garantido.value = String(c.corte_garantido);
-  f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 4); f.foco_auto.checked = c.foco_auto !== false;
+  f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 4); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados !== false;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
 });
@@ -591,7 +591,7 @@ $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   try {
-    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
     $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
   } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
 });
@@ -706,7 +706,18 @@ function renderConta(p) {
     if (!escolhido && !conta.tem_cliente) { avisar("Escolha o arquivo de credencial baixado do Google Cloud."); return; }
     conectar(escolhido ? await escolhido.text() : null);
   } }, "Conectar canal");
-  corpo.replaceChildren(el("p", { class: "dica" }, conta.tem_cliente ? "Credencial salva. Conecte o canal para continuar." : "Envie o arquivo de credencial do Google Cloud. O passo a passo está em CONFIGURAR-YOUTUBE.md."), arquivo, botao);
+  const link = (url, txt) => el("a", { href: url, target: "_blank", rel: "noopener" }, txt);
+  const passo = (titulo, ...texto) => el("li", {}, el("b", {}, titulo), el("span", {}, ...texto));
+  const guia = el("details", { class: "yt-guia", open: conta.tem_cliente ? undefined : "" }, el("summary", {}, "Como conectar sua conta do YouTube"),
+    el("ol", {},
+      passo("Crie um projeto no Google", "Entre no ", link("https://console.cloud.google.com/projectcreate", "Google Cloud"), " com a conta do seu canal, dê o nome Clipador e clique em Criar."),
+      passo("Ative a API do YouTube", "Abra a ", link("https://console.cloud.google.com/apis/library/youtube.googleapis.com", "YouTube Data API v3"), " e clique em Ativar."),
+      passo("Configure o acesso", "Na ", link("https://console.cloud.google.com/auth/overview", "Plataforma de autenticação"), " clique em Começar, escolha Externo e conclua. Em Público-alvo, clique em Publicar app para a conexão não expirar em 7 dias."),
+      passo("Baixe a credencial", "Em ", link("https://console.cloud.google.com/auth/clients", "Clientes"), ", clique em Criar cliente, escolha App para computador e depois Baixar JSON. Não envie esse arquivo para ninguém."),
+      passo("Conecte aqui", "Escolha o arquivo baixado abaixo e clique em Conectar canal. Entre com a conta do canal e permita o acesso. Se aparecer \"app não verificado\", clique em Avançado e continue."),
+      passo("Ligue o envio automático", "Enquanto o YouTube não aprova a auditoria, os vídeos sobem como privados. Peça a ", link("https://support.google.com/youtube/contact/yt_api_form", "auditoria da API"), " e, depois de aprovada, marque as duas opções em Envio automático.")));
+  const escolha = el("label", { class: "yt-arquivo" }, el("span", {}, conta.tem_cliente ? "Credencial salva. Se quiser, escolha outra:" : "Arquivo de credencial (.json)"), arquivo);
+  corpo.replaceChildren(guia, escolha, botao);
 }
 
 function linhaHorario(valor) {
@@ -875,13 +886,24 @@ function linhaGravada(g) {
     el("div", { class: "trabalho-texto" }, el("b", { title: g.titulo }, g.titulo), el("span", {}, ativo ? `${g.etapa}. ${detalheGravada(g)}` : detalheGravada(g)), ativo ? barra(g.progresso) : null), acao);
 }
 
+const POR_PAGINA_LONGOS = 12;
+let paginaLongos = 1, filtroLongos = "todos";
+const enviadoLongo = (v) => v.envio?.estado === "enviado";
+function seloLongo(v) {
+  const e = v.envio?.estado;
+  if (e === "enviado") return el("span", { class: "lo-selo", dados: { tipo: "ok" } }, "No YouTube");
+  if (e === "enviando") return el("span", { class: "lo-selo", dados: { tipo: "vai" } }, `Enviando ${v.envio.progresso || 0}%`);
+  if (e === "erro") return el("span", { class: "lo-selo", dados: { tipo: "erro" } }, "Falha no envio");
+  return el("span", { class: "lo-selo" }, "Não enviado");
+}
 function cartaoLongo(v) {
   const pronto = v.status === "pronto";
   const capa = el("div", { class: "longo-capa" });
-  if (pronto) capa.append(el("img", { src: `/longos/${v.id}/capa.jpg?v=${v.versao}`, alt: "", loading: "lazy" }), el("span", { class: "poster-dur" }, relogio(v.duracao)));
+  if (pronto) capa.append(el("img", { src: `/longos/${v.id}/capa.jpg?v=${v.versao}`, alt: "", loading: "lazy" }), el("span", { class: "poster-dur" }, relogio(v.duracao)), seloLongo(v));
   else if (v.status === "erro") capa.append(el("div", { class: "falhou" }, v.erro || "Não foi possível editar este vídeo."));
   else capa.append(el("div", { class: "longo-editando" }, el("span", { class: "giro", "aria-hidden": "true" }), el("b", {}, v.etapa), barra(v.progresso), el("small", {}, `${v.progresso}%`)));
-  const conteudo = [capa, el("h3", {}, v.titulo), el("p", {}, pronto ? `${v.capitulos.length} capítulos, ${haQuanto(v.criado)}` : `${v.canal}, ${haQuanto(v.criado)}`)];
+  const n = (v.capitulos || []).length, detalhes = pronto ? [`${n} ${n === 1 ? "capítulo" : "capítulos"}`, v.parte ? `parte ${v.parte}` : null, haQuanto(v.criado)].filter(Boolean).join(", ") : haQuanto(v.criado);
+  const conteudo = [capa, el("h3", { title: v.titulo }, v.titulo), el("p", { class: "lo-canal" }, v.canal || "Vídeo enviado"), el("p", {}, detalhes)];
   if (pronto || v.status === "erro") return el("button", { class: "longo", type: "button", onclick: () => abrirLongo(v.id) }, ...conteudo);
   return el("article", { class: "longo" }, ...conteudo);
 }
@@ -906,11 +928,23 @@ function renderLongos() {
     $("#lista-gravadas").replaceChildren(...gravadas.map(linhaGravada));
   }
   const minuto = Math.floor(estado.agora / 60);
-  const chave = JSON.stringify([minuto, longos.map((v) => [v.id, v.status, v.etapa, v.progresso, v.titulo, v.versao])]);
+  const busca = $("#lo-busca").value.trim().toLowerCase();
+  const chave = JSON.stringify([minuto, filtroLongos, busca, paginaLongos, longos.map((v) => [v.id, v.status, v.etapa, v.progresso, v.titulo, v.versao, v.envio?.estado, v.envio?.progresso])]);
   if (chave !== assinaturaLongos) {
     assinaturaLongos = chave;
-    $("#longos-vazio").hidden = longos.length > 0;
-    $("#grade-longos").replaceChildren(...longos.map(cartaoLongo));
+    const passa = { todos: () => true, prontos: (v) => v.status === "pronto" && !enviadoLongo(v), enviados: enviadoLongo, editando: (v) => v.status !== "pronto" && v.status !== "erro" }[filtroLongos];
+    const vistos = longos.filter((v) => passa(v) && (!busca || `${v.titulo} ${v.canal}`.toLowerCase().includes(busca)));
+    const total = Math.max(1, Math.ceil(vistos.length / POR_PAGINA_LONGOS));
+    if (paginaLongos > total) paginaLongos = total;
+    const prontos = longos.filter((v) => v.status === "pronto"), tempo = prontos.reduce((s, v) => s + (v.duracao || 0), 0);
+    $("#lo-total").textContent = longos.length ? `${longos.length} ${longos.length === 1 ? "vídeo" : "vídeos"}, ${relogio(tempo)} no total` : "";
+    $("#lo-filtros").hidden = !longos.length; $(".lo-barra .filtro-pasta").hidden = !longos.length;
+    const vazio = $("#longos-vazio"); vazio.hidden = vistos.length > 0;
+    vazio.textContent = longos.length ? "Nenhum vídeo com esse filtro." : "Crie o primeiro vídeo com os cortes de uma live ou analise uma gravação.";
+    $("#grade-longos").replaceChildren(...vistos.slice((paginaLongos - 1) * POR_PAGINA_LONGOS, paginaLongos * POR_PAGINA_LONGOS).map(cartaoLongo));
+    const nav = $("#lo-paginacao"), ini = (paginaLongos - 1) * POR_PAGINA_LONGOS;
+    $("[data-contagem]", nav).textContent = `${ini + 1} a ${Math.min(vistos.length, ini + POR_PAGINA_LONGOS)} de ${vistos.length}`;
+    montarPaginas(nav, paginaLongos, total, (p) => { paginaLongos = p; renderLongos(); $("#videos-titulo").scrollIntoView({ behavior: "smooth", block: "start" }); });
   }
   if (longoAberto) {
     const v = longos.find((x) => x.id === longoAberto.id);
@@ -918,6 +952,8 @@ function renderLongos() {
   }
 }
 
+$("#lo-filtros").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-f]"); if (!b) return; filtroLongos = b.dataset.f; paginaLongos = 1; $$("#lo-filtros button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderLongos(); });
+$("#lo-busca").addEventListener("input", () => { paginaLongos = 1; renderLongos(); });
 function textoEnvio(v) {
   const e = v.envio, alvo = $("#jl-envio");
   $("#jl-enviar").disabled = e?.estado === "enviando";
@@ -1045,13 +1081,30 @@ $("#auto-longo-minutos").addEventListener("change", salvarAutoLongo);
 
 /* ---------- Estilo do vídeo ---------- */
 const MODELOS_LEGENDA = [["destaque", "Destaque", "Palavra falada colorida"], ["caixa", "Caixa", "Palavra dentro de um bloco"], ["palavra", "Palavra", "Uma palavra por vez, sem maiúsculas"], ["impacto", "Impacto", "Uma palavra grande por vez"], ["neon", "Neon", "Texto com brilho"], ["faixa", "Faixa", "Fundo escuro atrás do texto"], ["classica", "Clássica", "Frase limpa, sem efeito"]];
-const MODELOS_GANCHO = [["faixa", "Faixa colorida", "Bloco na cor de destaque"], ["preto", "Faixa preta", "Fundo preto e texto colorido"], ["alerta", "Alerta", "Vermelho com texto branco"], ["branco", "Etiqueta branca", "Bloco branco inclinado"], ["contorno", "Contorno", "Letras grandes sem fundo"], ["neon", "Neon", "Letras com brilho"], ["nenhum", "Sem título", "Não mostra título no vídeo"]];
+const MODELOS_GANCHO = [["faixa", "Faixa colorida", "Bloco na cor de destaque"], ["preto", "Faixa preta", "Fundo preto e texto colorido"], ["alerta", "Alerta", "Vermelho com texto branco"], ["branco", "Etiqueta branca", "Bloco branco inclinado"], ["contorno", "Contorno", "Letras grandes sem fundo"], ["neon", "Neon", "Letras com brilho"], ["impacto", "Impacto", "Anton com contorno grosso"], ["quadrinho", "Quadrinho", "Bangers inclinado, estilo HQ"], ["manchete", "Manchete", "Bebas Neue em faixa vermelha"], ["gamer", "Gamer", "Russo One com moldura"], ["desenho", "Desenho", "Luckiest Guy com contorno colorido"], ["minimal", "Minimalista", "Limpo, sem fundo"], ["sombra3d", "Sombra 3D", "Sombra dura na cor de destaque"], ["marcador", "Caneta", "Escrito à mão em etiqueta"], ["nenhum", "Sem título", "Não mostra título no vídeo"]];
 const CORES_ESTILO = [["amarelo", "#ffc933", "Amarelo"], ["verde", "#39ff88", "Verde"], ["vermelho", "#ff4b5c", "Vermelho"], ["azul", "#38bdf8", "Azul"], ["rosa", "#ff5fcf", "Rosa"], ["laranja", "#ff8a1f", "Laranja"], ["branco", "#ffffff", "Branco"]];
 let tempoPrevia = null;
 
-const opcaoEstilo = (nome, [valor, titulo, ajuda]) => el("label", { class: "es-opcao" }, el("input", { type: "radio", name: nome, value: valor }), el("span", {}, el("b", {}, titulo), el("small", {}, ajuda)));
+const opcaoEstilo = (nome, [valor, titulo, ajuda]) => el("label", { class: "es-opcao" }, el("input", { type: "radio", name: nome, value: valor }), el("span", {}, el("i", { class: "es-amostra", "aria-hidden": "true", dados: { v: valor } }), el("b", {}, titulo), el("small", {}, ajuda)));
+const fontesAmostra = new Set();
+function fonteAmostra(id) { if (!fontesAmostra.has(id)) { fontesAmostra.add(id); new FontFace(`am-${id}`, `url("/fontes/${id}.ttf")`).load().then((f) => document.fonts.add(f)).catch(() => {}); } return `"am-${id}", "Instrument Sans", sans-serif`; }
+function pintarAmostra(n, e, palavras) {
+  const d = (txt, cor) => el("em", { style: `color:${cor}` }, txt), cx = e.destaque_caixa;
+  n.replaceChildren(...palavras.map((p, k) => k === palavras.length - 1 && e.destaque && e.destaque !== "nenhum" ? (cx ? el("em", { style: `background:${e.cor_destaque};color:#141414;padding:0 .2em;border-radius:.15em` }, p) : d(p, e.cor_destaque || e.cor)) : document.createTextNode(`${p} `)));
+  Object.assign(n.style, { fontFamily: fonteAmostra(e.fonte || "Poppins-Bold"), color: e.cor, textTransform: e.maiusculas === false ? "none" : "uppercase", background: e.fundo ? e.fundo_cor : "", padding: e.fundo ? ".1em .4em" : "",
+    WebkitTextStroke: e.contorno ? `${Math.min(3, e.contorno / 4)}px ${e.contorno_cor || "#000"}` : "", textShadow: e.sombra ? `${e.sombra_x ? 2 : 0}px ${Math.min(3, e.sombra_y ?? 2)}px ${e.sombra_blur ? Math.min(8, e.sombra_blur / 2) : 0}px ${e.sombra_cor || "#000"}` : "",
+    outline: e.borda ? `2px solid ${e.borda_cor}` : "", transform: e.rot ? `rotate(${e.rot}deg)` : "" });
+}
+async function amostrasEstilo() {
+  const cor = $('#form-estilo input[name="es-cor"]:checked')?.value || "amarelo";
+  try { const r = await api("GET", `/api/estilo/amostras?cor=${cor}`);
+    $$("#es-legendas .es-amostra").forEach((n) => r.legendas[n.dataset.v] && pintarAmostra(n, r.legendas[n.dataset.v], n.dataset.v === "palavra" || n.dataset.v === "impacto" ? ["Olha"] : ["Olha", "isso"]));
+    $$("#es-ganchos .es-amostra").forEach((n) => { if (r.titulos[n.dataset.v]) pintarAmostra(n, r.titulos[n.dataset.v], ["Título"]); else n.hidden = true; });
+  } catch {}
+}
 $("#es-legendas").append(...MODELOS_LEGENDA.map((m) => opcaoEstilo("es-legenda", m)));
 $("#es-ganchos").append(...MODELOS_GANCHO.map((m) => opcaoEstilo("es-gancho", m)));
+$("#es-cores").addEventListener("change", amostrasEstilo);
 $("#es-cores").append(...CORES_ESTILO.map(([valor, cor, nome]) => el("label", { class: "es-cor", title: nome }, el("input", { type: "radio", name: "es-cor", value: valor, "aria-label": nome }), el("span", { style: `background:${cor}` }))));
 $("#ed-estilo-legenda").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_LEGENDA.map(([v, t]) => el("option", { value: v }, t)));
 $("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_GANCHO.map(([v, t]) => el("option", { value: v }, t)));
@@ -1073,7 +1126,7 @@ $("#abrir-estilo").addEventListener("click", () => {
   if (!e) return;
   [["es-legenda", e.legenda], ["es-gancho", e.gancho], ["es-cor", e.cor]].forEach(([n, v]) => { const r = $(`#form-estilo input[name="${n}"][value="${v}"]`); if (r) r.checked = true; });
   $("#es-filtro").value = e.filtro || "nenhum"; $("#es-sons").checked = e.sons_auto !== false;
-  $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true;
+  $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();
   atualizarPrevia(); $("#janela-estilo").showModal();
 });
 $("#form-estilo").addEventListener("change", atualizarPrevia);

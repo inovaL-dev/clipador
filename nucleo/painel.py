@@ -198,6 +198,25 @@ class Painel(BaseHTTPRequestHandler):
         if m := re.fullmatch(r"/api/postagem/itens/([\w-]+)", caminho):
             item = self.motor.postagem.itens.get(m[1])
             return self._json(item) if item else self._erro("Item não encontrado.", 404)
+        if caminho == "/api/estilo/amostras":
+            from . import projeto as pj
+            cor = (parse_qs(partes.query).get("cor") or ["amarelo"])[0]
+            cor = cor if cor in estilos.CORES else "amarelo"
+            base = estilos.normalizar({**self.motor.config["estilo"], "cor": cor})
+            leg = {g: pj.estilo_legenda({**base, "legenda": g}, 1080, 1920) for g in estilos.LEGENDAS}
+            tit = {g: {**pj.estilo_titulo({**base, "gancho": g}, 54), "rot": estilos.TITULOS_EXTRA.get(g, (0,) * 9)[8] or (-2 if g == "branco" else 0)} for g in estilos.GANCHOS if g != "nenhum"}
+            return self._json({"legendas": leg, "titulos": tit})
+        if caminho == "/api/estudio/modelos-titulo":
+            from . import projeto as pj
+            cor = (parse_qs(partes.query).get("cor") or ["amarelo"])[0]
+            saida = []
+            for g in estilos.GANCHOS:
+                if g == "nenhum":
+                    continue
+                est = estilos.normalizar({**self.motor.config["estilo"], "gancho": g, "cor": cor if cor in estilos.CORES else "amarelo"})
+                giro = estilos.TITULOS_EXTRA.get(g, (0,) * 9)[8] or (-2 if g == "branco" else 0)
+                saida.append({"id": g, "estilo": pj._item_texto("texto", 0, 1, "", 0, 0, pj.estilo_titulo(est, 54))["estilo"], "rot": giro})
+            return self._json(saida)
         if caminho == "/api/estilo/previa.jpg":
             return self._previa(parse_qs(partes.query))
         if m := re.fullmatch(r"/longos/([\w-]+)/(video\.mp4|capa\.jpg)", caminho):

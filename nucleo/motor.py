@@ -55,7 +55,7 @@ ETAPAS = {
 _TRAVA_ARQUIVOS = threading.Lock()
 CONFIG_PADRAO = {
     "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": "small", "idioma": "pt",
-    "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 4, "foco_auto": True,
+    "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 4, "foco_auto": True, "shorts_emendados": True,
 }
 ROTULOS_EXTRAS = {
     "manual": "Manual", "destaque": "Melhor momento", "streamer": "Reação do streamer",
@@ -265,7 +265,7 @@ class Motor:
             cfg["corte_garantido"] = int(novos["corte_garantido"])
         if isinstance(novos.get("estilo"), dict):
             cfg["estilo"] = est.validar(novos["estilo"])
-        for chave in ("montagem_auto", "foco_auto"):
+        for chave in ("montagem_auto", "foco_auto", "shorts_emendados"):
             if chave in novos:
                 cfg[chave] = bool(novos[chave])
         if "montagem_cenas" in novos:
@@ -698,6 +698,8 @@ class Motor:
         )
         meta["grupos"] = ctx.agrupar_legenda(trecho)
         meta["duracao_fonte"] = round(duracao, 3)
+        meta["nucleo"] = ctx.nucleo_da_acao(meta["grupos"], meta["momento_fonte"], duracao)
+        meta["curto"] = meta["nucleo"][1] - meta["nucleo"][0] <= 13 and duracao >= (meta["nucleo"][1] - meta["nucleo"][0]) * 1.8  # o resto seria só enchimento
         modelo = self.aprendizado.escolher_modelo(meta)
         perfil_modelo = self.aprendizado.perfil(modelo) if modelo else None
         if modelo:

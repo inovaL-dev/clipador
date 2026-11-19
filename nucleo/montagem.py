@@ -160,15 +160,23 @@ class Montagens:
 
     def corte_pronto(self, meta: dict) -> None:
         """Quando juntar momentos novos suficientes, cria a montagem sozinho."""
-        if not self.motor.config.get("montagem_auto", True) or meta.get("montagem"):
+        if meta.get("montagem"):
             return
         with self.trava:
             cenas = int(self.motor.config.get("montagem_cenas", 4))
+            if self.motor.config.get("shorts_emendados", True) and meta.get("curto"):
+                curtos = sorted((m for m in self.candidatos(meta.get("pasta"), novos=True) if m.get("curto") and m.get("nucleo")),
+                                key=lambda m: float(m.get("pos_live") if m.get("pos_live") is not None else m["criado"]))
+                if len(curtos) >= cenas:
+                    self._criar(meta.get("pasta"), curtos[:cenas], emendado=True)  # na ordem em que aconteceram
+                    return
+            if not self.motor.config.get("montagem_auto", True):
+                return
             novos = self.candidatos(meta.get("pasta"), novos=True)
             if len(novos) >= cenas:
                 self._criar(meta.get("pasta"), ordenar(escolher(novos, cenas)))
 
-    def _criar(self, pasta: str, origens: list[dict], receita: dict | None = None, modelo: str | None = None) -> dict:
+    def _criar(self, pasta: str, origens: list[dict], receita: dict | None = None, modelo: str | None = None, emendado: bool = False) -> dict:
         p = origens[0]
         ident = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_montagem_{int(time.time() * 1000) % 100000}"
         n = len(origens)
@@ -180,6 +188,9 @@ class Montagens:
                 "ajuste_camera": {"modo": "auto", "rect": None}, "projeto_exportado": True, "nao_encurtar": True, "focos": []}
         if receita:
             meta.update(receita=receita, modelo=modelo, motivo="Vídeo novo no estilo salvo", reacao_rotulo="Estilo salvo")
+        if emendado:
+            forte = max(origens, key=lambda m: float(m.get("forca") or 0))
+            meta.update(emendado=True, gancho=forte.get("gancho") or gancho, motivo=f"Short com {n} cenas emendadas", reacao="emendado", reacao_rotulo="Cenas emendadas")
         (self.motor.saida / ident).mkdir(parents=True, exist_ok=True)
         with self.motor.trava:
             self.motor.cortes[ident] = meta
@@ -241,7 +252,10 @@ class Montagens:
                 final["global"] = copy.deepcopy(p["global"])
             titulo = titulo or next((copy.deepcopy(i) for f in p["faixas"] for i in f["itens"] if i.get("papel") == "gancho"), None)
             total = comp.duracao_projeto(p)
-            ini, fim = janela(origem, alvo)
+            if meta.get("emendado") and origem.get("nucleo"):
+                ini, fim = max(0.0, origem["nucleo"][0] - .4), min(total, origem["nucleo"][1] + .7)  # só o que aconteceu, sem enchimento
+            else:
+                ini, fim = janela(origem, alvo)
             fim = min(fim, total, ini + max(2.5, LIMITE - pos))
             pj.remover_intervalos(p, [(fim, max(total, fim) + 1), (0, ini)] if ini > 0 else [(fim, max(total, fim) + 1)])
             dur = round(fim - ini, 3)
@@ -276,6 +290,8 @@ class Montagens:
                     for item in f["itens"]:
                         if abs(item["ini"] - pos) < .02:
                             item["transicao"] = {"tipo": nome, "dur": .36}
+                            if meta.get("emendado") and f is base and not (item.get("kf") or {}).get("zoom"):
+                                item.setdefault("kf", {})["zoom"] = [{"t": 0.0, "v": 1.18, "e": "suave"}, {"t": .5, "v": 1.0, "e": "linear"}]  # zoom de impacto na troca
                 if motor.biblioteca.existe(som):
                     audio["itens"].append(pj._som(final["midias"], som, motor.biblioteca.nome(som), max(0.0, pos - .1), volume * volume_som, motor.biblioteca, cena))
             pos = round(pos + dur, 3)

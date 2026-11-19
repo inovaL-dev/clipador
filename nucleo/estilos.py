@@ -8,7 +8,18 @@ from .contexto import FORTES, quebrar_linhas
 
 CORES = {"amarelo": "FFC933", "verde": "39FF88", "vermelho": "FF4B5C", "azul": "38BDF8", "rosa": "FF5FCF", "laranja": "FF8A1F", "branco": "FFFFFF"}
 LEGENDAS = ("destaque", "caixa", "impacto", "palavra", "neon", "faixa", "classica")
-GANCHOS = ("faixa", "preto", "alerta", "branco", "contorno", "neon", "nenhum")
+GANCHOS = ("faixa", "preto", "alerta", "branco", "contorno", "neon", "impacto", "quadrinho", "manchete", "gamer", "desenho", "minimal", "sombra3d", "marcador", "nenhum")
+# Modelos de título com outra fonte: fonte, texto, contorno, tipo de borda (1 letra, 3 caixa), contorno, sombra, cor da sombra, tamanho, giro
+TITULOS_EXTRA = {
+    "impacto": ("Anton", "branco", "preto", 1, .14, .05, "preto", 1.3, 0),
+    "quadrinho": ("Bangers", "destaque", "preto", 1, .16, .07, "preto", 1.3, -3),
+    "manchete": ("Bebas Neue", "branco", "vermelho", 3, .3, 0, "preto", 1.35, 0),
+    "gamer": ("Russo One", "destaque", "escuro", 3, .34, 0, "preto", 1.05, 0),
+    "desenho": ("Luckiest Guy", "branco", "destaque", 1, .15, .06, "preto", 1.2, 0),
+    "minimal": ("Montserrat Black", "branco", "preto", 1, 0, .05, "sombra", 1.0, 0),
+    "sombra3d": ("Archivo Black", "branco", "preto", 1, .06, .1, "destaque", 1.1, 0),
+    "marcador": ("Permanent Marker", "preto", "branco", 3, .32, 0, "preto", 1.1, -2),
+}
 TAMANHOS = {"pequeno": 0.86, "medio": 1.0, "grande": 1.18}
 TEMPOS_GANCHO = (3, 5, 8)
 POSICOES = ("legenda_x", "legenda_y", "gancho_x", "gancho_y", "legenda_hx", "legenda_hy", "gancho_hx", "gancho_hy")
@@ -184,6 +195,11 @@ def estilo_gancho(est: dict, tamanho: float, nome: str = "Gancho", alinhamento: 
         "neon": (branco, _alfa(destaque), 1, tamanho * 0.08, 0),
         "nenhum": (preto, _alfa(destaque), 3, tamanho * 0.37, 0),
     }
+    if est["gancho"] in TITULOS_EXTRA:
+        fonte, fr, co, borda, largura, sombra, fundo, escala, _ = TITULOS_EXTRA[est["gancho"]]
+        tons = {"branco": branco, "preto": preto, "destaque": _alfa(destaque), "vermelho": "&H002E20E5", "escuro": "&H00140F0B", "sombra": "&H80000000"}
+        return (f"Style: {nome},{fonte},{round(tamanho * escala)},{tons[fr]},&H00FFFFFF,{tons[co]},{tons[fundo]},0,0,0,0,100,100,0,0,"
+                f"{borda},{round(tamanho * largura, 1)},{round(tamanho * sombra, 1)},{alinhamento},70,70,0,1")
     frente, contorno, borda, largura, sombra = modelos[est["gancho"]]
     grande = 1.16 if est["gancho"] in ("contorno", "neon") else 1
     return (f"Style: {nome},Poppins,{round(tamanho * grande)},{frente},&H00FFFFFF,{contorno},&H00000000,-1,0,0,0,100,100,0,0,"
@@ -191,4 +207,7 @@ def estilo_gancho(est: dict, tamanho: float, nome: str = "Gancho", alinhamento: 
 
 
 def efeito_gancho(est: dict) -> str:
+    if est["gancho"] in TITULOS_EXTRA:
+        giro = TITULOS_EXTRA[est["gancho"]][8]
+        return f"\\frz{giro}" if giro else ""
     return {"branco": "\\frz-2", "neon": "\\blur6"}.get(est["gancho"], "")

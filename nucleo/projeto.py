@@ -105,7 +105,23 @@ def estilo_titulo(est: dict, tamanho: float) -> dict:
         "alerta": {"cor": "#FFFFFF", "fundo_cor": "#FF2D46"}, "branco": {"cor": "#141414", "fundo_cor": "#FFFFFF"},
         "contorno": {"cor": destaque, "fundo": False, "contorno": round(tamanho * .18), "tamanho": round(tamanho * 1.16)},
         "neon": {"cor": "#FFFFFF", "fundo": False, "sombra": True, "sombra_cor": destaque, "sombra_y": 0, "sombra_blur": 14, "sombra_opac": 100, "tamanho": round(tamanho * 1.16)},
+        **{k: v for k, v in modelos_titulo(destaque, tamanho).items()},
     }[est["gancho"]]}
+
+
+def modelos_titulo(destaque: str, tamanho: float) -> dict:
+    """Os mesmos modelos de título com outras fontes, para o editor."""
+    t = lambda f: round(tamanho * f)
+    return {
+        "impacto": {"fonte": "Anton", "cor": "#FFFFFF", "fundo": False, "contorno": t(.14), "contorno_cor": "#000000", "sombra": True, "sombra_y": t(.05), "sombra_blur": 0, "sombra_opac": 90, "tamanho": t(1.3)},
+        "quadrinho": {"fonte": "Bangers", "cor": destaque, "fundo": False, "contorno": t(.16), "contorno_cor": "#000000", "sombra": True, "sombra_x": t(.07), "sombra_y": t(.07), "sombra_blur": 0, "sombra_opac": 100, "tamanho": t(1.3), "entrada": "quique"},
+        "manchete": {"fonte": "Bebas-Neue", "cor": "#FFFFFF", "fundo_cor": "#E5202E", "tamanho": t(1.35), "fundo_raio": 2},
+        "gamer": {"fonte": "Russo-One", "cor": destaque, "fundo_cor": "#0B0F14", "borda": 3, "borda_cor": destaque, "tamanho": t(1.05)},
+        "desenho": {"fonte": "Luckiest-Guy", "cor": "#FFFFFF", "fundo": False, "contorno": t(.15), "contorno_cor": destaque, "sombra": True, "sombra_y": t(.06), "sombra_blur": 0, "sombra_opac": 100, "tamanho": t(1.2), "entrada": "quique"},
+        "minimal": {"fonte": "Montserrat-Black", "cor": "#FFFFFF", "fundo": False, "maiusculas": False, "sombra": True, "sombra_y": 3, "sombra_blur": 12, "sombra_opac": 70, "entrada": "subir"},
+        "sombra3d": {"fonte": "Archivo-Black", "cor": "#FFFFFF", "fundo": False, "contorno": t(.06), "contorno_cor": "#000000", "sombra": True, "sombra_cor": destaque, "sombra_x": t(.1), "sombra_y": t(.1), "sombra_blur": 0, "sombra_opac": 100, "tamanho": t(1.1)},
+        "marcador": {"fonte": "Permanent-Marker", "cor": "#141414", "fundo_cor": "#FFFFFF", "maiusculas": False, "tamanho": t(1.1), "fundo_raio": 4},
+    }
 
 
 def legendas_de(grupos: list[dict], desloca: float, limite: float, cena: str | None = None) -> list[dict]:
@@ -217,6 +233,8 @@ def importar_corte(meta: dict, motor) -> dict:
     if meta.get("gancho") and est["gancho"] != "nenhum":
         gx, gy = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, edicao.POSICAO_GANCHO.get(layout, 800))
         textos["itens"].append(_item_texto("texto", 0, min(est["tempo_gancho"] + .5, total), meta["gancho"], gx, gy, estilo_titulo(est, 54), "Título", papel="gancho"))
+        giro = estilos.TITULOS_EXTRA.get(est["gancho"], (0,) * 9)[8] or (-2 if est["gancho"] == "branco" else 0)
+        textos["itens"][-1]["t"]["rot"] = float(giro)
     leg = _faixa("legenda", "Legendas")
     leg["itens"] = legendas_de(meta.get("grupos") or [], 0, total, cena)
     audio = _faixa("audio", "Efeitos sonoros")

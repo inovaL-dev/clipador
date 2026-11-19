@@ -508,6 +508,8 @@ C = [
     ("harpa", "Harpa mágica", "Festa", "sonho lindo admirar glissando", harpa),
     ("confete", "Confete", "Festa", "comemorar festa parabens", confete),
 ]
+from .musicas import catalogo as _musicas  # noqa: E402
+C += _musicas()
 CATALOGO = {c[0]: {"id": c[0], "nome": c[1], "categoria": c[2], "tags": c[3], "gerar": c[4]} for c in C}
 CATEGORIAS = list(dict.fromkeys(c[2] for c in C))
 

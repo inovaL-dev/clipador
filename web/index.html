@@ -273,9 +273,21 @@
     </section>
 
     <section aria-labelledby="videos-titulo">
-      <h2 class="titulo-secao" id="videos-titulo">Seus vídeos</h2>
+      <div class="lo-topo">
+        <h2 class="titulo-secao" id="videos-titulo">Seus vídeos <span class="lo-total" id="lo-total"></span></h2>
+        <div class="barra-ferramentas lo-barra">
+          <div class="filtros" id="lo-filtros" role="group" aria-label="Mostrar vídeos">
+            <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+            <button type="button" data-f="prontos" aria-pressed="false">Prontos</button>
+            <button type="button" data-f="enviados" aria-pressed="false">No YouTube</button>
+            <button type="button" data-f="editando" aria-pressed="false">Em edição</button>
+          </div>
+          <label class="filtro-pasta"><span class="so-leitor">Buscar vídeo longo</span><input id="lo-busca" type="search" placeholder="Buscar pelo título ou canal"></label>
+        </div>
+      </div>
       <div class="grade-longos" id="grade-longos"></div>
       <p class="sem-cortes" id="longos-vazio">Crie o primeiro vídeo com os cortes de uma live ou analise uma gravação.</p>
+      <nav class="paginacao" id="lo-paginacao" aria-label="Páginas de vídeos longos" hidden><span data-contagem></span><div class="paginas" data-paginas></div></nav>
     </section>
   </div>
   <div class="pagina estudio" id="aba-editor" hidden>
@@ -339,7 +351,6 @@
   <form id="form-jl">
     <header class="editor-topo">
       <div><h2 id="jl-titulo">Vídeo longo</h2><p id="jl-meta"></p></div>
-      <button class="botao" type="button" id="jl-timeline">Abrir no editor</button>
       <button class="botao fantasma" type="button" data-fechar>Fechar</button>
     </header>
     <div class="jl-corpo">
@@ -368,12 +379,17 @@
         <p class="erro-campo" id="jl-erro" role="alert" hidden></p>
       </div>
     </div>
-    <footer class="editor-acoes">
-      <button class="botao principal" type="submit">Salvar textos</button>
-      <a class="botao" id="jl-baixar" download>Baixar vídeo</a>
-      <a class="botao" id="jl-baixar-capa" download>Baixar miniatura</a>
-      <button class="botao" type="button" id="jl-enviar">Enviar ao YouTube</button>
-      <button class="botao perigo" type="button" id="jl-excluir">Excluir</button>
+    <footer class="editor-acoes jl-acoes">
+      <div class="jl-grupo">
+        <button class="botao principal" type="submit">Salvar textos</button>
+        <button class="botao destaque" type="button" id="jl-enviar">Enviar ao YouTube</button>
+      </div>
+      <div class="jl-grupo">
+        <button class="botao" type="button" id="jl-timeline">Abrir no editor</button>
+        <a class="botao" id="jl-baixar" download>Baixar vídeo</a>
+        <a class="botao" id="jl-baixar-capa" download>Baixar miniatura</a>
+      </div>
+      <button class="botao perigo jl-excluir" type="button" id="jl-excluir">Excluir</button>
     </footer>
   </form>
 </dialog>
@@ -543,7 +559,7 @@
   <header class="editor-topo"><div><h2 id="rq-titulo">Reenquadrar vídeo</h2><p>Arraste o quadro para escolher o que aparece. O vídeo original continua inteiro.</p></div><button class="botao fantasma" type="button" id="rq-fechar">Fechar</button></header>
   <div class="rq-corpo">
     <div class="rq-esq">
-      <div class="rq-palco" id="rq-palco"><canvas id="rq-original"></canvas><div class="rq-janela" id="rq-janela" tabindex="0" role="slider" aria-label="Área visível do vídeo. Use as setas para mover."><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div></div>
+      <div class="rq-palco" id="rq-palco"><canvas id="rq-original"></canvas><div class="rq-janela" id="rq-janela" tabindex="0" role="slider" aria-label="Área visível do vídeo. Use as setas para mover."><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i><i data-c="n"></i><i data-c="s"></i><i data-c="w"></i><i data-c="e"></i></div></div>
       <label class="rq-tempo" for="rq-momento"><span>Ver outro momento</span><input id="rq-momento" type="range" min="0" max="1" step="0.01"></label>
     </div>
     <div class="rq-dir">
@@ -660,17 +676,21 @@
         </select>
       </div>
     </div>
-    <fieldset class="aj-montagem">
+    <fieldset class="aj-secao">
       <legend>Edição dinâmica</legend>
-      <label class="marcar"><input type="checkbox" name="montagem_auto"><span>Criar montagens com os melhores momentos da live</span></label>
-      <div class="bloco"><label for="aj-cenas">Cenas em cada montagem</label><select id="aj-cenas" name="montagem_cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
-      <label class="marcar"><input type="checkbox" name="foco_auto"><span>Aproximar o que o streamer mostrar, como estrelas, mapa e dinheiro</span></label>
+      <label class="opcao"><input type="checkbox" name="montagem_auto" role="switch"><span><b>Montagens automáticas</b>Junta os melhores momentos da live em um só vídeo</span></label>
+      <label class="opcao"><input type="checkbox" name="shorts_emendados" role="switch"><span><b>Shorts com cenas emendadas</b>Quando o momento acaba rápido, emenda o próximo da live com transição, zoom e som, em vez de encher com cena sem contexto</span></label>
+      <div class="bloco"><label for="aj-cenas">Cenas em cada montagem e short emendado</label><select id="aj-cenas" name="montagem_cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
+      <label class="opcao"><input type="checkbox" name="foco_auto" role="switch"><span><b>Zoom no que o streamer mostrar</b>Aproxima estrelas, mapa, dinheiro e o que ele apontar</span></label>
+    </fieldset>
+    <fieldset class="aj-secao">
+      <legend>Programa</legend>
+      <label class="opcao" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo" role="switch"><span><b>Continuar em segundo plano</b>Ao fechar a janela, segue gravando perto do relógio</span></label>
+      <label class="opcao" id="aj-win-rot" hidden><input type="checkbox" id="aj-win" role="switch"><span><b>Abrir junto com o Windows</b>Começa a vigiar as lives assim que o computador liga</span></label>
+      <div class="aj-versao"><span id="aj-versao"></span><button class="botao" type="button" id="aj-atualizar">Procurar atualizações</button></div>
     </fieldset>
     <p class="erro-campo" id="aj-erro" role="alert" hidden></p>
-    <footer class="editor-acoes"><button class="botao principal" type="submit">Salvar ajustes</button>
-      <label class="marcar" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo"><span>Continuar em segundo plano ao fechar</span></label>
-      <label class="marcar" id="aj-win-rot" hidden><input type="checkbox" id="aj-win"><span>Abrir junto com o Windows</span></label>
-      <button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button><button class="botao" type="button" id="aj-atualizar">Procurar atualizações</button><span class="dica" id="aj-versao"></span></footer>
+    <footer class="editor-acoes aj-acoes"><button class="botao principal" type="submit">Salvar ajustes</button><button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button></footer>
   </form>
 </dialog>
 

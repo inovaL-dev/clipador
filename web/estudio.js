@@ -48,7 +48,7 @@ const estiloDe = (i) => i.tipo === "legenda" ? { ...PAD_EST, ...S.p.global.legen
 const pilha = () => S.h[S.modo];
 const foto = () => JSON.stringify(S.modo === "capa" ? S.capa : S.p);
 function antes() { const h = pilha(); h.d.push(foto()); if (h.d.length > 60) h.d.shift(); h.r = []; botoes(); }
-function aplicarFoto(j) { if (S.modo === "capa") S.capa = JSON.parse(j); else S.p = JSON.parse(j); const existe = (id) => S.modo === "capa" ? S.capa.camadas?.some((c) => c.id === id) : achar(id)[1]; S.sel = new Set([...S.sel].filter(existe)); mudou(true); }  // continua com o mesmo elemento selecionado
+function aplicarFoto(j) { if (S.modo === "capa") S.capa = JSON.parse(j); else S.p = JSON.parse(j); const existe = (id) => S.modo === "capa" ? S.capa.camadas?.some((c) => c.id === id) : achar(id)[1]; S.sel = new Set([...S.sel].filter(existe)); mudou(true); if (S.modo !== "capa") montarCabecas(); }  // continua com o mesmo elemento selecionado
 function desfazer() { const h = pilha(); if (h.d.length) { h.r.push(foto()); aplicarFoto(h.d.pop()); botoes(); } }
 function refazer() { const h = pilha(); if (h.r.length) { h.d.push(foto()); aplicarFoto(h.r.pop()); botoes(); } }
 function botoes() { $("#st-desfazer").disabled = !pilha().d.length; $("#st-refazer").disabled = !pilha().r.length; }
@@ -330,9 +330,19 @@ function montarCabecas() {
   const ordem = [...S.p.faixas].reverse();
   $("#st-cabecas").replaceChildren(...ordem.map((f) => { const ci = S.p.faixas.indexOf(f);
     const b = (txt, tit, on, fn) => { const n = el("button", { type: "button", title: tit, "aria-label": tit, dados: on ? { on: "1" } : {}, onclick: fn }); n.innerHTML = ICONES[txt] || txt; return n; };
-    return el("div", { class: "st-cab", style: `height:${altF(f)}px`, dados: { tipo: f.tipo } }, el("b", { title: f.nome }, f.nome), b("▲", "Subir faixa", false, () => moverFaixa(ci, 1)), b("▼", "Descer faixa", false, () => moverFaixa(ci, -1)),
+    return el("div", { class: "st-cab", style: `height:${altF(f)}px`, title: "Arraste para mudar a ordem. No teclado: Alt + seta para cima ou para baixo", tabindex: "0", onkeydown: (ev) => { if (ev.altKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) { ev.preventDefault(); ev.stopPropagation(); moverFaixa(ci, ev.key === "ArrowUp" ? 1 : -1); $(`#st-cabecas .st-cab:nth-child(${S.p.faixas.length - S.p.faixas.indexOf(f)})`)?.focus(); } }, dados: { tipo: f.tipo, ci } }, el("span", { class: "st-alca", "aria-hidden": "true" }), el("b", { title: f.nome }, f.nome),
       f.tipo === "audio" ? b("som", "Silenciar faixa", f.muda, () => { antes(); f.muda = !f.muda; mudou(); montarCabecas(); }) : b("olho", "Esconder faixa", f.oculta, () => { antes(); f.oculta = !f.oculta; mudou(); montarCabecas(); }),
       b("trava", "Travar faixa", f.travada, () => { antes(); f.travada = !f.travada; mudou(); montarCabecas(); }), b("×", "Apagar faixa", false, () => { antes(); S.p.faixas.splice(ci, 1); mudou(true); montarCabecas(); })); }));
+}
+{ // arrastar a faixa pelo nome para subir ou descer
+  let ar = null; const cabs = $("#st-cabecas");
+  const alvo = (y) => { const l = [...cabs.querySelectorAll(".st-cab")]; let n = l.length; for (const [k, c] of l.entries()) { const r = c.getBoundingClientRect(); if (y < r.top + r.height / 2) { n = k; break; } } return n; };
+  const linha = (n) => { const l = [...cabs.querySelectorAll(".st-cab")], cx = cabs.getBoundingClientRect(), r = n < l.length ? l[n].getBoundingClientRect().top : l[l.length - 1].getBoundingClientRect().bottom; ar.marca.style.top = `${r - cx.top - 1}px`; };
+  cabs.addEventListener("pointerdown", (ev) => { const c = ev.target.closest(".st-cab"); if (!c || ev.button !== 0 || ev.target.closest("button")) return; ev.preventDefault(); ar = { c, y0: ev.clientY, de: [...cabs.children].indexOf(c), ativo: false, marca: el("i", { class: "st-cab-linha" }) }; cabs.setPointerCapture(ev.pointerId); });
+  cabs.addEventListener("pointermove", (ev) => { if (!ar) return; if (!ar.ativo) { if (Math.abs(ev.clientY - ar.y0) < 4) return; ar.ativo = true; ar.c.dataset.arrastando = "1"; cabs.dataset.arrastando = "1"; cabs.append(ar.marca); } ar.para = alvo(ev.clientY); linha(ar.para); });
+  const soltar = () => { if (!ar) return; const { ativo, de, para } = ar; ar.marca.remove(); delete cabs.dataset.arrastando; delete ar.c.dataset.arrastando; ar = null; if (!ativo || para == null) return;
+    const ordem = [...S.p.faixas].reverse(), f = ordem[de], destino = para > de ? para - 1 : para; if (destino === de) return; antes(); ordem.splice(de, 1); ordem.splice(destino, 0, f); S.p.faixas = ordem.reverse(); mudou(true); montarCabecas(); };
+  cabs.addEventListener("pointerup", soltar); cabs.addEventListener("pointercancel", soltar);
 }
 function moverFaixa(i, d) { const j = i + d; if (j < 0 || j >= S.p.faixas.length) return; antes(); [S.p.faixas[i], S.p.faixas[j]] = [S.p.faixas[j], S.p.faixas[i]]; mudou(); montarCabecas(); }
 /* ---------- Pontos de animação, como no CapCut ---------- */
@@ -590,7 +600,7 @@ function rqDesenhar() {
   if (!cobre && !rqOutro() && $("#rq-fundo").checked) { const b = rqCheio(); f.filter = "blur(8px) brightness(.8)"; f.drawImage(v, b.x * vw, b.y * vh, b.w * vw, b.h * vh, 0, 0, W, rqFim.height); f.filter = "none"; }
   f.drawImage(v, r.x * vw, r.y * vh, r.w * vw, r.h * vh, (c.x - c.w / 2) * k, (c.y - c.h / 2) * k, c.w * k, c.h * k);
 }
-function rqFormato(fmt) { RQ.fmt = fmt; if (fmt === "atual") RQ.r = { ...RQ.ini }; else if (fmt !== "livre") rqEncaixar(RQ.r.x + RQ.r.w / 2, RQ.r.y + RQ.r.h / 2, 1); $$("#rq-formatos button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.f === fmt))); rqDesenhar(); }
+function rqFormato(fmt) { RQ.fmt = fmt; rqJanela.dataset.livre = String(fmt === "livre"); if (fmt === "atual") RQ.r = { ...RQ.ini }; else if (fmt !== "livre") rqEncaixar(RQ.r.x + RQ.r.w / 2, RQ.r.y + RQ.r.h / 2, 1); $$("#rq-formatos button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.f === fmt))); rqDesenhar(); }
 function rqVer() { const { v, item } = RQ; if (v?.readyState) v.currentTime = lim((item.entrada || 0) + +$("#rq-momento").value * (item.velocidade || 1), 0, Math.max(0, (v.duration || 1) - .05)); }
 function abrirReenquadrar(item) {
   const [faixa] = achar(item.id), mid = S.p.midias[item.midia]; if (!mid) return; pausar();
@@ -629,6 +639,12 @@ function rqAplicar() {
   rqJanela.addEventListener("pointermove", (ev) => {
     if (!ges) return; const [x, y] = ponto(ev), { c, r, ax, ay } = ges;
     if (!c) { RQ.r = { ...r, x: lim(r.x + x - ges.x, 0, 1 - r.w), y: lim(r.y + y - ges.y, 0, 1 - r.h) }; rqDesenhar(); return; }
+    if (c.length === 1) { // bolinhas do meio: mexem só um lado
+      const n = { ...r }, d = r.x + r.w, b = r.y + r.h;
+      if (c === "e") n.w = lim(x - r.x, .06, 1 - r.x); if (c === "w") { n.x = lim(x, 0, d - .06); n.w = d - n.x; }
+      if (c === "s") n.h = lim(y - r.y, .06, 1 - r.y); if (c === "n") { n.y = lim(y, 0, b - .06); n.h = b - n.y; }
+      RQ.r = n; rqDesenhar(); return;
+    }
     const esq = c.includes("w"), cima = c.includes("n"), maxW = esq ? ax : 1 - ax, maxH = cima ? ay : 1 - ay; let w = esq ? ax - x : x - ax, h = cima ? ay - y : y - ay;
     if (RQ.fmt === "livre") { w = lim(w, .06, maxW); h = lim(h, .06, maxH); } else { const n = rqRazao(); w = lim(Math.max(w, h * n), .06, Math.min(maxW, maxH * n)); h = w / n; }
     RQ.r = { x: esq ? ax - w : ax, y: cima ? ay - h : ay, w, h }; rqDesenhar();
@@ -725,6 +741,28 @@ const MODELOS_LEGENDA = [
 function modeloEm(p, m) { const base = { fundo: false, borda: 0, espacamento: 0, saida: "nenhuma", sombra_cor: "#000000", sombra_x: 0, sombra_y: 4, sombra_blur: 6, sombra_opac: 60 }; p.global.legenda = { ...p.global.legenda, ...base, ...m }; p.faixas.forEach((f) => f.itens.forEach((i) => { if (i.tipo === "legenda") i.estilo = {}; })); }
 function aplicarModeloLegenda(m) { antes(); modeloEm(S.p, m); mudou(true); avisar("Modelo aplicado a todas as legendas"); }
 const cartaoModelo = ([nome, m]) => { const b = cartaoPrevia(btn(nome, null, "st-modelo"), () => { const l = textoDaPrevia(), ini = l?.tipo === "legenda" ? l.ini : S.t; return { chave: `modelo:${nome}:${ini}`, nome: `Modelo ${nome}`, ini, fim: ini + 2.6, mudar: (p) => modeloEm(p, m), aplicar: () => aplicarModeloLegenda(m) }; }); Object.assign(b.style, { fontFamily: fonteCss(m.fonte), color: m.fundo ? m.cor : m.cor_destaque, background: m.fundo ? m.fundo_cor : "#0b1518" }); return b; };
+/* ---------- Modelos de título, como no CapCut ---------- */
+let modelosTitulo = null;
+function alvoTitulo() { const s = sel1(); if (s?.tipo === "texto") return s; return itens().map(([, i]) => i).find((i) => i.papel === "gancho") || null; }
+function vestirTitulo(i, m) { i.estilo = { ...(i.estilo || {}), fundo: false, contorno: 0, sombra: false, borda: 0, efeito_texto: "nenhum", ...clonar(m.estilo) }; i.t = { ...(i.t || {}), rot: m.rot }; }
+function secTitulos() {
+  const grade = el("div", { class: "st-modelos st-titulos" }), alvo = alvoTitulo();
+  const dica = el("p", { class: "dica" }, alvo ? `Clique para ver e aplicar em: ${alvo.nome || "Título"}.` : "Clique para ver e colocar um título novo onde está a agulha.");
+  const cartao = (m) => {
+    const nome = (MODELOS_GANCHO.find(([v]) => v === m.id) || [, m.id])[1], e = m.estilo, b = btn(nome, null, "st-modelo st-titulo-cartao");
+    Object.assign(b.style, { fontFamily: fonteCss(e.fonte), color: e.cor, background: e.fundo === false ? "#0b1518" : e.fundo_cor, textTransform: e.maiusculas === false ? "none" : "uppercase", WebkitTextStroke: e.contorno ? `1.5px ${e.contorno_cor || "#000"}` : "", textShadow: e.sombra ? `2px 2px 0 ${e.sombra_cor || "#000"}` : "", transform: m.rot ? `rotate(${m.rot}deg)` : "", outline: e.borda ? `2px solid ${e.borda_cor}` : "" });
+    return cartaoPrevia(b, () => {
+      const a = alvoTitulo(), ini = a ? a.ini : S.t;
+      const novo = () => ({ tipo: "texto", nome: "Título", dur: 3, texto: "SEU TÍTULO AQUI", estilo: {}, t: { x: S.p.largura / 2, y: S.p.altura * .2, escala: 1, rot: 0, opac: 100 }, kf: {} });
+      return { chave: `titulo:${m.id}:${a?.id || S.t}`, nome: `Título ${nome}`, ini, fim: ini + 1.6, fps: 16,
+        mudar: (p) => { if (a) { const i = p.faixas.flatMap((f) => f.itens).find((x) => x.id === a.id); if (i) vestirTitulo(i, m); } else { const i = novo(); vestirTitulo(i, m); entrarNaFaixa(p, "texto", i); } },
+        aplicar: () => { if (a) { antes(); vestirTitulo(a, m); mudou(true); selecaoMudou(); avisar(`Título ${nome} aplicado`); } else { const i = novo(); vestirTitulo(i, m); colocar("texto", i); } } };
+    });
+  };
+  const encher = (l) => grade.replaceChildren(...l.map(cartao));
+  if (modelosTitulo) encher(modelosTitulo); else { grade.append(el("p", { class: "dica" }, "Carregando modelos")); fetch("/api/estudio/modelos-titulo").then((r) => r.json()).then((l) => { modelosTitulo = l; encher(l); }).catch(() => grade.replaceChildren(el("p", { class: "dica" }, "Não foi possível carregar os modelos."))); }
+  return sec("Modelos de título", dica, grade);
+}
 function pTexto() {
   const W = S.p.largura, H = S.p.altura, item = (txt, est) => ({ tipo: "texto", nome: "Texto", dur: 4, texto: txt, estilo: est, t: { x: W / 2, y: H / 2, escala: 1, rot: 0, opac: 100 }, kf: {} });
   const tx = (nome, txt, est) => cartaoPrevia(btn(nome, null), () => ({ chave: `texto:${nome}:${S.t}`, nome, ini: S.t, fim: S.t + 1.2, fps: 16, mudar: (p) => entrarNaFaixa(p, "texto", item(txt, est)), aplicar: () => colocar("texto", item(txt, est)) }));
@@ -732,6 +770,7 @@ function pTexto() {
   const gerar = btn("Gerar legendas de novo", (ev) => confirmar(ev.currentTarget, "Trocar todas", () => trabalho("legendas", { projeto: S.p }, gerar, () => avisar("Legendas geradas"))));
   return [el("h2", {}, "Textos e elementos"), el("div", { class: "st-botoes" }, tx("Texto", "Seu texto aqui", { tamanho: 72, contorno: 6 }), tx("Título grande", "TÍTULO", { fonte: "Anton", tamanho: 150, cor: "#FFC933", contorno: 10, entrada: "pop", tempo_anim: .25 }), tx("Faixa", "Faixa de destaque", { tamanho: 56, fundo: true, fundo_cor: "#FFC933", cor: "#141414", fundo_opac: 100 })),
     el("div", { class: "st-botoes" }, ...[["retangulo", "Retângulo"], ["circulo", "Círculo"]].map(([f, n]) => btn(n, () => colocar("video", { tipo: "forma", forma: f, nome: n, dur: 4, cor: "#FFC933", t: { x: W / 2, y: H / 2, w: 420, h: f === "circulo" ? 420 : 220, escala: 1, rot: 0, opac: 100 }, kf: {} })))),
+    secTitulos(),
     sec("Modelos de legenda", el("div", { class: "st-modelos" }, ...MODELOS_LEGENDA.map(cartaoModelo))),
     sec("Legendas", gerar, linha("Atrasar (s)", des), btn("Mover todas as legendas", () => { const d = +des.value; if (!d) return; antes(); itens().forEach(([, i]) => { if (i.tipo === "legenda") i.ini = Math.max(0, arred(i.ini + d)); }); mudou(); avisar("Sincronia ajustada"); }))];
 }
@@ -818,15 +857,37 @@ function pTransicoes() {
   return [el("h2", {}, "Transições"), alvo, el("p", { class: "dica" }, "Clique para ver a prévia. O vídeo só muda quando você aplicar."), ...GRUPOS_TR.map(([nome, l]) => sec(nome, el("div", { class: "st-tr-grade" }, ...l.map(cartaoTr)))),
     sec("Ajuste", dur, btn("Usar a mesma em todos os cortes", () => { const t = atual && atual !== "corte" ? atual : null; if (!t) { avisar("Aplique uma transição neste corte primeiro"); return; } antes(); const d = S.durTr ?? .5; cs.forEach((x) => x.itens.forEach((i) => { i.transicao = { tipo: t, dur: d }; })); mudou(true); avisar(`${nomeTr(t)} aplicada em ${cs.length} cortes`); }), atual && atual !== "corte" ? btn("Tirar a transição deste corte", () => { antes(); c.itens.forEach((i) => { delete i.transicao; }); mudou(true); }) : null)];
 }
+/* ---------- Músicas de fundo compostas pelo Clipador, livres de direitos ---------- */
+let tocandoMusica = null;
+function secMusicas() {
+  const lista = el("ul", { class: "st-lista st-musicas" }), packs = el("div", { class: "st-packs", role: "group", "aria-label": "Pack de música" }), repetir = el("input", { type: "checkbox", checked: "" });
+  const usar = (s, d) => {
+    const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; antes();
+    const ini = arred(S.t), fim = repetir.checked ? Math.max(duracao(), ini + 1) : ini + d; let t = ini; const f = faixaLivre("audio", ini, fim - ini), ids = [];
+    while (t < fim - .2) { const dur = arred(Math.min(d, fim - t)), i = { id: nid(), tipo: "audio", categoria: "musica", nome: s.nome, midia: m.id, ini: arred(t), dur, entrada: 0, volume: 30 }; f.itens.push(i); ids.push(i.id); t += dur; }
+    const ult = f.itens.find((i) => i.id === ids[ids.length - 1]), pri = f.itens.find((i) => i.id === ids[0]); if (ult) ult.fade_out = Math.min(1.5, ult.dur / 2); if (pri) pri.fade_in = .4; if (/^(Áudio|Audio) \d+$/.test(f.nome)) f.nome = "Música";
+    S.sel = new Set(ids.slice(0, 1)); mudou(true); montarCabecas(); avisar(`Música ${s.nome} colocada no fundo`);
+  };
+  const ouvir = (s, b) => { const mesmo = tocandoMusica?.id === s.id; tocandoMusica?.a.pause(); $$(".st-musicas [data-tocando]").forEach((x) => { x.removeAttribute("data-tocando"); x.textContent = "Ouvir"; }); tocandoMusica = null; if (mesmo) return; const a = new Audio(`/sons/${s.id}.wav`); b.textContent = "Carregando"; a.addEventListener("playing", () => { b.textContent = "Parar"; b.dataset.tocando = "1"; }, { once: true }); a.addEventListener("ended", () => { b.textContent = "Ouvir"; b.removeAttribute("data-tocando"); }); a.play().catch(() => { b.textContent = "Ouvir"; }); tocandoMusica = { id: s.id, a }; };
+  let atual = "";
+  const mostrar = async () => {
+    const r = await api("GET", `/api/sons?${new URLSearchParams({ q: "musica" })}`), todas = r.sons.filter((s) => s.categoria.startsWith("Música: "));
+    const nomes = [...new Set(todas.map((s) => s.categoria.slice(8)))];
+    packs.replaceChildren(...["", ...nomes].map((n) => el("button", { type: "button", "aria-pressed": String(n === atual), onclick: () => { atual = n; mostrar(); } }, n || "Todas")));
+    lista.replaceChildren(...todas.filter((s) => !atual || s.categoria.slice(8) === atual).map((s) => { const b = btn("Ouvir", () => ouvir(s, b)); return el("li", {}, b, el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria.slice(8))), btn("Usar", (ev) => { const u = ev.currentTarget; u.disabled = true; u.textContent = "Preparando"; const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => { u.disabled = false; u.textContent = "Usar"; usar(s, a.duration); }, { once: true }); a.addEventListener("error", () => { u.disabled = false; u.textContent = "Usar"; avisar("Não foi possível preparar a música."); }, { once: true }); })); }));
+  };
+  mostrar().catch(() => lista.replaceChildren(el("li", {}, "Não foi possível carregar as músicas.")));
+  return sec("Músicas de fundo", el("p", { class: "dica" }, "Compostas pelo próprio Clipador: sem direitos autorais, pode postar e monetizar."), packs, el("label", { class: "marcar" }, repetir, el("span", {}, "Repetir até o fim do vídeo")), lista);
+}
 function pSons() {
   const lista = el("ul", { class: "st-lista" }), busca = el("input", { type: "search", placeholder: "Buscar: tiro, boing, explosão…", "aria-label": "Buscar som" }), cat = el("select", { "aria-label": "Categoria" }, el("option", { value: "" }, "Todos"));
   let audio = null; const usar = (s, d) => { const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; colocar("audio", { tipo: "audio", categoria: "efeito", nome: s.nome, midia: m.id, dur: arred(d), entrada: 0, volume: 70 }); };
   const achar_ = async () => { const r = await api("GET", `/api/sons?${new URLSearchParams({ q: busca.value, categoria: cat.value })}`); if (cat.options.length < 2) cat.append(...r.categorias.map((c) => el("option", { value: c }, c)));
-    lista.replaceChildren(...r.sons.slice(0, 80).map((s) => el("li", {}, btn("Ouvir", () => { audio?.pause(); audio = new Audio(`/sons/${s.id}.wav`); audio.play().catch(() => {}); }), el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria)), btn("Usar", () => { const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => usar(s, a.duration), { once: true }); })))); };
+    lista.replaceChildren(...r.sons.filter((s) => cat.value || !s.categoria.startsWith("Música: ")).slice(0, 80).map((s) => el("li", {}, btn("Ouvir", () => { audio?.pause(); audio = new Audio(`/sons/${s.id}.wav`); audio.play().catch(() => {}); }), el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria)), btn("Usar", () => { const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => usar(s, a.duration), { once: true }); })))); };
   let tm; busca.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(achar_, 200); }); cat.addEventListener("change", achar_); achar_();
   const inp = el("input", { type: "file", accept: "audio/*", hidden: "" }); inp.addEventListener("change", async () => { const a = inp.files[0]; if (!a) return; const r = await fetch(`/api/sons?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); r.ok ? (cat.value = "Meus sons", achar_()) : avisar(d.erro); });
   const suger = btn("Sugerir sons para este vídeo", async () => { try { const { sons } = await api("POST", `/api/estudio/${S.tipo}/${S.id}/sugerir-sons`, { projeto: S.p }), nov = sons.filter((s) => !itens().some(([, i]) => i.tipo === "audio" && Math.abs(i.ini - s.t) < 1)); if (!nov.length) { avisar("Os sons sugeridos já estão no vídeo"); return; } antes(); for (const s of nov) { const a = new Audio(`/sons/${s.som}.wav`); await new Promise((r) => a.addEventListener("loadedmetadata", r, { once: true })); const mid = `som:${s.som}`; S.p.midias[mid] ||= { id: mid, tipo: "audio", raiz: "som", rel: s.som, nome: s.som.replace(/_/g, " "), dur: a.duration }; faixaLivre("audio", s.t, a.duration).itens.push({ id: nid(), tipo: "audio", categoria: "efeito", nome: S.p.midias[mid].nome, midia: mid, ini: s.t, dur: arred(a.duration), entrada: 0, volume: Math.round(s.volume * 100) }); } mudou(); montarCabecas(); avisar(`${nov.length} sons adicionados`); } catch (e) { avisar(e.message); } }, "botao destaque");
-  return [el("h2", {}, "Sons"), suger, btn("Enviar som ou música", () => inp.click()), inp, busca, cat, lista];
+  return [el("h2", {}, "Sons"), secMusicas(), sec("Efeitos sonoros", suger, btn("Enviar som ou música", () => inp.click()), inp, busca, cat, lista)];
 }
 const faixaCena = (id) => { const l = itens().filter(([, i]) => i.cena === id).map(([, i]) => i); return l.length ? [Math.min(...l.map((i) => i.ini)), Math.max(...l.map((i) => i.ini + i.dur))] : null; };
 function moverCena(n, d) {

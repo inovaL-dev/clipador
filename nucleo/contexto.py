@@ -211,6 +211,28 @@ def criar_post(gancho: str, canal: str, credito: str, titulo_live: str, platafor
     return f"{gancho}\n\n{contexto}.\nCréditos: {credito}\n\n#cortes #live #{plataforma} #{marca}\n"
 
 
+def nucleo_da_acao(grupos: list[dict], momento: float, duracao: float, folga: float = 1.3, teto: float = 14.0) -> list[float]:
+    """Trecho em que a coisa realmente acontece: a fala em volta do momento, sem as sobras."""
+    ini, fim = max(0.0, momento - 1.5), min(duracao, momento + 4.0)
+    blocos = sorted((float(g["ini"]), float(g["fim"])) for g in grupos)
+    mudou = True
+    while mudou:
+        mudou = False
+        for a, b in blocos:
+            if b < ini and ini - b <= folga and fim - a <= teto:
+                ini, mudou = a, True
+            elif a > fim and a - fim <= folga and b - ini <= teto:
+                fim, mudou = b, True
+            elif a < ini <= b and fim - a <= teto:
+                ini, mudou = a, True
+            elif a <= fim < b and b - ini <= teto:
+                fim, mudou = b, True
+    if fim - ini < 5:
+        fim = min(duracao, ini + 5)
+        ini = max(0.0, fim - 5)
+    return [round(ini, 2), round(fim, 2)]
+
+
 def agrupar_legenda(palavras: list[dict]) -> list[dict]:
     """Forma blocos curtos que acompanham a fala e não terminam em palavra solta."""
     grupos: list[list[dict]] = []
