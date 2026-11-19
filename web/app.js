@@ -1416,3 +1416,7 @@ async function desenharAprendizado() {
 }
 $("#abrir-aprendizado").addEventListener("click", () => { $("#janela-aprendizado").showModal(); desenharAprendizado().catch((e) => avisar(e.message)); });
 $("#janela-aprendizado [data-fechar]").addEventListener("click", () => $("#janela-aprendizado").close());
+
+// Destaca a plataforma reconhecida enquanto o link é digitado
+$("#link").addEventListener("input", (ev) => { const v = ev.target.value.toLowerCase(), p = /kick\.com/.test(v) ? "kick" : /twitch\.tv/.test(v) ? "twitch" : /youtu(\.be|be\.com)/.test(v) ? "youtube" : /(^|\/\/|\.)(x|twitter)\.com/.test(v) ? "x" : "";
+  $$("#plataformas li").forEach((li) => li.toggleAttribute("data-ativa", li.dataset.p === p)); });

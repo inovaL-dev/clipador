@@ -1,5 +1,12 @@
 [
   {
+    "versao": "1.8.6",
+    "data": "2026-11-19",
+    "notas": [
+      "Tela inicial nova: mostra um Short sendo montado e reconhece a plataforma do link enquanto você digita."
+    ]
+  },
+  {
     "versao": "1.8.5",
     "data": "2026-11-19",
     "notas": [

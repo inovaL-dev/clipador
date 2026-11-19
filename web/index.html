@@ -44,7 +44,10 @@
     <div><h1>Ao vivo</h1><p>Acompanhe as lives e veja os cortes saindo em tempo real.</p></div>
   </header>
   <section class="comando" aria-labelledby="comando-titulo">
+   <div class="comando-texto">
+    <p class="comando-estado"><span aria-hidden="true"></span>Pronto para acompanhar</p>
     <h2 id="comando-titulo">Cole o link da live. Os cortes saem enquanto ela acontece.</h2>
+    <p class="comando-sub">O Clipador grava, lê o chat, entende a fala e entrega Shorts com legenda, título e câmera no lugar certo, enquanto o streamer ainda está ao vivo.</p>
     <form id="form-link" novalidate>
       <label class="so-leitor" for="link">Link da live</label>
       <div class="campo-link">
@@ -52,15 +55,34 @@
                placeholder="kick.com/canal, twitch.tv/canal, youtube.com/@canal ou x.com/i/broadcasts/…" required>
         <button class="botao principal" type="submit">Acompanhar live</button>
       </div>
-      <label class="marcar marcar-link"><input type="checkbox" id="link-programar"><span>Colocar os Shorts desta live na agenda de postagem</span></label>
-      <button class="botao texto ir-envio" type="button" id="ir-envio">Enviar um vídeo do computador</button>
+      <ul class="plataformas" id="plataformas" aria-label="Plataformas aceitas">
+        <li data-p="kick">Kick</li><li data-p="twitch">Twitch</li><li data-p="youtube">YouTube</li><li data-p="x">X</li>
+      </ul>
+      <div class="comando-opcoes">
+        <label class="marcar marcar-link"><input type="checkbox" id="link-programar"><span>Colocar os Shorts desta live na agenda de postagem</span></label>
+        <button class="botao texto ir-envio" type="button" id="ir-envio"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V3m0 0L6 7m4-4 4 4M3 13v2.5A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5V13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Enviar um vídeo do computador</button>
+      </div>
       <p class="erro-campo" id="erro-link" role="alert" hidden></p>
     </form>
     <ol class="passos">
       <li><b>Cole o link</b><span>Kick, Twitch, YouTube ou X</span></li>
-      <li><b>O sistema corta</b><span>Reações, chat e ação no jogo</span></li>
-      <li><b>Você revisa e posta</b><span>Tudo pronto para os Shorts</span></li>
+      <li><b>O Clipador corta</b><span>Reação do streamer, chat e ação no jogo</span></li>
+      <li><b>Você revisa e posta</b><span>Shorts prontos, com agenda no YouTube</span></li>
     </ol>
+   </div>
+   <figure class="comando-vitrine" aria-hidden="true">
+    <div class="vt-celular">
+      <div class="vt-cam"><span class="vt-rosto"></span><span class="vt-ombro"></span><i class="vt-rec">AO VIVO</i></div>
+      <div class="vt-jogo"><span class="vt-sol"></span><span class="vt-chao"></span><span class="vt-titulo">ELE NÃO ESPERAVA ISSO</span>
+        <p class="vt-legenda"><b>OLHA</b> <b>O</b> <b>QUE</b> <b>ACONTECEU</b></p><i class="vt-barra"></i></div>
+    </div>
+    <ul class="vt-sinais">
+      <li><b>Reação do streamer</b><span style="--n:.82"></span></li>
+      <li><b>Chat agitado</b><span style="--n:.64"></span></li>
+      <li><b>Ação no jogo</b><span style="--n:.47"></span></li>
+    </ul>
+    <figcaption>Corte pronto em segundos</figcaption>
+   </figure>
   </section>
 
   <div class="mesa" id="mesa" hidden>
