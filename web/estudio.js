@@ -3,7 +3,7 @@
 (() => {
 const S = { aberto: false, tipo: null, id: null, p: null, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, px: 30, sujo: false, gerando: false,
   h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, caixas: new Map(), painel: "midia", zoomMao: false, filtros: [], fontes: [], sons: [], sug: [], clipe: [], ondas: new Map(), ultimoSom: 0, altFaixa: 1, vel: 1, ferr: "sel" };
-const ALTURAS = { video: 46, texto: 28, legenda: 30, efeito: 24, audio: 34 };
+const ALTURAS = { video: 46, texto: 28, legenda: 30, efeito: 24, audio: 44 };  // áudio mais alto para ver e arrastar o volume
 const altF = (f) => Math.round(ALTURAS[f.tipo] * S.altFaixa);
 const ROTULOS = { video: "Vídeo", imagem: "Imagem", forma: "Forma", texto: "Texto", legenda: "Legenda", efeito: "Efeito", audio: "Áudio" };
 const ANIM = [["nenhuma", "Nenhuma"], ["fade", "Aparecer"], ["pop", "Pop"], ["zoom", "Zoom"], ["subir", "Subir"], ["descer", "Descer"], ["esquerda", "Da direita"], ["direita", "Da esquerda"], ["quique", "Quicar"], ["digitando", "Digitando"]];
@@ -113,11 +113,19 @@ function bufferDe(mid) {
   if (!buffers.has(mid)) buffers.set(mid, fetch(urlMidia(S.p.midias[mid])).then((r) => r.arrayBuffer()).then((b) => audioCtx().decodeAudioData(b)).catch(() => null));
   return buffers.get(mid);
 }
+const ganhosVivos = new Set();
+function ganhoEm(i, t) { // volume, volume do tipo e entrada e saída suaves, como o vídeo final
+  const g0 = S.p.global, cat = i.categoria || "efeito", u = t - i.ini, fi = +i.fade_in || 0, fo = +i.fade_out || 0;
+  let g = (i.volume ?? 100) / 100 * (cat === "musica" ? g0.volume_musica ?? 100 : cat === "voz" ? g0.volume_fala ?? 100 : g0.volume_efeitos ?? 100) / 100;
+  if (fi > 0 && u < fi) g *= Math.max(0, u / fi); if (fo > 0 && u > i.dur - fo) g *= Math.max(0, (i.dur - u) / fo); return g;
+}
+function atualizarGanhos() { if (!ctxAudio) return; for (const v of ganhosVivos) { const [, i] = achar(v.id); if (i) v.gn.gain.setTargetAtTime(ganhoEm(i, S.t), ctxAudio.currentTime, .015); } }
 async function tocarSom(i, f) {
   const a = await bufferDe(i.midia); if (!a || !S.tocando) return;
-  const c = audioCtx(), src = c.createBufferSource(), gn = c.createGain(), g0 = S.p.global, cat = i.categoria || "efeito";
-  src.buffer = a; gn.gain.value = (i.volume ?? 100) / 100 * (cat === "musica" ? g0.volume_musica ?? 100 : cat === "voz" ? g0.volume_fala ?? 100 : g0.volume_efeitos ?? 100) / 100;
-  src.connect(gn).connect(c.destination); const salto = Math.max(0, S.t - i.ini); src.start(0, (i.entrada || 0) + salto, Math.max(.01, i.dur - salto)); tocandoSons.add(src); src.onended = () => tocandoSons.delete(src);
+  const c = audioCtx(), src = c.createBufferSource(), gn = c.createGain();
+  src.buffer = a; gn.gain.value = ganhoEm(i, S.t);
+  src.connect(gn).connect(c.destination); const salto = Math.max(0, S.t - i.ini); src.start(0, (i.entrada || 0) + salto, Math.max(.01, i.dur - salto)); tocandoSons.add(src);
+  const vivo = { id: i.id, gn }; ganhosVivos.add(vivo); src.onended = () => { tocandoSons.delete(src); ganhosVivos.delete(vivo); };
 }
 function tocar(vel = 1) {
   if (!S.p) return; fecharPrevia(); S.vel = vel; if (vel > 0 && S.t >= duracao() - .03) S.t = 0;
@@ -138,7 +146,7 @@ function laco(agora) {
     const dt = (agora - S.relogio) / 1000; S.relogio = agora; S.t += Math.min(.25, dt) * S.vel;
     if (S.t >= duracao()) { S.t = duracao(); pausar(); } else if (S.t <= 0) { S.t = 0; pausar(); }
     if (S.vel === 1) for (const [f, i] of itens()) if (f.tipo === "audio" && !f.muda && i.ini > S.ultimoSom && i.ini <= S.t) tocarSom(i, f);
-    S.ultimoSom = S.t; moverAgulha(); atualizarCampos(); pintar = true;
+    S.ultimoSom = S.t; atualizarGanhos(); moverAgulha(); atualizarCampos(); pintar = true;
   }
   sincronizarMidia();
   if (pintar) { pintar = false; pintarProjeto(); desenharAlca(); }
@@ -378,6 +386,10 @@ function montarLinha() {
     for (const i of f.itens) { if (i.ini + i.dur < de || i.ini > ate) continue;
       const s = S.sel.has(i.id), b = el("div", { class: `st-bl ${i.tipo}${s ? " sel" : ""}${s && arr?.modo === "mover" && arr.feito ? " arrastando" : ""}`, style: `left:${i.ini * S.px}px;width:${Math.max(3, i.dur * S.px)}px`, title: rotuloItem(i), dados: { i: i.id } }, el("span", {}, rotuloItem(i)));
       if (s && !f.travada && i.dur * S.px >= 30) b.append(el("em", { class: "a", dados: { b: "a" } }), el("em", { class: "b", dados: { b: "b" } }));
+      if (s && i.tipo === "audio" && !f.travada) { const h = altF(f), vol = i.volume ?? 100, fi = +i.fade_in || 0, fo = +i.fade_out || 0;
+        b.append(el("i", { class: "st-vol", title: `Volume ${Math.round(vol)}%. Arraste para cima ou para baixo.`, style: `top:${4 + (1 - Math.min(200, vol) / 200) * (h - 8)}px`, dados: { vol: "1" } }),
+          el("i", { class: "st-fade", title: `Entrada suave: ${String(arred(fi)).replace(".", ",")} s. Arraste para os lados.`, style: `left:${fi * S.px}px`, dados: { fade: "in" } }),
+          el("i", { class: "st-fade", title: `Saída suave: ${String(arred(fo)).replace(".", ",")} s. Arraste para os lados.`, style: `left:${(i.dur - fo) * S.px}px`, dados: { fade: "out" } })); }
       if (s) for (const c of pontosDe(i)) b.append(el("button", { class: "st-pt", type: "button", title: `Ponto em ${tempoTxt(c.t)}. Arraste para mover, Delete para apagar.`, "aria-label": `Ponto em ${tempoTxt(c.t)}`, style: `left:${c.t * S.px}px`, dados: { pt: c.t, ...(S.ponto?.id === i.id && Math.abs(S.ponto.t - c.t) < .02 ? { sel: "1" } : {}) } }));
       if (i.transicao?.tipo && i.transicao.tipo !== "corte") b.append(el("s", { style: `width:${i.transicao.dur * S.px}px` }));
       n.append(b);
@@ -394,11 +406,14 @@ function montarLinha() {
   let y = 0; c.fillStyle = "rgba(255,255,255,.42)";
   for (const f of [...S.p.faixas].reverse()) { const h = altF(f);
     if (["video", "audio"].includes(f.tipo)) for (const i of f.itens) { if (i.mudo || i.tipo === "imagem" || i.tipo === "forma" || i.ini + i.dur < de || i.ini > ate) continue; const m = S.p.midias[i.midia], o = m && ondaDe(m); if (!o?.length || !m.dur) continue;
-      const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, v * (h - 10)); c.fillRect(x, y + h - 3 - a, 1.2, a); } }
+      const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); const aud = i.tipo === "audio", nivel = (u) => aud ? Math.min(2, ganhoEmItem(i, u)) : 1;
+      for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, Math.min(1, v * nivel(u)) * (h - 10)); c.fillRect(x, y + h - 3 - a, 1.2, a); }
+      if (aud) { c.save(); c.strokeStyle = "rgba(255,201,51,.95)"; c.lineWidth = 1.5; c.beginPath(); for (let x = x0; x <= x1; x += 2) { const u = (x + esq) / S.px - i.ini, yy = y + 4 + (1 - nivel(u) / 2) * (h - 8); x === x0 ? c.moveTo(x, yy) : c.lineTo(x, yy); } c.stroke(); c.restore(); } }
     y += h + 1; }
   moverAgulha(false);
   const n = S.sel.size, u = sel1(); $("#st-sel").textContent = n > 1 ? `${n} elementos selecionados` : u ? `${ROTULOS[u.tipo]}: ${tempoTxt(u.ini)} a ${tempoTxt(u.ini + u.dur)}` : "";
 }
+function ganhoEmItem(i, u) { const fi = +i.fade_in || 0, fo = +i.fade_out || 0; let g = (i.volume ?? 100) / 100; if (fi > 0 && u < fi) g *= Math.max(0, u / fi); if (fo > 0 && u > i.dur - fo) g *= Math.max(0, (i.dur - u) / fo); return g; }
 function ondaDe(m) { const k = `${m.raiz}:${m.rel}`; if (!S.ondas.has(k)) { S.ondas.set(k, []); api("GET", `/api/estudio/onda?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`).then((o) => { S.ondas.set(k, o); desenharLinha(); }).catch(() => {}); } return S.ondas.get(k); }
 const rotuloItem = (i) => i.tipo === "legenda" || i.tipo === "texto" ? i.texto : i.nome || ROTULOS[i.tipo];
 function alvoTrMudou() { if (S.painel !== "transicoes" || !$("#st-tr-alvo")) return; const c = alvoTr(), k = c ? `c${c.t}` : "n"; if (k !== S.chaveTr) { S.chaveTr = k; if (!S.tocando) montarPainel(); } else if (!c) $("#st-tr-alvo strong").textContent = `Novo corte em ${tempoTxt(S.t)}`; }
@@ -415,6 +430,8 @@ function rolarNaBorda(ev) { const v = rolagem.getBoundingClientRect(); if (ev.cl
 trilhas.addEventListener("click", (ev) => { const m = ev.target.closest(".st-tr"); if (!m) return; pausar(); irPara(+m.dataset.t); abrirPainel("transicoes"); });
 faixasEl.addEventListener("pointerdown", (ev) => {
   fecharPrevia(); if (ev.target.closest(".st-tr")) return;
+  const alca = ev.target.closest(".st-vol, .st-fade");
+  if (alca) { ev.preventDefault(); ev.stopPropagation(); const [, i] = achar(alca.closest(".st-bl").dataset.i); if (!i) return; arr = { modo: alca.dataset.vol ? "volume" : `fade_${alca.dataset.fade}`, i, x0: ev.clientX, y0: ev.clientY, v0: alca.dataset.vol ? i.volume ?? 100 : +i[`fade_${alca.dataset.fade}`] || 0, h: alca.closest(".st-trilha").offsetHeight - 8, feito: false }; faixasEl.setPointerCapture(ev.pointerId); return; }
   const marca = ev.target.closest(".st-pt");
   if (marca) { ev.preventDefault(); const [, i] = achar(marca.closest(".st-bl").dataset.i), c = pontosDe(i).find((x) => Math.abs(x.t - +marca.dataset.pt) < .02); if (!c) return; selecionarPonto(i, c.t); const l = pontosDe(i), n = l.findIndex((x) => x.t === c.t); arr = { modo: "ponto", i, chaves: c.ks.map(([, k]) => k), x0: ev.clientX, t0: c.t, min: n > 0 ? l[n - 1].t + .04 : 0, max: n < l.length - 1 ? l[n + 1].t - .04 : i.dur, feito: false }; faixasEl.setPointerCapture(ev.pointerId); return; }
   if (S.ponto) { S.ponto = null; montarInspetor(); desenharLinha(); }
@@ -437,6 +454,11 @@ faixasEl.addEventListener("pointerdown", (ev) => {
 faixasEl.addEventListener("pointermove", (ev) => {
   if (!arr) return; const r = faixasEl.getBoundingClientRect();
   if (arr.modo === "agulha") { irPara((ev.clientX - r.left) / S.px); return; }
+  if (arr.modo === "volume" || arr.modo.startsWith("fade_")) {
+    if (!arr.feito) { if (Math.hypot(ev.clientX - arr.x0, ev.clientY - arr.y0) < 2) return; antes(); arr.feito = true; } const i = arr.i;
+    if (arr.modo === "volume") { i.volume = Math.round(lim(arr.v0 - (ev.clientY - arr.y0) * (ev.shiftKey ? .5 : 2), 0, 200)); dicaArr.textContent = `Volume ${i.volume}%`; }
+    else { const k = arr.modo, outro = k === "fade_in" ? +i.fade_out || 0 : +i.fade_in || 0, d = (ev.clientX - arr.x0) / S.px * (k === "fade_in" ? 1 : -1); i[k] = arred(lim(arr.v0 + d, 0, Math.max(0, i.dur - outro))); dicaArr.textContent = `${k === "fade_in" ? "Entrada" : "Saída"} suave ${String(i[k]).replace(".", ",")} s`; }
+    Object.assign(dicaArr.style, { left: `${ev.clientX + 14}px`, top: `${ev.clientY - 30}px` }); dicaArr.hidden = false; mudou(); atualizarGanhos(); atualizarCampos(); desenharLinha(); return; }
   if (arr.modo === "ponto") { if (!arr.feito) { if (Math.abs(ev.clientX - arr.x0) < 3) return; antes(); arr.feito = true; } moverPonto(arr.i, arr.chaves, lim(arred(arr.t0 + (ev.clientX - arr.x0) / S.px), arr.min, Math.max(arr.min, arr.max))); return; }
   if (arr.modo === "laco") { moverLaco(ev, r); return; }
   if (!arr.feito) { if (Math.hypot(ev.clientX - arr.x0, ev.clientY - arr.y0) < 4) return; antes(); arr.feito = true; }
@@ -468,6 +490,7 @@ function moverLaco(ev, r) {
   S.sel = novos; desenharLinha();
 }
 const soltar = (ev) => {
+  if (arr && (arr.modo === "volume" || arr.modo.startsWith?.("fade_"))) { dicaArr.hidden = true; const feito = arr.feito; arr = null; if (feito) { mudou(true); selecaoMudou(); } return; }
   if (arr?.modo === "laco") { $("#st-laco")?.remove(); if (!arr.andou) { irPara(arr.x0 / S.px); S.sel = arr.base; } selecaoMudou(); }
   else if (arr?.feito) { if (arr.modo === "mover") assentar(); mudou(true); montarCabecas(); }
   else if (arr?.soEste) { S.sel = new Set([arr.soEste]); selecaoMudou(); }
@@ -860,7 +883,7 @@ function pTransicoes() {
 /* ---------- Músicas de fundo compostas pelo Clipador, livres de direitos ---------- */
 let tocandoMusica = null;
 function secMusicas() {
-  const lista = el("ul", { class: "st-lista st-musicas" }), packs = el("div", { class: "st-packs", role: "group", "aria-label": "Pack de música" }), repetir = el("input", { type: "checkbox", checked: "" });
+  const lista = el("ul", { class: "st-sons st-musicas" }), packs = el("div", { class: "st-packs", role: "group", "aria-label": "Pack de música" }), repetir = el("input", { type: "checkbox", checked: "" });
   const usar = (s, d) => {
     const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; antes();
     const ini = arred(S.t), fim = repetir.checked ? Math.max(duracao(), ini + 1) : ini + d; let t = ini; const f = faixaLivre("audio", ini, fim - ini), ids = [];
@@ -874,20 +897,57 @@ function secMusicas() {
     const r = await api("GET", `/api/sons?${new URLSearchParams({ q: "musica" })}`), todas = r.sons.filter((s) => s.categoria.startsWith("Música: "));
     const nomes = [...new Set(todas.map((s) => s.categoria.slice(8)))];
     packs.replaceChildren(...["", ...nomes].map((n) => el("button", { type: "button", "aria-pressed": String(n === atual), onclick: () => { atual = n; mostrar(); } }, n || "Todas")));
-    lista.replaceChildren(...todas.filter((s) => !atual || s.categoria.slice(8) === atual).map((s) => { const b = btn("Ouvir", () => ouvir(s, b)); return el("li", {}, b, el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria.slice(8))), btn("Usar", (ev) => { const u = ev.currentTarget; u.disabled = true; u.textContent = "Preparando"; const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => { u.disabled = false; u.textContent = "Usar"; usar(s, a.duration); }, { once: true }); a.addEventListener("error", () => { u.disabled = false; u.textContent = "Usar"; avisar("Não foi possível preparar a música."); }, { once: true }); })); }));
+    lista.replaceChildren(...todas.filter((s) => !atual || s.categoria.slice(8) === atual).map((s) => cartaoSom(s, true, async (x) => { try { usar(x, await durSom(x.id)); } catch { avisar("Não foi possível preparar a música."); } })));
   };
   mostrar().catch(() => lista.replaceChildren(el("li", {}, "Não foi possível carregar as músicas.")));
   return sec("Músicas de fundo", el("p", { class: "dica" }, "Compostas pelo próprio Clipador: sem direitos autorais, pode postar e monetizar."), packs, el("label", { class: "marcar" }, repetir, el("span", {}, "Repetir até o fim do vídeo")), lista);
 }
+/* ---------- Sons como no CapCut: ouvir, adicionar com + ou arrastar para a timeline ---------- */
+let somTocando = null, somArrastado = null;
+function ouvirSom(id, b) {
+  const mesmo = somTocando?.id === id; somTocando?.a.pause(); $$("#st-painel [data-tocando]").forEach((x) => { x.removeAttribute("data-tocando"); x.setAttribute("aria-label", "Ouvir"); }); somTocando = null; if (mesmo) return;
+  const a = new Audio(`/sons/${id}.wav`); b.dataset.carregando = "1"; a.addEventListener("playing", () => { delete b.dataset.carregando; b.dataset.tocando = "1"; b.setAttribute("aria-label", "Parar"); }, { once: true });
+  a.addEventListener("ended", () => { b.removeAttribute("data-tocando"); somTocando = null; }); a.play().catch((e) => { delete b.dataset.carregando; console.warn("som", e.name, e.message); }); somTocando = { id, a };
+}
+const durSom = (id) => new Promise((ok, falha) => { const a = new Audio(`/sons/${id}.wav`); a.preload = "metadata"; a.addEventListener("loadedmetadata", () => ok(a.duration), { once: true }); a.addEventListener("error", falha, { once: true }); });
+async function porSom(s, musica, ini, faixa) {
+  let d; try { d = await durSom(s.id); } catch { avisar("Não foi possível preparar o som."); return; }
+  const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; antes();
+  const livre = (f, a, b) => f && f.tipo === "audio" && !f.travada && !f.itens.some((x) => x.ini < b && x.ini + x.dur > a);
+  const f = livre(faixa, ini, ini + d) ? faixa : faixaLivre("audio", ini, d), item = { id: nid(), tipo: "audio", categoria: musica ? "musica" : "efeito", nome: s.nome, midia: m.id, ini: arred(ini), dur: arred(d), entrada: 0, volume: musica ? 30 : 70, ...(musica ? { fade_in: .4, fade_out: Math.min(1.5, d / 2) } : {}) };
+  f.itens.push(item); S.sel = new Set([item.id]); mudou(true); montarCabecas(); avisar(`${s.nome} na timeline em ${tempoTxt(ini)}`);
+}
+function cartaoSom(s, musica, extra) {
+  const tocar = el("button", { class: "st-som-tocar", type: "button", "aria-label": "Ouvir", title: "Ouvir", onclick: (ev) => { ev.stopPropagation(); ouvirSom(s.id, tocar); } });
+  const mais = el("button", { class: "st-som-mais", type: "button", "aria-label": `Adicionar ${s.nome} na agulha`, title: "Adicionar na agulha", onclick: (ev) => { ev.stopPropagation(); extra ? extra(s) : porSom(s, musica, S.t); } }, "+");
+  const n = el("li", { class: "st-som", draggable: "true", title: "Arraste para a timeline", dados: { cat: s.categoria } }, tocar, el("div", {}, el("strong", {}, s.nome), el("span", {}, musica ? s.categoria.slice(8) : s.categoria)), mais);
+  n.addEventListener("dragstart", (ev) => { somArrastado = { s, musica }; ev.dataTransfer.setData("text/plain", s.nome); ev.dataTransfer.effectAllowed = "copy"; n.dataset.arrastando = "1"; });
+  n.addEventListener("dragend", () => { delete n.dataset.arrastando; somArrastado = null; fimArraste(); });
+  return n;
+}
+{ // a timeline recebe os sons arrastados
+  const linha = el("div", { class: "st-som-alvo", hidden: "" }); document.body.append(linha);
+  const ponto = (ev) => { const r = faixasEl.getBoundingClientRect(), t = lim((ev.clientX - r.left) / S.px, 0, duracao() + 30), cab = [...$$("#st-cabecas .st-cab")].find((c) => { const b = c.getBoundingClientRect(); return ev.clientY >= b.top && ev.clientY < b.bottom; }); return { t: arred(t), faixa: cab ? S.p.faixas[+cab.dataset.ci] : null }; };
+  rolagem.addEventListener("dragover", (ev) => { if (!somArrastado) return; ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; const { t } = ponto(ev), r = rolagem.getBoundingClientRect(), x = faixasEl.getBoundingClientRect().left + t * S.px;
+    Object.assign(linha.style, { left: `${x}px`, top: `${r.top}px`, height: `${r.height}px` }); linha.dataset.t = tempoTxt(t); linha.hidden = false; });
+  rolagem.addEventListener("dragleave", (ev) => { if (!rolagem.contains(ev.relatedTarget)) linha.hidden = true; });
+  rolagem.addEventListener("drop", (ev) => { if (!somArrastado) return; ev.preventDefault(); linha.hidden = true; const { t, faixa } = ponto(ev), { s, musica } = somArrastado; somArrastado = null; porSom(s, musica, t, faixa); });
+  window.fimArraste = () => { linha.hidden = true; };
+}
+function fimArraste() { window.fimArraste?.(); }
 function pSons() {
-  const lista = el("ul", { class: "st-lista" }), busca = el("input", { type: "search", placeholder: "Buscar: tiro, boing, explosão…", "aria-label": "Buscar som" }), cat = el("select", { "aria-label": "Categoria" }, el("option", { value: "" }, "Todos"));
-  let audio = null; const usar = (s, d) => { const m = { id: `som:${s.id}`, tipo: "audio", raiz: "som", rel: s.id, nome: s.nome, dur: d }; S.p.midias[m.id] = m; colocar("audio", { tipo: "audio", categoria: "efeito", nome: s.nome, midia: m.id, dur: arred(d), entrada: 0, volume: 70 }); };
-  const achar_ = async () => { const r = await api("GET", `/api/sons?${new URLSearchParams({ q: busca.value, categoria: cat.value })}`); if (cat.options.length < 2) cat.append(...r.categorias.map((c) => el("option", { value: c }, c)));
-    lista.replaceChildren(...r.sons.filter((s) => cat.value || !s.categoria.startsWith("Música: ")).slice(0, 80).map((s) => el("li", {}, btn("Ouvir", () => { audio?.pause(); audio = new Audio(`/sons/${s.id}.wav`); audio.play().catch(() => {}); }), el("div", {}, el("strong", {}, s.nome), el("span", {}, s.categoria)), btn("Usar", () => { const a = new Audio(`/sons/${s.id}.wav`); a.addEventListener("loadedmetadata", () => usar(s, a.duration), { once: true }); })))); };
-  let tm; busca.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(achar_, 200); }); cat.addEventListener("change", achar_); achar_();
-  const inp = el("input", { type: "file", accept: "audio/*", hidden: "" }); inp.addEventListener("change", async () => { const a = inp.files[0]; if (!a) return; const r = await fetch(`/api/sons?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); r.ok ? (cat.value = "Meus sons", achar_()) : avisar(d.erro); });
+  const aba = S.abaSons || "efeitos", abas = el("div", { class: "st-sons-abas", role: "tablist" }, ...[["efeitos", "Efeitos sonoros"], ["musicas", "Músicas"]].map(([v, t]) => el("button", { type: "button", role: "tab", "aria-selected": String(v === aba), onclick: () => { S.abaSons = v; $("#st-painel").dataset.p = ""; montarPainel(); } }, t)));
+  const dica = el("p", { class: "dica" }, "Clique em ▶ para ouvir. Use + ou arraste para a timeline.");
+  if (aba === "musicas") return [el("h2", {}, "Sons"), abas, dica, secMusicas()];
+  const lista = el("ul", { class: "st-sons" }), busca = el("input", { type: "search", placeholder: "Buscar: tiro, boing, explosão…", "aria-label": "Buscar som" }), chips = el("div", { class: "st-packs", role: "group", "aria-label": "Categoria" });
+  let cat = S.catSom || "";
+  const achar_ = async () => { const r = await api("GET", `/api/sons?${new URLSearchParams({ q: busca.value, categoria: cat })}`), cats = r.categorias.filter((c) => !c.startsWith("Música: "));
+    chips.replaceChildren(...["", ...cats].map((c) => el("button", { type: "button", "aria-pressed": String(c === cat), onclick: () => { cat = S.catSom = c; achar_(); } }, c || "Todos")));
+    const l = r.sons.filter((x) => !x.categoria.startsWith("Música: ")).slice(0, 120); lista.replaceChildren(...(l.length ? l.map((x) => cartaoSom(x, false)) : [el("li", { class: "dica" }, "Nenhum som encontrado.")])); };
+  let tm; busca.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(achar_, 200); }); achar_();
+  const inp = el("input", { type: "file", accept: "audio/*", hidden: "" }); inp.addEventListener("change", async () => { const a = inp.files[0]; if (!a) return; const r = await fetch(`/api/sons?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); r.ok ? (cat = S.catSom = "Meus sons", achar_()) : avisar(d.erro); });
   const suger = btn("Sugerir sons para este vídeo", async () => { try { const { sons } = await api("POST", `/api/estudio/${S.tipo}/${S.id}/sugerir-sons`, { projeto: S.p }), nov = sons.filter((s) => !itens().some(([, i]) => i.tipo === "audio" && Math.abs(i.ini - s.t) < 1)); if (!nov.length) { avisar("Os sons sugeridos já estão no vídeo"); return; } antes(); for (const s of nov) { const a = new Audio(`/sons/${s.som}.wav`); await new Promise((r) => a.addEventListener("loadedmetadata", r, { once: true })); const mid = `som:${s.som}`; S.p.midias[mid] ||= { id: mid, tipo: "audio", raiz: "som", rel: s.som, nome: s.som.replace(/_/g, " "), dur: a.duration }; faixaLivre("audio", s.t, a.duration).itens.push({ id: nid(), tipo: "audio", categoria: "efeito", nome: S.p.midias[mid].nome, midia: mid, ini: s.t, dur: arred(a.duration), entrada: 0, volume: Math.round(s.volume * 100) }); } mudou(); montarCabecas(); avisar(`${nov.length} sons adicionados`); } catch (e) { avisar(e.message); } }, "botao destaque");
-  return [el("h2", {}, "Sons"), secMusicas(), sec("Efeitos sonoros", suger, btn("Enviar som ou música", () => inp.click()), inp, busca, cat, lista)];
+  return [el("h2", {}, "Sons"), abas, el("div", { class: "st-botoes" }, suger, btn("Enviar som", () => inp.click())), inp, busca, chips, dica, lista];
 }
 const faixaCena = (id) => { const l = itens().filter(([, i]) => i.cena === id).map(([, i]) => i); return l.length ? [Math.min(...l.map((i) => i.ini)), Math.max(...l.map((i) => i.ini + i.dur))] : null; };
 function moverCena(n, d) {

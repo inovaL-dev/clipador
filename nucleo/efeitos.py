@@ -230,8 +230,8 @@ def gravar(destino: Path, quadros: Iterable[np.ndarray], total: int, largura: in
     with tempfile.TemporaryDirectory(prefix="clipador_") as tmp:
         tmp = Path(tmp)
         (tmp / "legenda.ass").write_text(ass, encoding="utf-8")
-        (tmp / "fontes").mkdir()
-        shutil.copy(FONTE, tmp / "fontes")
+        from .estilos import copiar_fontes
+        copiar_fontes(ass, tmp / "fontes")
         if trilha is not None:
             shutil.copy(trilha, tmp / "efeitos.wav")
         else:

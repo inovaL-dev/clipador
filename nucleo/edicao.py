@@ -337,11 +337,9 @@ def _renderizar_simples(fonte: Path, pasta: Path, plano: dict, grupos: list[dict
     fim = max(0.0, duracao - 0.25)
     with tempfile.TemporaryDirectory(prefix="clipador_") as tmp:
         tmp = Path(tmp)
-        (tmp / "legenda.ass").write_text(
-            gerar_ass(grupos, gancho, contexto, credito, duracao, plano["layout"], estilo), encoding="utf-8"
-        )
-        (tmp / "fontes").mkdir()
-        shutil.copy(FONTE, tmp / "fontes")
+        ass_texto = gerar_ass(grupos, gancho, contexto, credito, duracao, plano["layout"], estilo)
+        (tmp / "legenda.ass").write_text(ass_texto, encoding="utf-8")
+        estilos.copiar_fontes(ass_texto, tmp / "fontes")
         filtro = (
             f"{_filtro_video(plano)},fps=30,fade=t=out:st={fim:.2f}:d=0.25,"
             "ass=legenda.ass:fontsdir=fontes,format=yuv420p[v]"

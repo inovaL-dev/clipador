@@ -524,8 +524,7 @@ def gerar_capa(t: dict, texto: str, canal: str, destino: Path, est: dict | None 
         tmp = Path(tmp)
         cv2.imwrite(str(tmp / "fundo.png"), fundo)
         (tmp / "capa.ass").write_text(ass, encoding="utf-8")
-        (tmp / "fontes").mkdir()
-        shutil.copy(efeitos.FONTE, tmp / "fontes")
+        estilos.copiar_fontes(ass, tmp / "fontes")
         r = subprocess.run(
             ["ffmpeg", "-v", "error", "-y", "-i", "fundo.png", "-vf", "ass=capa.ass:fontsdir=fontes", "-frames:v", "1", "-q:v", "3", "capa.jpg"],
             cwd=tmp, capture_output=True, text=True, encoding="utf-8", errors="replace", **sem_janela(),
@@ -1058,8 +1057,7 @@ def previa_estilo(est: dict, formato: str, corte: dict | None, saida: Path, dest
     with tempfile.TemporaryDirectory(prefix="clipador_") as tmp:
         tmp = Path(tmp)
         (tmp / "previa.ass").write_text(ass, encoding="utf-8")
-        (tmp / "fontes").mkdir()
-        shutil.copy(efeitos.FONTE, tmp / "fontes")
+        estilos.copiar_fontes(ass, tmp / "fontes")
         edicao.executar(["ffmpeg", "-v", "error", "-y", *entrada, "-filter_complex", f"{base},fps=30,{cor}ass=previa.ass:fontsdir=fontes,{escala}[v]",
                          "-map", "[v]", "-ss", "1.45", "-frames:v", "1", "-q:v", "3", "previa.jpg"], cwd=tmp)
         shutil.move(str(tmp / "previa.jpg"), destino)

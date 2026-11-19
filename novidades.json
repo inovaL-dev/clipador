@@ -1,5 +1,22 @@
 [
   {
+    "versao": "1.8.2",
+    "data": "2026-11-19",
+    "notas": [
+      "Os modelos de título saem com a fonte certa no vídeo final.",
+      "Sons como no CapCut: ouvir, botão + e arrastar para a timeline.",
+      "Volume e entrada/saída suave direto no clipe de áudio, ouvindo a mudança enquanto toca."
+    ]
+  },
+  {
+    "versao": "1.8.1",
+    "data": "2026-11-19",
+    "notas": [
+      "Barra de progresso ao enviar vídeos para o Aprendizado, com tempo que falta.",
+      "A tela não recarrega mais sozinha quando a janela fica atrás de outras ou minimizada."
+    ]
+  },
+  {
     "versao": "1.8.0",
     "data": "2026-11-19",
     "notas": [

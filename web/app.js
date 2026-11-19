@@ -361,7 +361,10 @@ async function atualizar() {
   catch { $("#resumo").textContent = "Sem conexão com o programa. Confira se a janela do clipador está aberta."; }
 }
 setInterval(() => { if (!document.hidden) atualizar(); }, 1000);
-setInterval(() => { fetch("/api/programa/sinal", { method: "POST", body: "{}" }).catch(() => {}); }, 15000);  // avisa o programa que a janela continua respondendo
+// Avisa o programa que a tela está viva. Quando a janela vai para trás ou é minimizada, avisa na hora,
+// para o programa nunca confundir uma tela em espera com uma tela travada.
+const sinalTela = () => fetch("/api/programa/sinal", { method: "POST", body: JSON.stringify({ visivel: !document.hidden }), keepalive: true }).catch(() => {});
+setInterval(sinalTela, 10000); document.addEventListener("visibilitychange", sinalTela); addEventListener("focus", sinalTela); sinalTela();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });
 
 function confirmar(botao, rotulo, acao) {
@@ -1340,11 +1343,36 @@ $("#form-viral").addEventListener("submit", async (ev) => {
   try { await api("POST", "/api/montagens/estilo", { modelo: estiloAtual.id, pasta: $("#ev-pasta").value, gancho: $("#ev-gancho").value, partes: $("#ev-partes").value, marca: $("#ev-marca").value, chamada: $("#ev-chamada").value }); $("#janela-viral").close(); $("#janela-aprendizado").close(); avisar("O vídeo começou a ser criado"); atualizar(); }
   catch (e) { $("#ev-erro").textContent = e.message; $("#ev-erro").hidden = false; }
 });
+/* Envio dos vídeos de exemplo com barra de progresso */
+const mb = (b) => `${(b / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: b < 1048576 * 10 ? 1 : 0 })} MB`;
+function enviarUm(a, aoAndar) {
+  return new Promise((ok) => {
+    const x = new XMLHttpRequest(); x.open("POST", `/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`);
+    x.upload.onprogress = (ev) => { if (ev.lengthComputable) aoAndar(ev.loaded, ev.total); };
+    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch {} ok(x.status < 300 ? null : j.erro || `Não foi possível enviar ${a.name}.`); };
+    x.onerror = () => ok(`Não foi possível enviar ${a.name}.`); x.send(a);
+  });
+}
+let enviandoExemplos = false;
+async function enviarExemplos(lista) {
+  if (!lista.length || enviandoExemplos) return;
+  enviandoExemplos = true; const caixa = $("#ap-envio"), total = lista.reduce((s, a) => s + a.size, 0), erros = []; let feito = 0, inicio = performance.now();
+  const pintar = (n, enviado) => { const pct = Math.min(100, Math.round((feito + enviado) / Math.max(1, total) * 100)), seg = (performance.now() - inicio) / 1000, veloc = (feito + enviado) / Math.max(.5, seg), falta = (total - feito - enviado) / Math.max(1, veloc);
+    $("#ap-envio-titulo").textContent = lista.length > 1 ? `Enviando vídeo ${n + 1} de ${lista.length}` : "Enviando vídeo"; $("#ap-envio-pct").textContent = `${pct}%`; $("#ap-envio-barra").style.width = `${pct}%`; $("[role=progressbar]", caixa).setAttribute("aria-valuenow", String(pct));
+    $("#ap-envio-detalhe").textContent = `${lista[n].name}, ${mb(feito + enviado)} de ${mb(total)}${seg > 2 && falta > 1 ? `, falta cerca de ${falta < 60 ? `${Math.ceil(falta)} s` : `${Math.ceil(falta / 60)} min`}` : ""}`; };
+  caixa.hidden = false; caixa.removeAttribute("data-fim");
+  for (const [n, a] of lista.entries()) { pintar(n, 0); const erro = await enviarUm(a, (e) => pintar(n, e)); if (erro) erros.push(erro); feito += a.size; }
+  enviandoExemplos = false; caixa.dataset.fim = "1"; $("#ap-envio-pct").textContent = "100%"; $("#ap-envio-barra").style.width = "100%";
+  $("#ap-envio-titulo").textContent = erros.length ? (erros.length === lista.length ? "O envio falhou" : `${lista.length - erros.length} de ${lista.length} vídeos enviados`) : lista.length > 1 ? `${lista.length} vídeos enviados` : "Vídeo enviado";
+  $("#ap-envio-detalhe").textContent = erros.length ? erros.join(" ") : "Agora o Clipador está analisando. Pode fechar esta janela, a análise continua.";
+  setTimeout(() => { if (!enviandoExemplos) caixa.hidden = true; }, erros.length ? 12000 : 6000);
+  desenharAprendizado().catch(() => {});
+}
 async function desenharAprendizado() {
   const d = await api("GET", "/api/aprendizado"), p = d.perfil, c = $("#ap-corpo"), t = d.trabalho;
   const chave = (k, rot, dica) => { const n = el("input", { type: "checkbox" }); n.checked = d.ativo[k]; n.addEventListener("change", async () => { await api("POST", "/api/aprendizado", { [k]: n.checked }); desenharAprendizado(); }); return el("label", { class: "marcar" }, n, el("span", {}, el("strong", {}, rot), el("small", {}, dica))); };
   const envio = el("input", { type: "file", accept: "video/*", hidden: "", multiple: "" });
-  envio.addEventListener("change", async () => { const lista = [...envio.files]; for (const [n, a] of lista.entries()) { avisar(`Enviando o vídeo ${n + 1} de ${lista.length}`); try { const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || `Não foi possível enviar ${a.name}.`); } catch { avisar(`Não foi possível enviar ${a.name}.`); } } envio.value = ""; desenharAprendizado(); });
+  envio.addEventListener("change", () => { enviarExemplos([...envio.files]); envio.value = ""; });
   const detalhes = (p) => [p.webcam ? "Câmera em cima do jogo" : null, p.palavra_a_palavra ? "Uma palavra por vez na legenda" : null, p.cena_s ? `Cenas de ${String(p.cena_s).replace(".", ",")} segundos` : `${Math.round(p.cortes_min)} trocas por minuto`, p.zooms_min ? `${Math.round(p.zooms_min)} zooms por minuto` : null, p.transicoes?.length ? `Transição: ${NOMES_TROCA[p.transicoes[0]] || p.transicoes[0]}` : null, p.sfx_cortes != null ? `Som em ${Math.round(p.sfx_cortes * 100)}% das trocas` : null].filter(Boolean);
   const cartaoModelo = (m) => {
     const criar = el("button", { class: "botao destaque", type: "button", onclick: () => abrirEstilo(m, d.marca) }, "Criar vídeo neste estilo");

@@ -593,6 +593,11 @@
 <dialog class="janela ap-janela" id="janela-aprendizado" aria-labelledby="ap-titulo">
   <div class="ap-caixa">
     <header class="editor-topo"><div><h2 id="ap-titulo">Aprendizado</h2><p>O sistema melhora os próximos vídeos com o que você mostra, edita e publica.</p></div><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+    <div class="ap-envio" id="ap-envio" role="status" aria-live="polite" hidden>
+      <div class="ap-envio-topo"><span class="giro" aria-hidden="true"></span><b id="ap-envio-titulo">Enviando vídeo</b><span id="ap-envio-pct">0%</span></div>
+      <div class="barra" role="progressbar" aria-labelledby="ap-envio-titulo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="ap-envio-barra" style="width:0%"></span></div>
+      <small id="ap-envio-detalhe"></small>
+    </div>
     <div class="ap-corpo" id="ap-corpo"></div>
   </div>
 </dialog>

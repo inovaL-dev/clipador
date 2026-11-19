@@ -34,6 +34,7 @@ class Painel(BaseHTTPRequestHandler):
     ao_encerrar = None
     ao_mostrar = None
     ultimo_sinal = 0.0
+    tela_visivel = False
     info_programa = None
     definir_programa = None
 
@@ -363,7 +364,11 @@ class Painel(BaseHTTPRequestHandler):
     def do_POST(self):
         caminho = urlsplit(self.path).path
         if caminho == "/api/programa/sinal":
-            self.rfile.read(int(self.headers.get("Content-Length") or 0))  # a conexão continua aberta para o próximo pedido
+            corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0))  # a conexão continua aberta para o próximo pedido
+            try:
+                Painel.tela_visivel = bool(json.loads(corpo or b"{}").get("visivel"))
+            except ValueError:
+                Painel.tela_visivel = False
             Painel.ultimo_sinal = time.time()
             return self._json({"ok": True})
         if caminho == "/api/programa/mostrar" and type(self).ao_mostrar:

@@ -183,6 +183,25 @@ def eventos_legenda(grupos: list[dict], duracao: float, est: dict, cx: int, y: i
     return linhas
 
 
+def copiar_fontes(ass: str, pasta) -> None:
+    """Coloca na pasta de trabalho todas as fontes que o arquivo de legenda usa.
+
+    O Windows não tem essas fontes instaladas: sem a cópia, o título sairia com uma fonte comum."""
+    import shutil
+    from pathlib import Path
+
+    origem = Path(__file__).resolve().parent.parent / "fontes"
+    pasta = Path(pasta)
+    pasta.mkdir(parents=True, exist_ok=True)
+    nomes = {"Poppins-Bold"} | {m.strip().replace(" ", "-") for m in re.findall(r"^Style:\s*[^,]*,([^,]+),", ass, re.M)}
+    for nome in nomes:
+        for candidato in (nome, f"{nome}-Bold", nome.replace("-", "")):
+            arquivo = origem / f"{candidato}.ttf"
+            if arquivo.exists():
+                shutil.copy(arquivo, pasta / arquivo.name)
+                break
+
+
 def estilo_gancho(est: dict, tamanho: float, nome: str = "Gancho", alinhamento: int = 8) -> str:
     destaque = cor_ass(est["cor"])
     preto, branco = "&H00141414", "&H00FFFFFF"

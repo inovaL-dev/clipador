@@ -260,12 +260,14 @@ def diagnostico(destino: Path) -> int:
     return 1 if any(v.startswith("FALHOU") for v in resultado.values()) else 0
 
 
-def vigiar_janela(sinal, recarregar, oculta, parar: threading.Event, limite: float = 100.0, pausa: float = 5.0) -> None:
-    """Se a tela parar de responder, abre o painel de novo sem interromper as gravações."""
+def vigiar_janela(sinal, recarregar, oculta, parar: threading.Event, limite: float = 180.0, pausa: float = 5.0, visivel=lambda: True) -> None:
+    """Se a tela parar de responder estando à vista, abre o painel de novo sem interromper as gravações.
+
+    Uma tela em segundo plano ou minimizada avisa que saiu de vista e nunca é recarregada."""
     tentativas, desde = 0, time.time()
     while not parar.wait(pausa):
         ultimo = sinal()
-        if not ultimo or oculta():
+        if not ultimo or oculta() or not visivel():
             desde = time.time()
             continue
         if ultimo > desde:
@@ -393,7 +395,7 @@ def main() -> int:
                 if estado["janela"]:
                     threading.Thread(target=barra_escura, daemon=True).start()
                     estado["janela"].load_url(f"{endereco}/?janela=1")
-                    threading.Thread(target=vigiar_janela, args=(lambda: Painel.ultimo_sinal, lambda: estado["janela"].load_url(f"{endereco}/?janela=1"), lambda: estado["oculta"], parar), daemon=True).start()
+                    threading.Thread(target=vigiar_janela, args=(lambda: Painel.ultimo_sinal, lambda: estado["janela"].load_url(f"{endereco}/?janela=1"), lambda: estado["oculta"], parar, 180.0, 5.0, lambda: Painel.tela_visivel), daemon=True).start()
                 elif not args.sem_navegador and not args.segundo_plano:
                     webbrowser.open(endereco)
             except Exception:
