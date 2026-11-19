@@ -25,13 +25,17 @@
   const renderOriginal = window.renderTudo;
   window.renderTudo = () => {
     renderOriginal();
-    conferirCapas();
+    conferirCapas(); conferirContadores();
     const e = window.estado ?? (typeof estado !== "undefined" ? estado : null); if (!e) return;
     document.body.dataset.trabalhando = String(e.canais.some((c) => c.status === "gravando") || e.cortes.some((c) => !["pronto", "erro"].includes(c.status)) || e.longos.some((v) => !["pronto", "erro"].includes(v.status)));
   };
 
-  new MutationObserver((lista) => { for (const m of lista) { const n = m.target.parentElement?.closest?.(".contador") || m.target; if (n.classList?.contains("contador") && n.textContent) { n.classList.remove("salto"); void n.offsetWidth; n.classList.add("salto"); } } })
-    .observe(nav, { subtree: true, childList: true, characterData: true });
+  /* O número só pula quando o valor realmente muda. */
+  const contadores = new Map();
+  nav.addEventListener("animationend", (ev) => ev.target.classList?.remove("salto"));
+  function conferirContadores() {
+    nav.querySelectorAll(".contador").forEach((n) => { const v = n.textContent; if (contadores.has(n) && contadores.get(n) !== v && v) n.classList.add("salto"); contadores.set(n, v); });
+  }
 
   if (!matchMedia("(hover: hover)").matches) return;
   /* Luz que acompanha o mouse nos painéis */

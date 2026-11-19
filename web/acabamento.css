@@ -61,24 +61,21 @@ input:not([type=checkbox], [type=radio], [type=range], [type=color]), select, te
 input:not([type=checkbox], [type=radio], [type=range], [type=color]):focus, select:focus, textarea:focus { border-color: var(--corte); outline: 0; box-shadow: 0 0 0 3px rgb(242 181 68 / .16); }
 input[type=checkbox] { transition: transform .18s var(--mola); } input[type=checkbox]:checked { transform: scale(1.06); } input[type=checkbox]:active { transform: scale(.9); }
 .barra { background: rgb(44 68 78 / .55); } .barra span { position: relative; overflow: hidden; background: linear-gradient(90deg, #e59f2c, var(--corte)); box-shadow: 0 0 10px rgb(242 181 68 / .45); }
-.barra span::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .5), transparent); animation: brilhoBarra 1.5s linear infinite; } @keyframes brilhoBarra { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
 /* Cartões de vídeo */
 .corte, .longo, .tl-cartao { transition: transform .26s var(--suave); } .corte:hover, button.longo:hover, .tl-cartao:hover { transform: translateY(-4px); } .corte:active, button.longo:active, .tl-cartao:active { transform: translateY(-1px) scale(.99); }
-.poster, .longo-capa { isolation: isolate; box-shadow: 0 0 0 1px rgb(255 255 255 / .05), 0 10px 24px -16px rgb(2 7 9 / .9); transition: box-shadow .26s var(--suave); background: linear-gradient(110deg, #15252c 30%, #1e323a 50%, #15252c 70%) 0 0 / 220% 100%; }
-.poster:has(> img:not(.carregada)), .longo-capa:has(> img:not(.carregada)) { animation: esqueleto 1.6s linear infinite; }
+.poster, .longo-capa { isolation: isolate; box-shadow: 0 0 0 1px rgb(255 255 255 / .05), 0 10px 24px -16px rgb(2 7 9 / .9); transition: box-shadow .26s var(--suave); background: #15252c; }
 .poster > img, .longo-capa > img { opacity: 0; transition: opacity .3s, transform .22s; } .poster > img.carregada, .longo-capa > img.carregada { opacity: 1; } .corte[data-postado="true"] .poster > img.carregada { opacity: .42; }
-@keyframes esqueleto { to { background-position: -220% 0; } }
 .corte:hover .poster, button.longo:hover .longo-capa { box-shadow: 0 0 0 2px var(--corte), 0 22px 40px -18px rgb(2 7 9 / .95), 0 12px 36px -16px rgb(242 181 68 / .36); }
 .corte h3, .longo h3 { transition: color .16s; } .corte:hover h3, button.longo:hover h3 { color: var(--marfim); }
 .previa-viva { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; background: #000; opacity: 0; transition: opacity .22s; } .previa-viva.tocando { opacity: 1; }
 .previa-linha { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 3px; background: rgb(0 0 0 / .4); } .previa-linha i { display: block; width: 0; height: 100%; background: var(--corte); box-shadow: 0 0 8px var(--corte); }
 .poster-reacao, .poster-dur { z-index: 2; transition: transform .22s var(--suave); } .corte:hover .poster-reacao { transform: translateY(-5px); } .corte:hover .poster-dur { transform: translateY(-5px); }
-.poster:has(.etapas) { animation: none; background: linear-gradient(160deg, #18292f, #101c21); } .poster:has(.etapas)::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--corte); box-shadow: 0 0 22px 5px rgb(242 181 68 / .4); animation: varrer 2.2s ease-in-out infinite alternate; } @keyframes varrer { to { left: calc(100% - 2px); } }
+.etapas { overflow: hidden; background: linear-gradient(160deg, #18292f, #101c21); } .etapas::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--corte) 2px, transparent 2px); opacity: .7; pointer-events: none; animation: varrer 2.2s ease-in-out infinite alternate; } @keyframes varrer { from { transform: translateX(0); } to { transform: translateX(calc(100% - 2px)); } }
 
 /* Ao vivo */
-.live[data-status="gravando"] { border-color: rgb(255 90 95 / .28); } .live[data-status="gravando"] [class*="selo"] { animation: aoVivo 1.8s infinite; }
-@keyframes aoVivo { 0% { box-shadow: 0 0 0 0 rgb(255 90 95 / .45); } 70%, 100% { box-shadow: 0 0 0 .5rem rgb(255 90 95 / 0); } }
+.live[data-status="gravando"] { border-color: rgb(255 90 95 / .28); }
+@keyframes aoVivo { 50% { opacity: .35; } }
 
 /* Janelas e avisos */
 dialog.janela[open] { animation: janelaAbre .26s var(--suave); box-shadow: var(--contorno-luz), 0 34px 90px -20px rgb(1 5 7 / .9); } dialog.janela[open]::backdrop { animation: fundoAbre .22s ease; }

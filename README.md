@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.5.0-F2B544?style=flat-square&labelColor=0F1B20"></a>
+  <a href="../../releases/latest"><img alt="Versão" src="https://img.shields.io/badge/vers%C3%A3o-1.5.2-F2B544?style=flat-square&labelColor=0F1B20"></a>
   <img alt="Windows 10 e 11" src="https://img.shields.io/badge/Windows-10%20e%2011-5AD1B3?style=flat-square&labelColor=0F1B20">
   <img alt="Python 3.10 a 3.13" src="https://img.shields.io/badge/Python-3.10%20a%203.13-A99BFF?style=flat-square&labelColor=0F1B20">
   <a href="LICENSE"><img alt="Licença GPL-3.0" src="https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-F6F0E4?style=flat-square&labelColor=0F1B20"></a>
