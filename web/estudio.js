@@ -48,7 +48,7 @@ const estiloDe = (i) => i.tipo === "legenda" ? { ...PAD_EST, ...S.p.global.legen
 const pilha = () => S.h[S.modo];
 const foto = () => JSON.stringify(S.modo === "capa" ? S.capa : S.p);
 function antes() { const h = pilha(); h.d.push(foto()); if (h.d.length > 60) h.d.shift(); h.r = []; botoes(); }
-function aplicarFoto(j) { if (S.modo === "capa") S.capa = JSON.parse(j); else S.p = JSON.parse(j); S.sel.clear(); mudou(true); }
+function aplicarFoto(j) { if (S.modo === "capa") S.capa = JSON.parse(j); else S.p = JSON.parse(j); const existe = (id) => S.modo === "capa" ? S.capa.camadas?.some((c) => c.id === id) : achar(id)[1]; S.sel = new Set([...S.sel].filter(existe)); mudou(true); }  // continua com o mesmo elemento selecionado
 function desfazer() { const h = pilha(); if (h.d.length) { h.r.push(foto()); aplicarFoto(h.d.pop()); botoes(); } }
 function refazer() { const h = pilha(); if (h.r.length) { h.d.push(foto()); aplicarFoto(h.r.pop()); botoes(); } }
 function botoes() { $("#st-desfazer").disabled = !pilha().d.length; $("#st-refazer").disabled = !pilha().r.length; }
@@ -301,7 +301,7 @@ sobre.addEventListener("pointermove", (ev) => {
   if (!g0.feito) { if (Math.hypot(x - g0.x0, y - g0.y0) < W / 300) return; antes(); g0.feito = true; }
   if (g0.alca === "rot") { let r = g0.rot + (Math.atan2(y - g0.cy, x - g0.cx) - g0.a0) * 180 / Math.PI; if (Math.abs(r % 90) < 3) r = Math.round(r / 90) * 90; porP(g0.o, "rot", arred(r, 1)); }
   else if (g0.alca) { const f = Math.hypot(x - g0.cx, y - g0.cy) / g0.d0; if (!cap() && g0.o.tipo === "legenda") (g0.o.estilo ||= {}).tamanho = Math.round(g0.esc * f); else porP(g0.o, "escala", arred(lim(g0.esc * f, .05, 12))); }
-  else if (S.zoomMao && !cap() && g0.o.tipo === "video") { const z = Math.max(1, val(g0.o, "zoom", local(g0.o))); porProp(g0.o, "zx", arred(lim(g0.zx - (x - g0.x0) / (val(g0.o, "w", 0) * z), 0, 1), 4)); porProp(g0.o, "zy", arred(lim(g0.zy - (y - g0.y0) / (val(g0.o, "h", 0) * z), 0, 1), 4)); }
+  else if ((S.zoomMao || S.ponto?.id === g0.o.id) && !cap() && g0.o.tipo === "video") { const z = Math.max(1, val(g0.o, "zoom", local(g0.o))); porProp(g0.o, "zx", arred(lim(g0.zx - (x - g0.x0) / (val(g0.o, "w", 0) * z), 0, 1), 4)); porProp(g0.o, "zy", arred(lim(g0.zy - (y - g0.y0) / (val(g0.o, "h", 0) * z), 0, 1), 4)); }
   else { let nx = g0.px + x - g0.x0, ny = g0.py + y - g0.y0; sobre.querySelectorAll(".st-guia").forEach((n) => n.remove()); const m = W / 90; if (Math.abs(nx - W / 2) < m) nx = W / 2; if (Math.abs(ny - H / 2) < m) ny = H / 2; porP(g0.o, "x", arred(nx, 1)); porP(g0.o, "y", arred(ny, 1)); }
   exato.hidden = true; pedirPintura(); if (cap()) pintarCapa(); atualizarCampos();
 });
@@ -335,6 +335,31 @@ function montarCabecas() {
       b("trava", "Travar faixa", f.travada, () => { antes(); f.travada = !f.travada; mudou(); montarCabecas(); }), b("×", "Apagar faixa", false, () => { antes(); S.p.faixas.splice(ci, 1); mudou(true); montarCabecas(); })); }));
 }
 function moverFaixa(i, d) { const j = i + d; if (j < 0 || j >= S.p.faixas.length) return; antes(); [S.p.faixas[i], S.p.faixas[j]] = [S.p.faixas[j], S.p.faixas[i]]; mudou(); montarCabecas(); }
+/* ---------- Pontos de animação, como no CapCut ---------- */
+const PROPS_ZOOM = ["zoom", "zx", "zy"];
+function pontosDe(i) {
+  const m = new Map();
+  for (const [p, c] of Object.entries(i.kf || {})) for (const k of c) { if (k.t < -.001 || k.t > i.dur + .001) continue; const t = [...m.keys()].find((x) => Math.abs(x - k.t) < .02) ?? k.t; if (!m.has(t)) m.set(t, []); m.get(t).push([p, k]); }
+  return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([t, ks]) => ({ t, ks }));
+}
+function pontoAtual() { if (!S.ponto) return null; const [, i] = achar(S.ponto.id), c = i && pontosDe(i).find((x) => Math.abs(x.t - S.ponto.t) < .02); return c ? { i, c } : null; }
+function selecionarPonto(i, t) { pausar(); S.ponto = { id: i.id, t }; irPara(i.ini + t); montarInspetor(); desenharLinha(); }
+function moverPonto(i, chaves, t) { for (const k of chaves) k.t = t; for (const c of Object.values(i.kf)) c.sort((a, b) => a.t - b.t); S.ponto = { id: i.id, t }; irPara(i.ini + t); mudou(); desenharLinha(); }
+function fixarChave(i, p, t, v) { i.kf ||= {}; const c = i.kf[p] ||= [], k = c.find((x) => Math.abs(x.t - t) < .02); if (k) k.v = v; else { c.push({ t, v, e: "suave" }); c.sort((a, b) => a.t - b.t); } }
+function apagarChaves(i, ks) { for (const [p, k] of ks) { const c = i.kf[p]; c.splice(c.indexOf(k), 1); if (!c.length) { delete i.kf[p]; (i.t ||= {})[p] = p === "zoom" ? 1 : k.v; } } }
+function apagarPonto() { const a = pontoAtual(); if (!a) return; antes(); apagarChaves(a.i, a.c.ks); S.ponto = null; mudou(true); selecaoMudou(); }
+function adicionarPonto(i) { const u = arred(local(i)), ja = pontosDe(i).find((x) => Math.abs(x.t - u) < .02); if (!ja) { antes(); const v = PROPS_ZOOM.map((p) => arred(val(i, p, u), 4)); PROPS_ZOOM.forEach((p, n) => fixarChave(i, p, u, v[n])); mudou(true); } selecionarPonto(i, ja?.t ?? u); }
+function secPontos(i) {
+  const lista = pontosDe(i).filter((c) => c.ks.some(([p]) => PROPS_ZOOM.includes(p))), a = pontoAtual(), atual = a?.i === i ? a.c : null;
+  const linhas = lista.map((c) => { const sel = atual?.t === c.t; return el("li", { dados: sel ? { sel: "1" } : {} }, el("button", { class: "st-pz-ir", type: "button", "aria-pressed": String(sel), onclick: () => selecionarPonto(i, c.t) }, el("span", {}, tempoTxt(c.t)), (() => { const z = el("b"), ver = () => { z.textContent = `${String(arred(val(i, "zoom", c.t), 2)).replace(".", ",")}×`; }; vivos.push(ver); ver(); return z; })()), el("button", { class: "st-pz-x", type: "button", title: "Apagar ponto", "aria-label": `Apagar ponto em ${tempoTxt(c.t)}`, onclick: () => { S.ponto = { id: i.id, t: c.t }; apagarPonto(); } }, "×")); });
+  const blocos = [el("div", { class: "st-botoes" }, btn("Adicionar ponto aqui", () => adicionarPonto(i), "botao destaque"))];
+  if (lista.length) blocos.push(el("ul", { class: "st-pz" }, ...linhas)); else blocos.push(el("p", { class: "dica" }, "Leve a agulha até o momento do zoom e adicione um ponto."));
+  if (atual) { const t = () => S.ponto.t, sel = el("select", { "aria-label": "Curva" }, ...[["suave", "Suave"], ["linear", "Constante"], ["degrau", "Sem animação"]].map(([v, r]) => el("option", { value: v }, r))); sel.value = atual.ks[0][1].e || "linear"; sel.addEventListener("change", () => { antes(); const c = pontoAtual()?.c; c?.ks.forEach(([, k]) => { k.e = sel.value; }); mudou(); });
+    const l = pontosDe(i), n = l.findIndex((x) => x.t === atual.t), de = n > 0 ? l[n - 1].t + .04 : 0, ate = n < l.length - 1 ? l[n + 1].t - .04 : i.dur, chaves = atual.ks.map(([, k]) => k), ed = (p) => ({ get: () => val(i, p, t()), set: (v) => { fixarChave(i, p, t(), v); desenharLinha(); queueMicrotask(atualizarCampos); } });
+    blocos.push(el("div", { class: "st-pz-ed" }, campo("Momento", { get: t, set: (v) => moverPonto(i, chaves, lim(arred(v), de, Math.max(de, ate))), min: de, max: Math.max(de, ate), step: .01 }), campo("Zoom", { ...ed("zoom"), min: 1, max: 5, step: .01 }), campo("Foco X", { ...ed("zx"), min: 0, max: 1, step: .005 }), campo("Foco Y", { ...ed("zy"), min: 0, max: 1, step: .005 }), linha("Curva", sel), btn("Apagar este ponto", apagarPonto), el("p", { class: "dica" }, "Arraste o vídeo na prévia para mudar o foco."))); }
+  if (lista.length) blocos.push(btn("Apagar todos os pontos de zoom", () => { antes(); for (const p of PROPS_ZOOM) if (i.kf) delete i.kf[p]; i.t.zoom = 1; S.ponto = null; mudou(true); selecaoMudou(); }));
+  return sec(`Pontos de zoom${lista.length ? ` (${lista.length})` : ""}`, ...blocos);
+}
 function montarLinha() {
   const W = rolagem.clientWidth, esq = rolagem.scrollLeft, de = esq / S.px - 2, ate = (esq + W) / S.px + 2;
   faixasEl.style.width = `${larguraT()}px`;
@@ -343,7 +368,7 @@ function montarLinha() {
     for (const i of f.itens) { if (i.ini + i.dur < de || i.ini > ate) continue;
       const s = S.sel.has(i.id), b = el("div", { class: `st-bl ${i.tipo}${s ? " sel" : ""}${s && arr?.modo === "mover" && arr.feito ? " arrastando" : ""}`, style: `left:${i.ini * S.px}px;width:${Math.max(3, i.dur * S.px)}px`, title: rotuloItem(i), dados: { i: i.id } }, el("span", {}, rotuloItem(i)));
       if (s && !f.travada && i.dur * S.px >= 30) b.append(el("em", { class: "a", dados: { b: "a" } }), el("em", { class: "b", dados: { b: "b" } }));
-      if (s) for (const c of new Set(Object.values(i.kf || {}).flat().map((k) => k.t))) b.append(el("u", { style: `left:${c * S.px}px` }));
+      if (s) for (const c of pontosDe(i)) b.append(el("button", { class: "st-pt", type: "button", title: `Ponto em ${tempoTxt(c.t)}. Arraste para mover, Delete para apagar.`, "aria-label": `Ponto em ${tempoTxt(c.t)}`, style: `left:${c.t * S.px}px`, dados: { pt: c.t, ...(S.ponto?.id === i.id && Math.abs(S.ponto.t - c.t) < .02 ? { sel: "1" } : {}) } }));
       if (i.transicao?.tipo && i.transicao.tipo !== "corte") b.append(el("s", { style: `width:${i.transicao.dur * S.px}px` }));
       n.append(b);
       if (f.tipo === "video" && ehCorte(f, i)) { const tr = i.transicao?.tipo && i.transicao.tipo !== "corte", nome = tr ? nomeTr(i.transicao.tipo) : "Adicionar transição"; const m = el("button", { class: "st-tr", type: "button", title: nome, "aria-label": `${nome} em ${tempoTxt(i.ini)}`, style: `left:${i.ini * S.px}px`, dados: { t: i.ini, ...(tr ? { on: "1" } : {}) } }); m.innerHTML = svg('<path d="M4 5l8 7-8 7zM20 5l-8 7 8 7z"/>'); n.append(m); } }
@@ -380,6 +405,9 @@ function rolarNaBorda(ev) { const v = rolagem.getBoundingClientRect(); if (ev.cl
 trilhas.addEventListener("click", (ev) => { const m = ev.target.closest(".st-tr"); if (!m) return; pausar(); irPara(+m.dataset.t); abrirPainel("transicoes"); });
 faixasEl.addEventListener("pointerdown", (ev) => {
   fecharPrevia(); if (ev.target.closest(".st-tr")) return;
+  const marca = ev.target.closest(".st-pt");
+  if (marca) { ev.preventDefault(); const [, i] = achar(marca.closest(".st-bl").dataset.i), c = pontosDe(i).find((x) => Math.abs(x.t - +marca.dataset.pt) < .02); if (!c) return; selecionarPonto(i, c.t); const l = pontosDe(i), n = l.findIndex((x) => x.t === c.t); arr = { modo: "ponto", i, chaves: c.ks.map(([, k]) => k), x0: ev.clientX, t0: c.t, min: n > 0 ? l[n - 1].t + .04 : 0, max: n < l.length - 1 ? l[n + 1].t - .04 : i.dur, feito: false }; faixasEl.setPointerCapture(ev.pointerId); return; }
+  if (S.ponto) { S.ponto = null; montarInspetor(); desenharLinha(); }
   const bl = ev.target.closest(".st-bl"), r = faixasEl.getBoundingClientRect(), x = ev.clientX - r.left;
   document.activeElement?.blur?.();
   if (!bl) {
@@ -399,6 +427,7 @@ faixasEl.addEventListener("pointerdown", (ev) => {
 faixasEl.addEventListener("pointermove", (ev) => {
   if (!arr) return; const r = faixasEl.getBoundingClientRect();
   if (arr.modo === "agulha") { irPara((ev.clientX - r.left) / S.px); return; }
+  if (arr.modo === "ponto") { if (!arr.feito) { if (Math.abs(ev.clientX - arr.x0) < 3) return; antes(); arr.feito = true; } moverPonto(arr.i, arr.chaves, lim(arred(arr.t0 + (ev.clientX - arr.x0) / S.px), arr.min, Math.max(arr.min, arr.max))); return; }
   if (arr.modo === "laco") { moverLaco(ev, r); return; }
   if (!arr.feito) { if (Math.hypot(ev.clientX - arr.x0, ev.clientY - arr.y0) < 4) return; antes(); arr.feito = true; }
   rolarNaBorda(ev);
@@ -498,6 +527,8 @@ addEventListener("keydown", (ev) => {
   if (k === " ") return faz(() => (S.tocando ? pausar() : tocar())); if (k === "j") return faz(() => vaivem(-1)); if (k === "l") return faz(() => vaivem(1)); if (k === "k") return faz(pausar);
   if (sh && k === "z") return faz(ajustarZoom); if (k === "q") return faz(() => aparar("esq")); if (k === "w") return faz(() => aparar("dir")); if (k === "[") return faz(() => aparar("esq", false)); if (k === "]") return faz(() => aparar("dir", false));
   if (k === "a") return faz(() => ferramenta("sel")); if (k === "b") return faz(() => ferramenta("lamina")); if (k === "s") return faz(dividir); if (k === "n") return faz(() => { $("#st-ima").checked = !$("#st-ima").checked; avisar($("#st-ima").checked ? "Ímã ligado" : "Ímã desligado"); }); if (k === "m") return faz(marcador);
+  if ((k === "delete" || k === "backspace") && pontoAtual()) return faz(apagarPonto);
+  if (k === "escape" && S.ponto) return faz(() => { S.ponto = null; montarInspetor(); desenharLinha(); });
   if (k === "delete" || k === "backspace") return faz(sh ? apagarJuntando : apagar); if (k === "escape") return faz(() => { ferramenta("sel"); S.sel.clear(); selecaoMudou(); });
   if (k === "arrowleft") return faz(() => { pausar(); irPara(S.t - (sh ? 1 : 1 / 30)); }); if (k === "arrowright") return faz(() => { pausar(); irPara(S.t + (sh ? 1 : 1 / 30)); }); if (k === "arrowup") return faz(() => { pausar(); pontoCorte(-1); }); if (k === "arrowdown") return faz(() => { pausar(); pontoCorte(1); });
   if (k === "home") return faz(() => { irPara(0); rolagem.scrollLeft = 0; }); if (k === "end") return faz(() => irPara(duracao()));
@@ -540,21 +571,91 @@ function controlesEstilo(est, por) {
 }
 function alinhar(i, modo) { antes(); const b = S.caixas.get(i.id), W = S.p.largura, H = S.p.altura, w = b?.w ?? 0, h = b?.h ?? 0, m = { e: ["x", w / 2], c: ["x", W / 2], d: ["x", W - w / 2], t: ["y", h / 2], m: ["y", H / 2], b: ["y", H - h / 2] }[modo]; porP(i, m[0], arred(m[1], 1)); mudou(); atualizarCampos(); }
 function secTempo(i) { return sec("Tempo", campo("Início", { get: () => i.ini, set: (v) => { i.ini = Math.max(0, arred(v)); }, min: 0, max: Math.ceil(duracao()), step: .01 }), campo("Duração", { get: () => i.dur, set: (v) => { const f = Math.max(.1, v) / i.dur; i.dur = arred(Math.max(.1, v)); if (i.palavras) i.palavras = i.palavras.map((w) => ({ ...w, ini: arred(w.ini * f), fim: arred(w.fim * f) })); }, min: .1, max: Math.max(30, Math.ceil(i.dur * 2)), step: .01 })); }
+/* ---------- Reenquadrar: escolhe a parte do vídeo original que aparece ---------- */
+const RQ = { item: null, faixa: null, v: null, r: null, ini: null, fmt: "atual", vw: 16, vh: 9 }, rqDlg = $("#st-rq"), rqOrig = $("#rq-original"), rqFim = $("#rq-resultado"), rqJanela = $("#rq-janela");
+const RQ_FORMATOS = [["atual", "Atual"], ["9:16", "9:16"], ["4:5", "4:5"], ["1:1", "1:1"], ["orig", "Original"], ["livre", "Livre"]];
+const rqAspecto = () => { const { fmt, vw, vh, r, item } = RQ; return fmt === "atual" ? val(item, "w", 0) / val(item, "h", 0) : fmt === "orig" ? vw / vh : fmt === "livre" ? (r.w * vw) / (r.h * vh) : { "9:16": 9 / 16, "4:5": .8, "1:1": 1 }[fmt]; };
+const rqRazao = () => rqAspecto() * RQ.vh / RQ.vw;
+function rqEncaixar(cx, cy, w) { const n = rqRazao(); let h = w / n; if (h > 1) { h = 1; w = n; } if (w > 1) { w = 1; h = 1 / n; } RQ.r = { x: lim(cx - w / 2, 0, 1 - w), y: lim(cy - h / 2, 0, 1 - h), w, h }; }
+function rqCaixa() { const W = S.p.largura, H = S.p.altura, i = RQ.item; if (RQ.fmt === "atual") { const e = val(i, "escala", 0); return { x: val(i, "x", 0), y: val(i, "y", 0), w: val(i, "w", 0) * e, h: val(i, "h", 0) * e }; } const a = rqAspecto(), w = Math.min(W, H * a); return { x: W / 2, y: H / 2, w, h: w / a }; }
+const rqOutro = () => { const { item, faixa } = RQ, n = S.p.faixas.indexOf(faixa); return S.p.faixas.slice(0, n).some((f) => f.tipo === "video" && !f.oculta && f.itens.some((j) => !j.ajustes?.desfoque && j.ini < item.ini + item.dur && item.ini < j.ini + j.dur)); };
+const rqCobre = (c) => c.x - c.w / 2 <= 1 && c.y - c.h / 2 <= 1 && c.x + c.w / 2 >= S.p.largura - 1 && c.y + c.h / 2 >= S.p.altura - 1;
+function rqCheio() { const n = (S.p.largura / S.p.altura) * RQ.vh / RQ.vw, w = n <= 1 ? n : 1, h = n <= 1 ? 1 : 1 / n; return { x: (1 - w) / 2, y: (1 - h) / 2, w, h }; }
+function rqDesenhar() {
+  const { v, r, vw, vh } = RQ; if (!r) return;
+  Object.assign(rqJanela.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
+  const c = rqCaixa(), cobre = rqCobre(c), o = rqOrig.getContext("2d"), f = rqFim.getContext("2d"), W = rqFim.width, k = W / S.p.largura; $("#rq-rotulo-fundo").hidden = cobre || rqOutro();
+  f.fillStyle = "#000"; f.fillRect(0, 0, W, rqFim.height); if (!v?.videoWidth) return;
+  o.drawImage(v, 0, 0, rqOrig.width, rqOrig.height);
+  if (!cobre && !rqOutro() && $("#rq-fundo").checked) { const b = rqCheio(); f.filter = "blur(8px) brightness(.8)"; f.drawImage(v, b.x * vw, b.y * vh, b.w * vw, b.h * vh, 0, 0, W, rqFim.height); f.filter = "none"; }
+  f.drawImage(v, r.x * vw, r.y * vh, r.w * vw, r.h * vh, (c.x - c.w / 2) * k, (c.y - c.h / 2) * k, c.w * k, c.h * k);
+}
+function rqFormato(fmt) { RQ.fmt = fmt; if (fmt === "atual") RQ.r = { ...RQ.ini }; else if (fmt !== "livre") rqEncaixar(RQ.r.x + RQ.r.w / 2, RQ.r.y + RQ.r.h / 2, 1); $$("#rq-formatos button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.f === fmt))); rqDesenhar(); }
+function rqVer() { const { v, item } = RQ; if (v?.readyState) v.currentTime = lim((item.entrada || 0) + +$("#rq-momento").value * (item.velocidade || 1), 0, Math.max(0, (v.duration || 1) - .05)); }
+function abrirReenquadrar(item) {
+  const [faixa] = achar(item.id), mid = S.p.midias[item.midia]; if (!mid) return; pausar();
+  const v = document.createElement("video"); RQ.v?.removeAttribute("src"); Object.assign(RQ, { item, faixa, v, fmt: "atual", r: null }); v.muted = true; v.preload = "auto"; v.playsInline = true; v.src = urlMidia(mid);
+  const m = $("#rq-momento"); m.max = String(item.dur); m.value = String(lim(S.t - item.ini, 0, item.dur));
+  $("#rq-formatos").replaceChildren(...RQ_FORMATOS.map(([f, t]) => el("button", { class: "botao", type: "button", dados: { f }, onclick: () => rqFormato(f) }, t)));
+  $("#rq-rotulo-todas").hidden = faixa.itens.filter((i) => i.midia === item.midia).length < 2;
+  v.addEventListener("loadedmetadata", () => {
+    RQ.vw = v.videoWidth; RQ.vh = v.videoHeight; const e = 760 / Math.max(RQ.vw, RQ.vh); rqOrig.width = Math.round(RQ.vw * e); rqOrig.height = Math.round(RQ.vh * e); rqFim.width = 216; rqFim.height = Math.round(216 * S.p.altura / S.p.largura);
+    const [cl, ct, cr, cb] = ["cl", "ct", "cr", "cb"].map((p) => val(item, p, 0)), w = Math.max(.02, 1 - cl - cr), h = Math.max(.02, 1 - ct - cb); RQ.r = { x: cl, y: ct, w, h }; rqEncaixar(cl + w / 2, ct + h / 2, Math.min(w, h * rqRazao())); RQ.ini = { ...RQ.r }; rqFormato("atual"); rqVer();
+  }, { once: true });
+  v.addEventListener("seeked", rqDesenhar); rqDlg.showModal();
+}
+function rqFundo(faixa, alvo) {
+  const W = S.p.largura, H = S.p.altura, b = rqCheio(), borrado = (i, j) => j.ajustes?.desfoque && j.ini < i.ini + i.dur && i.ini < j.ini + j.dur; let base = null;
+  for (const i of alvo) {
+    if (S.p.faixas.some((f) => f.tipo === "video" && f.itens.some((j) => j !== i && borrado(i, j)))) continue;
+    if (!base) { base = { id: nid("f"), tipo: "video", nome: "Fundo", oculta: false, muda: false, travada: false, itens: [] }; S.p.faixas.splice(S.p.faixas.indexOf(faixa), 0, base); }
+    base.itens.push({ ...clonar(i), id: nid(), nome: "Fundo desfocado", mudo: true, transicao: undefined, kf: {}, ajustes: { desfoque: 40, brilho: -20, saturacao: 15 }, t: { ...clonar(i.t), x: W / 2, y: H / 2, w: W, h: H, escala: 1, rot: 0, opac: 100, zoom: 1, zx: .5, zy: .5, cl: b.x, ct: b.y, cr: 1 - b.x - b.w, cb: 1 - b.y - b.h } });
+  }
+}
+function rqAplicar() {
+  const { item, faixa, r, fmt } = RQ; if (!r) return; const c = rqCaixa(), alvo = $("#rq-todas").checked ? faixa.itens.filter((i) => i.midia === item.midia) : [item];
+  antes();
+  for (const i of alvo) {
+    Object.assign(i.t, { cl: arred(r.x, 4), ct: arred(r.y, 4), cr: arred(1 - r.x - r.w, 4), cb: arred(1 - r.y - r.h, 4) });
+    const fora = ["cl", "ct", "cr", "cb", ...(fmt === "atual" ? [] : ["x", "y", "w", "h", "escala"])]; fora.forEach((p) => { if (i.kf) delete i.kf[p]; });
+    if (fmt !== "atual") Object.assign(i.t, { x: arred(c.x, 1), y: arred(c.y, 1), w: arred(c.w, 1), h: arred(c.h, 1), escala: 1 });
+  }
+  if (!rqCobre(c) && !rqOutro() && $("#rq-fundo").checked) rqFundo(faixa, alvo);
+  rqDlg.close(); mudou(true); selecaoMudou();
+}
+{
+  let ges = null; const ponto = (ev) => { const b = $("#rq-palco").getBoundingClientRect(); return [lim((ev.clientX - b.left) / b.width, 0, 1), lim((ev.clientY - b.top) / b.height, 0, 1)]; };
+  rqJanela.addEventListener("pointerdown", (ev) => { if (!RQ.r) return; ev.preventDefault(); rqJanela.focus(); const [x, y] = ponto(ev), c = ev.target.dataset?.c, r = RQ.r; ges = { x, y, c, r: { ...r }, ax: c?.includes("w") ? r.x + r.w : r.x, ay: c?.includes("n") ? r.y + r.h : r.y }; rqJanela.setPointerCapture(ev.pointerId); });
+  rqJanela.addEventListener("pointermove", (ev) => {
+    if (!ges) return; const [x, y] = ponto(ev), { c, r, ax, ay } = ges;
+    if (!c) { RQ.r = { ...r, x: lim(r.x + x - ges.x, 0, 1 - r.w), y: lim(r.y + y - ges.y, 0, 1 - r.h) }; rqDesenhar(); return; }
+    const esq = c.includes("w"), cima = c.includes("n"), maxW = esq ? ax : 1 - ax, maxH = cima ? ay : 1 - ay; let w = esq ? ax - x : x - ax, h = cima ? ay - y : y - ay;
+    if (RQ.fmt === "livre") { w = lim(w, .06, maxW); h = lim(h, .06, maxH); } else { const n = rqRazao(); w = lim(Math.max(w, h * n), .06, Math.min(maxW, maxH * n)); h = w / n; }
+    RQ.r = { x: esq ? ax - w : ax, y: cima ? ay - h : ay, w, h }; rqDesenhar();
+  });
+  const soltar = () => { ges = null; }; rqJanela.addEventListener("pointerup", soltar); rqJanela.addEventListener("pointercancel", soltar);
+  rqDlg.addEventListener("keydown", (ev) => { ev.stopPropagation(); const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key]; if (!d || ev.target !== rqJanela || !RQ.r) return; ev.preventDefault(); const r = RQ.r, p = ev.shiftKey ? .05 : .01; RQ.r = { ...r, x: lim(r.x + d[0] * p, 0, 1 - r.w), y: lim(r.y + d[1] * p, 0, 1 - r.h) }; rqDesenhar(); });
+  $("#rq-fechar").addEventListener("click", () => rqDlg.close()); $("#rq-aplicar").addEventListener("click", rqAplicar); $("#rq-momento").addEventListener("input", rqVer); $("#rq-fundo").addEventListener("change", rqDesenhar);
+  $("#rq-tudo").addEventListener("click", () => { RQ.r = { x: 0, y: 0, w: 1, h: 1 }; rqFormato("orig"); });
+  $("#rq-centro").addEventListener("click", () => { const r = RQ.r; RQ.r = { ...r, x: (1 - r.w) / 2, y: (1 - r.h) / 2 }; rqDesenhar(); });
+  sobre.addEventListener("dblclick", () => { const o = !cap() && sel1(); if (o?.tipo === "video") abrirReenquadrar(o); });
+}
 function montarInspetor() {
-  vivos = []; const c = $("#st-insp"); if (cap()) { inspetorCapa(c); return; }
+  vivos = []; const c = $("#st-insp"); if (cap()) { inspetorCapa(c); return; } if (S.ponto && (!S.sel.has(S.ponto.id) || !pontoAtual())) S.ponto = null;
   const l = selecionados(), i = l.length === 1 ? l[0] : null;
   if (!l.length) { c.replaceChildren(el("h2", {}, "Ajustes"), el("p", { class: "dica" }, "Clique em um elemento na prévia ou na timeline para ajustar posição, tempo, estilo e animação.")); return; }
   const legs = l.filter((x) => ["legenda", "texto"].includes(x.tipo));
   if (!i && legs.length !== l.length) { c.replaceChildren(el("h2", {}, `${l.length} elementos`), el("p", { class: "dica" }, "Use Dividir, Duplicar ou Apagar na timeline.")); return; }
   const b = i || legs[0], blocos = [el("h2", {}, i ? `${ROTULOS[i.tipo]}` : `${l.length} textos selecionados`)];
+  if (i?.tipo === "video") blocos.push(sec("", btn("Reenquadrar vídeo", () => abrirReenquadrar(i), "botao principal rq-abrir"), el("p", { class: "dica" }, "Mostre as laterais que ficaram de fora.")));
   if (i) blocos.push(secTempo(i));
   if (["video", "imagem", "forma"].includes(b.tipo)) {
     blocos.push(sec("Posição e tamanho", campoT(b, "x", "X", { min: -S.p.largura, max: S.p.largura * 2 }), campoT(b, "y", "Y", { min: -S.p.altura, max: S.p.altura * 2 }), campoT(b, "escala", "Escala", { min: .05, max: 5, step: .01 }), campoT(b, "rot", "Rotação", { min: -180, max: 180 }), campoT(b, "opac", "Opacidade", { min: 0, max: 100 }), campoT(b, "w", "Largura", { min: 10, max: S.p.largura * 2 }), campoT(b, "h", "Altura", { min: 10, max: S.p.altura * 2 }),
       el("div", { class: "st-botoes" }, ...[["e", "Esquerda"], ["c", "Centro"], ["d", "Direita"], ["t", "Topo"], ["m", "Meio"], ["b", "Base"]].map(([m, t]) => btn(t, () => alinhar(b, m))))));
     if (b.tipo !== "forma") {
       const mao = marca("Ajustar arrastando na prévia", S.zoomMao, (v) => { S.zoomMao = v; });
-      blocos.push(sec("Zoom e enquadramento", mao, campoT(b, "zoom", "Zoom", { min: 1, max: 5, step: .01 }), campoT(b, "zx", "Foco X", { min: 0, max: 1, step: .005 }), campoT(b, "zy", "Foco Y", { min: 0, max: 1, step: .005 }), campo("Força", { get: () => b.zoom_forca ?? 100, set: (v) => { b.zoom_forca = v; }, min: 0, max: 200 }),
-        btn("Tirar todos os zooms desta cena", () => { antes(); for (const p of ["zoom", "zx", "zy"]) if (b.kf) delete b.kf[p]; b.t.zoom = 1; mudou(true); })),
+      if (b.tipo === "video" && i) blocos.push(secPontos(b));
+      blocos.push(sec("Zoom e enquadramento", mao, campoT(b, "zoom", "Zoom", { min: 1, max: 5, step: .01 }), campoT(b, "zx", "Foco X", { min: 0, max: 1, step: .005 }), campoT(b, "zy", "Foco Y", { min: 0, max: 1, step: .005 }), campo("Força", { get: () => b.zoom_forca ?? 100, set: (v) => { b.zoom_forca = v; }, min: 0, max: 200 })),
         sec("Recorte", campoT(b, "cl", "Esquerda", { min: 0, max: .9, step: .005 }), campoT(b, "cr", "Direita", { min: 0, max: .9, step: .005 }), campoT(b, "ct", "Topo", { min: 0, max: .9, step: .005 }), campoT(b, "cb", "Base", { min: 0, max: .9, step: .005 })));
       const fil = () => b.filtro || {}, aj = (k, rot, a, z) => campo(rot, { get: () => b.ajustes?.[k] ?? 0, set: (v) => { (b.ajustes ||= {})[k] = v; }, min: a, max: z });
       blocos.push(sec("Transição de entrada", escolha("Tipo", TRANS, b.transicao?.tipo || "corte", (v) => { b.transicao = { tipo: v, dur: b.transicao?.dur ?? .4 }; }), campo("Duração", { get: () => b.transicao?.dur ?? .4, set: (v) => { b.transicao = { tipo: b.transicao?.tipo || "corte", dur: v }; }, min: .1, max: 2, step: .05 })),

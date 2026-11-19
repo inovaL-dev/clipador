@@ -75,6 +75,45 @@ def _ligar(origem: Path, destino: Path) -> None:
         shutil.copy2(origem, destino)
 
 
+def aplicar_receita(final: dict, receita: dict, raiox: dict | None, visual: dict, total: float, textos: dict, efx: dict, leg: dict, audio: dict, biblioteca) -> None:
+    """Coloca abertura, tarjas, marca e chamada final por cima das cenas."""
+    cor = "#" + estilos.CORES[visual.get("cor") or "amarelo"]
+    tarja = lambda tam, fundo="#FFFFFF", texto="#101010": {"fonte": "Poppins-Bold", "tamanho": tam, "cor": texto, "maiusculas": True, "alinhamento": "centro", "ancora": "topo", "largura": 900, "fundo": True, "fundo_cor": fundo,
+                                                          "fundo_opac": 100, "fundo_raio": 6, "fundo_pad": round(tam * .3), "entrada": "zoom", "saida": "fade", "tempo_anim": .22}
+    cena = final["cenas"][0]["id"]
+    abertura = pj._item_texto("texto", 0, min(2.8, total), receita["gancho"], 540, 610, tarja(62), "Abertura", papel="gancho", cena=cena)
+    abertura["t"]["rot"] = -2.5
+    textos["itens"].append(abertura)
+    tem_final = bool(receita["marca"] or receita["chamada"]) and total >= 9
+    fim_partes = total - 2.4 if tem_final else total
+    y = round(((raiox or {}).get("faixa") or {}).get("y", .13) * 1920)
+    y = max(190, min(y, 420))
+    partes = receita["partes"]
+    if partes and fim_partes > 3.2:
+        passo = (fim_partes - 2.8) / len(partes)
+        for k, texto in enumerate(partes):
+            textos["itens"].append(pj._item_texto("texto", round(2.8 + k * passo, 3), round(passo, 3), texto, 540, y, tarja(40), f"Tarja {k + 1}"))
+    if receita["marca"]:
+        textos["itens"].append(pj._item_texto("texto", 0, round(fim_partes, 3), receita["marca"], 850, y + 110, {"fonte": "Poppins-Bold", "tamanho": 26, "cor": "#FFFFFF", "opacidade": 85, "contorno": 3, "largura": 400, "alinhamento": "centro"}, "Marca"))
+    if not tem_final:
+        efx["itens"].append(pj._efeito(max(0.0, total - .25), min(.25, total), "escurecer", "Escurecer no final"))
+        return
+    inicio = round(total - 2.4, 3)
+    efx["itens"].append(pj._efeito(inicio, 2.4, "cortina", "Fundo da chamada final", .78))
+    for item in list(leg["itens"]):
+        if item["ini"] >= inicio:
+            leg["itens"].remove(item)
+        elif item["ini"] + item["dur"] > inicio:
+            item["dur"] = round(inicio - item["ini"], 3)
+            item["palavras"] = [p for p in item.get("palavras") or [] if p["ini"] < item["dur"]] or item.get("palavras")
+    if receita["chamada"]:
+        textos["itens"].append(pj._item_texto("texto", inicio + .1, 2.3, receita["chamada"], 540, 770, tarja(52, cor), "Chamada final"))
+    if receita["marca"]:
+        textos["itens"].append(pj._item_texto("texto", inicio + .25, 2.15, receita["marca"], 540, 1090, {"fonte": "Poppins-Bold", "tamanho": 44, "cor": "#FFFFFF", "alinhamento": "centro", "largura": 900, "entrada": "fade", "tempo_anim": .2}, "Marca no final"))
+    if biblioteca.existe("boom_grave"):
+        audio["itens"].append(pj._som(final["midias"], "boom_grave", biblioteca.nome("boom_grave"), max(0.0, inicio - .05), .5, biblioteca, cena))
+
+
 class Montagens:
     def __init__(self, motor):
         self.motor = motor
@@ -99,6 +138,26 @@ class Montagens:
             raise ValueError(f"Esta pasta precisa de pelo menos {cenas} cortes prontos.")
         return self._criar(pasta, ordenar(escolher(base, int(cenas))))
 
+    def pedir_estilo(self, dados: dict) -> dict:
+        """Monta um vídeo novo com o estilo salvo, o texto e a marca da pessoa."""
+        limpar = lambda v, n: " ".join(str(v or "").split())[:n]
+        modelo, pasta = str(dados.get("modelo") or ""), str(dados.get("pasta") or "")
+        perfil = self.motor.aprendizado.perfil(modelo, sem_filtro=True)
+        if not perfil:
+            raise ValueError("Este estilo não existe mais. Escolha outro.")
+        gancho = limpar(dados.get("gancho"), 90)
+        if not gancho:
+            raise ValueError("Escreva a frase de abertura do vídeo.")
+        todos = self.candidatos(pasta)
+        if len(todos) < 2:
+            raise ValueError("Esta pasta precisa de pelo menos 2 cortes prontos.")
+        total = min(LIMITE, max(15.0, float(perfil.get("duracao") or 30)))
+        n = int(min(8, len(todos), max(2, round(total / min(12.0, max(3.0, float(perfil.get("cena_s") or 5)))))))
+        receita = {"gancho": gancho, "partes": [limpar(l, 48) for l in str(dados.get("partes") or "").splitlines() if l.strip()][:8],
+                   "marca": limpar(dados.get("marca"), 40), "chamada": limpar(dados.get("chamada"), 70), "total": total}
+        self.motor.aprendizado.guardar_marca(receita["marca"], receita["chamada"])
+        return self._criar(pasta, ordenar(escolher(todos, n)), receita, modelo)
+
     def corte_pronto(self, meta: dict) -> None:
         """Quando juntar momentos novos suficientes, cria a montagem sozinho."""
         if not self.motor.config.get("montagem_auto", True) or meta.get("montagem"):
@@ -109,20 +168,22 @@ class Montagens:
             if len(novos) >= cenas:
                 self._criar(meta.get("pasta"), ordenar(escolher(novos, cenas)))
 
-    def _criar(self, pasta: str, origens: list[dict]) -> dict:
+    def _criar(self, pasta: str, origens: list[dict], receita: dict | None = None, modelo: str | None = None) -> dict:
         p = origens[0]
         ident = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_montagem_{int(time.time() * 1000) % 100000}"
         n = len(origens)
-        gancho = TITULOS[int(time.time()) % len(TITULOS)].format(n=n)
+        gancho = receita["gancho"] if receita else TITULOS[int(time.time()) % len(TITULOS)].format(n=n)
         meta = {"id": ident, "montagem": True, "origens": [m["id"] for m in origens], "pasta": pasta, "canal_id": p.get("canal_id"), "canal": p.get("canal"), "plataforma": p.get("plataforma"),
                 "nome_plataforma": p.get("nome_plataforma"), "ident": p.get("ident"), "credito": p.get("credito"), "link": p.get("link") or "", "titulo_live": p.get("titulo_live") or "",
                 "criado": time.time(), "status": "fila", "erro": None, "postado": False, "motivo": f"Montagem com {n} momentos", "reacao": "montagem", "reacao_rotulo": "Montagem", "msgs": 0,
                 "forca": max(float(m.get("forca") or 0) for m in origens), "chat_marcante": [], "duracao": 0, "gancho": gancho, "post": "", "layout": p.get("layout"), "grupos": [],
                 "ajuste_camera": {"modo": "auto", "rect": None}, "projeto_exportado": True, "nao_encurtar": True, "focos": []}
+        if receita:
+            meta.update(receita=receita, modelo=modelo, motivo="Vídeo novo no estilo salvo", reacao_rotulo="Estilo salvo")
         (self.motor.saida / ident).mkdir(parents=True, exist_ok=True)
         with self.motor.trava:
             self.motor.cortes[ident] = meta
-            for m in origens:
+            for m in origens if not receita else ():
                 m["montado"] = ident
                 self.motor._salvar_corte(m)
         self.motor._salvar_corte(meta)
@@ -162,7 +223,9 @@ class Montagens:
             raise ValueError("Os cortes usados nesta montagem foram apagados.")
         meta["modelo"] = meta.get("modelo") or motor.aprendizado.escolher_modelo(meta)
         perfil = motor.aprendizado.perfil(meta["modelo"]) if meta["modelo"] else None
-        alvo = float(min(12.0, max(5.5, min((perfil or {}).get("cena_s") or 10.0, LIMITE / len(origens)))))
+        receita = meta.get("receita")
+        alvo = float(min(12.0, max(3.0, receita["total"] / len(origens)))) if receita else float(min(12.0, max(5.5, min((perfil or {}).get("cena_s") or 10.0, LIMITE / len(origens)))))
+        visual = {"legenda": "palavra", **motor.aprendizado.estilo_do_modelo(meta["modelo"])} if receita else {}
         trocas = sequencia_trocas(perfil)
         volume_som = .55 if perfil and (perfil.get("sfx_cortes") or 1) < .2 else 1.0
         est = estilos.normalizar(origens[0].get("estilo"), motor.config["estilo"])
@@ -172,7 +235,7 @@ class Montagens:
         destino = {"efeito": efx, "texto": textos, "legenda": leg, "audio": audio}
         pos, titulo = 0.0, None
         for k, origem in enumerate(origens):
-            cena_meta = {**origem, "edicao": {**(origem.get("edicao") or {}), "cortes": None}}
+            cena_meta = {**origem, "estilo": {**(origem.get("estilo") or {}), **visual}, "edicao": {**(origem.get("edicao") or {}), "cortes": None}}
             p = pj.importar_corte(cena_meta, motor)
             if not k:
                 final["global"] = copy.deepcopy(p["global"])
@@ -218,10 +281,13 @@ class Montagens:
             pos = round(pos + dur, 3)
             if pos >= LIMITE - 2:
                 break
-        if titulo:
+        if receita:
+            aplicar_receita(final, receita, motor.aprendizado.raiox_do_modelo(meta["modelo"]), visual, pos, textos, efx, leg, audio, motor.biblioteca)
+        elif titulo:
             textos["itens"].append({**titulo, "ini": 0.0, "dur": min(2.6, pos), "texto": meta["gancho"], "cena": final["cenas"][0]["id"]})
         efx["itens"].append(pj._efeito(0, pos, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
-        efx["itens"].append(pj._efeito(max(0.0, pos - .25), min(.25, pos), "escurecer", "Escurecer no final"))
+        if not receita:
+            efx["itens"].append(pj._efeito(max(0.0, pos - .25), min(.25, pos), "escurecer", "Escurecer no final"))
         final["faixas"] = [f for f in (base, foco_f, topo, efx, textos, leg, audio) if f["itens"]]
         return pj.validar(final)
 

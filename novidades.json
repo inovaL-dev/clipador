@@ -1,5 +1,16 @@
 [
   {
+    "versao": "1.7.0",
+    "data": "2026-11-18",
+    "notas": [
+      "Engenharia reversa: envie um vídeo que deu certo e veja o gancho, o ritmo, as cores e os cortes dele.",
+      "Crie vídeos novos no estilo salvo, com suas cenas, seu texto e sua marca.",
+      "Reenquadrar vídeo no Editor: mostre as laterais que ficaram de fora no Short.",
+      "Pontos de zoom como no CapCut: arraste, edite ou apague cada ponto.",
+      "Corrige a tela preta ao ensinar com vários vídeos."
+    ]
+  },
+  {
     "versao": "1.6.1",
     "data": "2026-11-18",
     "notas": [

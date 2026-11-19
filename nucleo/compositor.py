@@ -367,6 +367,9 @@ class Compositor:
         elif tipo == "escurecer":
             k = f * min(1.0, u / max(.01, item["dur"]))
             roi[:] = cv2.addWeighted(roi, 1 - k, np.zeros_like(roi), k, 0)
+        elif tipo == "cortina":
+            k = f * min(1.0, u / .25)
+            roi[:] = cv2.addWeighted(roi, 1 - k, np.zeros_like(roi), k, 0)
         elif tipo == "clarear":
             k = f * (1 - min(1.0, u / max(.01, item["dur"])))
             roi[:] = cv2.addWeighted(roi, 1 - k, np.zeros_like(roi), k, 0)

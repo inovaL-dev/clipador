@@ -539,6 +539,25 @@
   </form>
 </dialog>
 
+<dialog class="janela rq" id="st-rq" aria-labelledby="rq-titulo">
+  <header class="editor-topo"><div><h2 id="rq-titulo">Reenquadrar vídeo</h2><p>Arraste o quadro para escolher o que aparece. O vídeo original continua inteiro.</p></div><button class="botao fantasma" type="button" id="rq-fechar">Fechar</button></header>
+  <div class="rq-corpo">
+    <div class="rq-esq">
+      <div class="rq-palco" id="rq-palco"><canvas id="rq-original"></canvas><div class="rq-janela" id="rq-janela" tabindex="0" role="slider" aria-label="Área visível do vídeo. Use as setas para mover."><i data-c="nw"></i><i data-c="ne"></i><i data-c="sw"></i><i data-c="se"></i></div></div>
+      <label class="rq-tempo" for="rq-momento"><span>Ver outro momento</span><input id="rq-momento" type="range" min="0" max="1" step="0.01"></label>
+    </div>
+    <div class="rq-dir">
+      <h3>Resultado</h3>
+      <canvas id="rq-resultado"></canvas>
+      <div class="rq-formatos" id="rq-formatos" role="group" aria-label="Formato"></div>
+      <div class="rq-acoes"><button class="botao" type="button" id="rq-tudo">Mostrar vídeo inteiro</button><button class="botao" type="button" id="rq-centro">Centralizar</button></div>
+      <label class="marcar" id="rq-rotulo-fundo"><input type="checkbox" id="rq-fundo" checked><span>Preencher as sobras com fundo desfocado</span></label>
+      <label class="marcar" id="rq-rotulo-todas"><input type="checkbox" id="rq-todas" checked><span>Aplicar em todas as partes deste vídeo</span></label>
+    </div>
+  </div>
+  <footer class="editor-acoes"><button class="botao principal" type="button" id="rq-aplicar">Aplicar enquadramento</button></footer>
+</dialog>
+
 <dialog class="janela st-dlg-atalhos" id="st-dlg-atalhos" aria-labelledby="st-da-t">
   <header class="editor-topo"><h2 id="st-da-t">Atalhos do teclado</h2><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
   <ul class="st-lista-atalhos"><li><span>Reproduzir e pausar</span><kbd>Espaço</kbd></li><li><span>Voltar, parar, avançar</span><kbd>J / K / L</kbd></li><li><span>Quadro anterior e próximo</span><kbd>← / →</kbd></li><li><span>Pular 1 segundo</span><kbd>Shift + ← / →</kbd></li><li><span>Corte anterior e próximo</span><kbd>↑ / ↓</kbd></li><li><span>Início e fim</span><kbd>Home / End</kbd></li><li><span>Dividir</span><kbd>Ctrl + B</kbd></li><li><span>Dividir todas as faixas</span><kbd>Ctrl + Shift + B</kbd></li><li><span>Apagar à esquerda da agulha</span><kbd>Q</kbd></li><li><span>Apagar à direita da agulha</span><kbd>W</kbd></li><li><span>Aparar sem juntar</span><kbd>[ / ]</kbd></li><li><span>Ferramenta selecionar</span><kbd>A</kbd></li><li><span>Ferramenta lâmina</span><kbd>B</kbd></li><li><span>Apagar</span><kbd>Delete</kbd></li><li><span>Apagar e juntar</span><kbd>Shift + Delete</kbd></li><li><span>Copiar, recortar, colar</span><kbd>Ctrl + C / X / V</kbd></li><li><span>Duplicar</span><kbd>Ctrl + D</kbd></li><li><span>Selecionar tudo</span><kbd>Ctrl + A</kbd></li><li><span>Desfazer</span><kbd>Ctrl + Z</kbd></li><li><span>Refazer</span><kbd>Ctrl + Shift + Z ou Ctrl + Y</kbd></li><li><span>Aproximar e afastar</span><kbd>Ctrl + = / Ctrl + − ou Ctrl + rolagem</kbd></li><li><span>Ver o vídeo inteiro</span><kbd>Shift + Z</kbd></li><li><span>Altura das faixas</span><kbd>Alt + rolagem</kbd></li><li><span>Rolar para os lados</span><kbd>Shift + rolagem</kbd></li><li><span>Ligar e desligar o ímã</span><kbd>N</kbd></li><li><span>Marcador</span><kbd>M</kbd></li><li><span>Salvar</span><kbd>Ctrl + S</kbd></li><li><span>Exportar</span><kbd>Ctrl + E</kbd></li></ul>
@@ -571,6 +590,21 @@
       <p class="erro-campo" id="mt-erro" role="alert" hidden></p>
     </div>
     <footer class="editor-acoes"><button class="botao principal" type="submit">Criar montagem</button></footer>
+  </form>
+</dialog>
+
+<dialog class="janela janela-montagem" id="janela-viral" aria-labelledby="ev-titulo">
+  <form id="form-viral">
+    <header class="editor-topo"><div><h2 id="ev-titulo">Criar vídeo neste estilo</h2><p id="ev-resumo"></p></div><button class="botao fantasma" type="button" data-fechar>Fechar</button></header>
+    <div class="mt-corpo">
+      <div class="bloco"><label for="ev-pasta">Cenas de qual pasta</label><select id="ev-pasta" required></select></div>
+      <div class="bloco"><label for="ev-gancho">Frase de abertura</label><input id="ev-gancho" maxlength="90" required placeholder="Ex.: Fiz isso e dobrei minhas views"></div>
+      <div class="bloco"><label for="ev-partes">Textos das tarjas</label><textarea id="ev-partes" rows="3" placeholder="Um texto por linha"></textarea></div>
+      <div class="bloco"><label for="ev-marca">Sua marca</label><input id="ev-marca" maxlength="40" placeholder="@seucanal"></div>
+      <div class="bloco"><label for="ev-chamada">Chamada final</label><input id="ev-chamada" maxlength="70" placeholder="Ex.: Comenta EU e me segue"></div>
+      <p class="erro-campo" id="ev-erro" role="alert" hidden></p>
+    </div>
+    <footer class="editor-acoes"><button class="botao principal" type="submit">Criar vídeo</button></footer>
   </form>
 </dialog>
 

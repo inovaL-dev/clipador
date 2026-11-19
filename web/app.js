@@ -361,6 +361,7 @@ async function atualizar() {
   catch { $("#resumo").textContent = "Sem conexão com o programa. Confira se a janela do clipador está aberta."; }
 }
 setInterval(() => { if (!document.hidden) atualizar(); }, 1000);
+setInterval(() => { fetch("/api/programa/sinal", { method: "POST", body: "{}" }).catch(() => {}); }, 15000);  // avisa o programa que a janela continua respondendo
 document.addEventListener("visibilitychange", () => { if (!document.hidden) atualizar(); });
 
 function confirmar(botao, rotulo, acao) {
@@ -1257,24 +1258,54 @@ let tempoAprendizado;
 const NOMES_TROCA = { corte: "corte seco", chicote: "chicote", clarao: "clarão", suave: "passagem suave" };
 const NOMES_REACAO = { risada: "Risadas", choque: "Choque", hype: "Hype", clipe: "Pedidos de clipe", jogo: "Ação no jogo", streamer: "Reação do streamer", admirado: "Streamer admirado", destaque: "Melhor momento", manual: "Manual" };
 const NOMES_PREF = { tamanho: "Tamanho da legenda", cor: "Cor da legenda", cor_destaque: "Cor de destaque", y: "Altura da legenda", maiusculas: "Letras maiúsculas", palavra_a_palavra: "Uma palavra por vez", destaque: "Destaque de palavras", fonte: "Fonte", entrada: "Animação de entrada", saida: "Animação de saída", contorno: "Contorno", zoom_forca: "Força do zoom", volume_efeitos: "Volume dos efeitos", volume_fala: "Volume da fala", volume_musica: "Volume da música" };
+const NOMES_FILTRO = { nenhum: "original", noir: "preto e branco", dramatico: "dramático", gamer: "gamer", por_do_sol: "pôr do sol", quente: "quente", frio: "frio", vibrante: "vibrante" };
+function raioX(r) {
+  const seg = (v) => `${String(v).replace(".", ",")} s`, linha = (titulo, ...corpo) => el("div", { class: "rx-linha" }, el("h4", {}, titulo), el("div", {}, ...corpo));
+  const g = r.gancho, c = r.cores, rt = r.ritmo, dur = r.cortes.duracao || 1;
+  const paleta = el("div", { class: "rx-paleta", role: "img", "aria-label": "Cores principais do vídeo" }, ...c.paleta.map((p) => { const n = el("span", { title: p.hex }); n.style.background = p.hex; n.style.flexGrow = String(Math.max(.06, p.peso)); return n; }));
+  const faixa = el("div", { class: "rx-cortes", role: "img", "aria-label": `${r.cortes.marcas.length} trocas de cena` }, ...r.cortes.marcas.map((m) => { const n = el("i", { title: `${seg(m.t)}: ${NOMES_TROCA[m.tipo] || m.tipo}` }); n.style.left = `${Math.min(100, m.t / dur * 100)}%`; return n; }));
+  const fase = rt.partes[0] > rt.partes[2] ? "Mais rápido no começo" : rt.partes[2] > rt.partes[0] ? "Acelera até o final" : "Ritmo constante";
+  const tipos = Object.entries(r.cortes.tipos).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${NOMES_TROCA[k] || k}: ${v}`).join(", ");
+  return el("details", { class: "rx" }, el("summary", {}, "Ver como o vídeo foi desmontado"),
+    linha("Gancho", el("strong", {}, g.tipo_nome), g.fala ? el("q", {}, g.fala) : null, g.primeira_troca != null ? el("small", {}, `Primeira troca de cena em ${seg(g.primeira_troca)}`) : null),
+    linha("Ritmo", el("strong", {}, rt.cena_s ? `Uma cena a cada ${seg(rt.cena_s)}` : "Sem trocas de cena"), el("small", {}, `${fase}. ${Math.round(rt.cortes_min)} trocas por minuto.`)),
+    linha("Cores", paleta, el("small", {}, `Nos seus vídeos: filtro ${NOMES_FILTRO[c.filtro] || c.filtro} e destaque ${c.cor}`)),
+    linha("Cortes", faixa, el("small", {}, tipos || "Plano único")),
+    r.chamada ? linha("Final", el("q", {}, r.chamada)) : null);
+}
+let estiloAtual = null;
+function abrirEstilo(m, marca) {
+  const lista = pastasDaMontagem().filter((p) => p.n >= 2), sel = $("#ev-pasta"); estiloAtual = m;
+  if (!lista.length) { avisar("Você precisa de pelo menos 2 cortes prontos na mesma pasta."); return; }
+  sel.replaceChildren(...lista.map((p) => el("option", { value: p.id }, `${p.nome}: ${p.n} cortes`)));
+  $("#ev-resumo").textContent = `Usa o estilo ${m.nome} com as suas cenas, o seu texto e a sua marca.`;
+  $("#ev-marca").value = marca.nome || ""; $("#ev-chamada").value = marca.chamada || ""; $("#ev-erro").hidden = true; $("#janela-viral").showModal();
+}
+$("#janela-viral [data-fechar]").addEventListener("click", () => $("#janela-viral").close());
+$("#form-viral").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try { await api("POST", "/api/montagens/estilo", { modelo: estiloAtual.id, pasta: $("#ev-pasta").value, gancho: $("#ev-gancho").value, partes: $("#ev-partes").value, marca: $("#ev-marca").value, chamada: $("#ev-chamada").value }); $("#janela-viral").close(); $("#janela-aprendizado").close(); avisar("O vídeo começou a ser criado"); atualizar(); }
+  catch (e) { $("#ev-erro").textContent = e.message; $("#ev-erro").hidden = false; }
+});
 async function desenharAprendizado() {
   const d = await api("GET", "/api/aprendizado"), p = d.perfil, c = $("#ap-corpo"), t = d.trabalho;
   const chave = (k, rot, dica) => { const n = el("input", { type: "checkbox" }); n.checked = d.ativo[k]; n.addEventListener("change", async () => { await api("POST", "/api/aprendizado", { [k]: n.checked }); desenharAprendizado(); }); return el("label", { class: "marcar" }, n, el("span", {}, el("strong", {}, rot), el("small", {}, dica))); };
   const envio = el("input", { type: "file", accept: "video/*", hidden: "", multiple: "" });
-  envio.addEventListener("change", async () => { const lista = [...envio.files]; for (const [n, a] of lista.entries()) { avisar(`Enviando o vídeo ${n + 1} de ${lista.length}`); const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || "Não foi possível enviar."); } desenharAprendizado(); });
+  envio.addEventListener("change", async () => { const lista = [...envio.files]; for (const [n, a] of lista.entries()) { avisar(`Enviando o vídeo ${n + 1} de ${lista.length}`); try { const r = await fetch(`/api/aprendizado/referencia?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), j = await r.json().catch(() => ({})); if (!r.ok) avisar(j.erro || `Não foi possível enviar ${a.name}.`); } catch { avisar(`Não foi possível enviar ${a.name}.`); } } envio.value = ""; desenharAprendizado(); });
   const detalhes = (p) => [p.webcam ? "Câmera em cima do jogo" : null, p.palavra_a_palavra ? "Uma palavra por vez na legenda" : null, p.cena_s ? `Cenas de ${String(p.cena_s).replace(".", ",")} segundos` : `${Math.round(p.cortes_min)} trocas por minuto`, p.zooms_min ? `${Math.round(p.zooms_min)} zooms por minuto` : null, p.transicoes?.length ? `Transição: ${NOMES_TROCA[p.transicoes[0]] || p.transicoes[0]}` : null, p.sfx_cortes != null ? `Som em ${Math.round(p.sfx_cortes * 100)}% das trocas` : null].filter(Boolean);
   const cartaoModelo = (m) => {
+    const criar = el("button", { class: "botao destaque", type: "button", onclick: () => abrirEstilo(m, d.marca) }, "Criar vídeo neste estilo");
     const nome = el("input", { class: "ap-nome", value: m.nome, maxlength: "50", "aria-label": "Nome do modelo" }); nome.addEventListener("change", async () => { await api("POST", `/api/aprendizado/modelos/${m.id}`, { nome: nome.value }); desenharAprendizado(); });
     const liga = el("input", { type: "checkbox" }); liga.checked = m.ativo; liga.addEventListener("change", async () => { await api("POST", `/api/aprendizado/modelos/${m.id}`, { ativo: liga.checked }); desenharAprendizado(); });
     const fim = m.resultado ? `, ${m.resultado.media.toLocaleString("pt-BR")} visualizações em média` : "";
     const apagar = el("button", { class: "botao fantasma", type: "button", onclick: () => confirmar(apagar, "Confirmar", async () => { await api("DELETE", `/api/aprendizado/modelos/${m.id}`); avisar("Modelo removido"); desenharAprendizado(); }) }, "Remover modelo");
     return el("li", { class: "ap-modelo", dados: { ativo: String(m.ativo) } }, el("div", { class: "ap-modelo-topo" }, nome, el("label", { class: "marcar" }, liga, el("span", {}, "Usar"))),
-      el("p", { class: "dica" }, `${m.exemplos.length} ${m.exemplos.length === 1 ? "exemplo" : "exemplos"}, usado em ${m.uso} ${m.uso === 1 ? "corte" : "cortes"}${fim}`), el("p", { class: "ap-traits" }, detalhes(m.perfil).join(", ")),
+      el("p", { class: "dica" }, `${m.exemplos.length} ${m.exemplos.length === 1 ? "exemplo" : "exemplos"}, usado em ${m.uso} ${m.uso === 1 ? "corte" : "cortes"}${fim}`), el("p", { class: "ap-traits" }, detalhes(m.perfil).join(", ")), m.raiox ? raioX(m.raiox) : null, criar,
       el("details", {}, el("summary", {}, "Ver exemplos"), el("ul", { class: "ap-lista" }, ...m.exemplos.map((r) => el("li", {}, el("span", {}, r.nome), el("button", { class: "botao fantasma", type: "button", onclick: async () => { await api("DELETE", `/api/aprendizado/referencias/${r.id}`); desenharAprendizado(); } }, "Remover")))), apagar));
   };
   const prefs = [...Object.entries(d.preferencias.legenda), ...Object.entries(d.preferencias.global)].map(([k, v]) => `${NOMES_PREF[k] || k}: ${v === true ? "sim" : v === false ? "não" : v}`), des = d.desempenho, tipos = Object.entries(des.tipos || {}).sort((a, b) => b[1].media - a[1].media);
   c.replaceChildren(
-    el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Aprender com estes vídeos", "Vídeos parecidos formam um modelo. Os cortes revezam entre todos e usam mais os que dão resultado. Os vídeos são apagados depois da análise."),
+    el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Aprender com estes vídeos", "Envie vídeos que deram certo. O Clipador desmonta o gancho, o ritmo, as cores e os cortes, e salva o estilo. Os vídeos são apagados depois da análise."),
       envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), }, ["fila", "analisando"].includes(t.estado) ? `Analisando ${t.restantes > 1 ? `${t.restantes} vídeos` : "o vídeo"}…` : "Ensinar com vídeos"), t.erro ? el("p", { class: "erro-campo" }, t.erro) : null,
       d.modelos.length ? el("ul", { class: "ap-modelos" }, ...d.modelos.map(cartaoModelo)) : el("p", { class: "dica" }, "Envie vídeos de estilos diferentes. Cada estilo vira um modelo, e os próximos cortes usam todos eles.")),
     el("section", {}, el("h3", {}, "Suas edições"), chave("edicoes", "Aprender com o que eu mudo no Editor", "Uma mudança vira padrão quando se repete em 2 vídeos exportados."), el("p", { class: "dica" }, `${d.videos_editados} ${d.videos_editados === 1 ? "vídeo editado" : "vídeos editados"}.`), prefs.length ? el("ul", { class: "ap-visto" }, ...prefs.map((x) => el("li", {}, x))) : el("p", { class: "dica" }, "Nenhuma preferência repetida ainda.")),

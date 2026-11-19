@@ -6,6 +6,7 @@ import json
 import mimetypes
 import re
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -32,6 +33,7 @@ class Painel(BaseHTTPRequestHandler):
     janela_propria = False  # o login do Google não abre dentro da janela do programa
     ao_encerrar = None
     ao_mostrar = None
+    ultimo_sinal = 0.0
     info_programa = None
     definir_programa = None
 
@@ -341,6 +343,10 @@ class Painel(BaseHTTPRequestHandler):
 
     def do_POST(self):
         caminho = urlsplit(self.path).path
+        if caminho == "/api/programa/sinal":
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))  # a conexão continua aberta para o próximo pedido
+            Painel.ultimo_sinal = time.time()
+            return self._json({"ok": True})
         if caminho == "/api/programa/mostrar" and type(self).ao_mostrar:
             return self._acao(lambda d: type(self).ao_mostrar())
         if caminho == "/api/programa" and type(self).definir_programa:
@@ -363,6 +369,8 @@ class Painel(BaseHTTPRequestHandler):
             return self._acao(lambda d: self.motor.aprendizado.definir_modelo(m[1], d))
         if caminho == "/api/aprendizado/esquecer":
             return self._acao(lambda d: self.motor.aprendizado.esquecer())
+        if caminho == "/api/montagens/estilo":
+            return self._acao(lambda d: self.motor.montagens.pedir_estilo(d))
         if caminho == "/api/montagens":
             return self._acao(lambda d: self.motor.montagens.pedir(str(d.get("pasta") or ""), int(d.get("cenas", 4))))
         if caminho == "/api/atualizacao/verificar":

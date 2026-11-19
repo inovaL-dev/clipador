@@ -110,3 +110,10 @@ dialog.janela[open] { animation: janelaAbre .26s var(--suave); box-shadow: var(-
 /* Montagem */
 .janela-montagem { width: min(30rem, 94vw); padding: 0; } .mt-corpo { display: grid; gap: .875rem; padding: 1rem 1.25rem; } .aj-montagem { display: grid; gap: .625rem; margin: 0; padding: .875rem 1rem; border: 1px solid var(--fio-suave); border-radius: var(--raio-menor); } .aj-montagem legend { padding: 0 .375rem; font-weight: 700; }
 @media (max-width: 52rem) { #aba-cortes .barra-ferramentas > * { min-width: 0; max-width: 100%; } #aba-cortes .filtros { display: flex; overflow-x: auto; scrollbar-width: none; } #aba-cortes .filtros button { flex: none; } #abrir-montagem { width: 100%; } }
+
+/* Vídeo desmontado */
+.rx { display: grid; gap: .625rem; } .rx-linha { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .75rem; padding-top: .625rem; border-top: 1px solid var(--fio-suave); }
+.rx-linha h4 { margin: 0; color: var(--giz); font-size: .8125rem; font-weight: 600; } .rx-linha > div { display: grid; gap: .3125rem; min-width: 0; font-size: .875rem; } .rx-linha small { color: var(--giz); font-size: .8125rem; }
+.rx-paleta { display: flex; height: 1.5rem; overflow: hidden; border-radius: .25rem; } .rx-paleta span { flex-basis: 0; min-width: .375rem; }
+.rx-cortes { position: relative; height: 1.5rem; background: var(--mesa-alta); border: 1px solid var(--fio-suave); border-radius: .25rem; } .rx-cortes i { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--corte); }
+#janela-viral textarea { width: 100%; resize: vertical; }

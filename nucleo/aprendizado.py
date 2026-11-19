@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import statistics
 import subprocess
 import threading
@@ -15,6 +16,7 @@ import numpy as np
 
 from . import camera as cam
 from . import edicao, estilos
+from .medir_referencia import RAIZ, TEMPO_MAXIMO, comando, opcoes
 from .plataformas import sem_janela
 
 CHAVES_LEGENDA = ("tamanho", "cor", "cor_destaque", "y", "maiusculas", "palavra_a_palavra", "destaque", "fonte", "entrada", "saida", "contorno")
@@ -25,7 +27,7 @@ IDADE_MINIMA = 48 * 3600
 INTERVALO_CANAL = 6 * 3600
 LIMITE_EXEMPLOS = 200
 PARECIDO = 1.0      # abaixo dessa distância, dois exemplos pertencem ao mesmo modelo
-ANALISE_MAX = 180  # segundos analisados de cada vídeo de exemplo
+ANALISE_MAX = 120  # segundos analisados de cada vídeo de exemplo
 
 
 def _amostras(video: Path, quantidade: int = 60) -> tuple[list[np.ndarray], float]:
@@ -145,9 +147,9 @@ def medir_edicao(video: Path) -> dict:
     dt = passo / fps
     if len(cinzas) < 20:
         return {}
-    area = [c[50:205].astype(np.float32) for c in cinzas]  # ignora legenda fixa e barra do canal
-    dif = np.array([0.0, *[float(np.abs(a - b).mean()) for a, b in zip(area, area[1:])]])
-    borrado = [cv2.resize(a, (27, 31), interpolation=cv2.INTER_AREA).flatten() for a in area]
+    area = [c[50:205] for c in cinzas]  # ignora legenda fixa e barra do canal
+    dif = np.array([0.0, *[float(cv2.absdiff(a, b).mean()) for a, b in zip(area, area[1:])]])
+    borrado = [cv2.resize(a, (27, 31), interpolation=cv2.INTER_AREA).astype(np.float32).flatten() for a in area]
     parecido = lambda i: float(np.corrcoef(borrado[i - 1], borrado[i])[0, 1]) if borrado[i - 1].std() > 1 and borrado[i].std() > 1 else 0.0
     def continua(i: int) -> bool:
         """Em zoom e movimento os mesmos pontos seguem visíveis no quadro seguinte."""
@@ -166,17 +168,19 @@ def medir_edicao(video: Path) -> dict:
         if (not cortes or i - cortes[-1] > 5) and parecido(int(i)) < .62 and not continua(int(i)):
             cortes.append(int(i))
     tipos: Counter = Counter()
+    rotulos: dict[int, str] = {}
     for i in cortes:
         a, b = max(0, i - 3), min(len(area) - 1, i + 3)
         largura = int((dif[a:b + 1] > 11).sum())
         claro = max(float(area[j].mean()) for j in range(a, b + 1)) - max(float(area[a].mean()), float(area[b].mean()))
         if claro > 30:
-            tipos["clarao"] += 1
+            rotulos[i] = "clarao"
         elif largura <= 2:
-            tipos["corte"] += 1
+            rotulos[i] = "corte"
         else:
-            desl, _ = cv2.phaseCorrelate(area[max(0, i - 1)], area[min(len(area) - 1, i + 1)])
-            tipos["chicote" if float(np.hypot(*desl)) > 7 else "suave"] += 1
+            desl, _ = cv2.phaseCorrelate(area[max(0, i - 1)].astype(np.float32), area[min(len(area) - 1, i + 1)].astype(np.float32))
+            rotulos[i] = "chicote" if float(np.hypot(*desl)) > 7 else "suave"
+        tipos[rotulos[i]] += 1
     escalas = np.ones(len(cinzas))
     separados = set(j for i in cortes for j in range(i - 1, i + 2))
     for i in range(1, len(cinzas)):
@@ -206,7 +210,8 @@ def medir_edicao(video: Path) -> dict:
     dur = max(1.0, len(cinzas) * dt)
     return {"zooms_min": round(len(zooms) / dur * 60, 1), "zoom_escala": round(float(np.median(zooms)), 3) if zooms else None, "cena_s": round(dur / (len(cortes) + 1), 1),
             "transicoes": {k: round(v / max(1, len(cortes)), 2) for k, v in tipos.items()}, "sfx_cortes": round(com_som / len(marcas), 2) if marcas else None, "sfx_min": round(len(picos) / dur * 60, 1),
-            "whoosh": round(sons.count("whoosh") / len(sons), 2) if sons else None}
+            "whoosh": round(sons.count("whoosh") / len(sons), 2) if sons else None,
+            "marcas": [{"t": round(c * dt, 2), "tipo": rotulos[c], "som": any(abs(p - c * dt) <= .2 for p in picos)} for c in cortes[:150]]}
 
 
 def medir_video(video: Path, palavras: list[dict] | None = None) -> dict:
@@ -286,8 +291,61 @@ class Aprendizado:
             if r.get("modelo") not in self.m["modelos"]:
                 self._agrupar(r)
         self.trabalho: dict = {"estado": "parado"}
-        self.fila_refs: list[dict] = []
+        self.arq_fila = self.pasta / "fila_exemplos.json"
+        self.fila_refs: list[dict] = self._ler_fila()
+        self.aviso = threading.Event()
+        threading.Thread(target=self._analisar_fila, daemon=True).start()
         threading.Thread(target=self._vigiar_canal, daemon=True).start()
+
+    def _ler_fila(self) -> list[dict]:
+        """Retoma os vídeos que estavam esperando e apaga sobras de análises interrompidas."""
+        try:
+            fila = [i for i in json.loads(self.arq_fila.read_text(encoding="utf-8")) if Path(i["arquivo"]).is_file()]
+        except (OSError, ValueError, KeyError, TypeError):
+            fila = []
+        guardados = {Path(i["arquivo"]).name for i in fila}
+        for sobra in self.pasta.glob("analise_*"):
+            if sobra.name not in guardados:
+                sobra.unlink(missing_ok=True)
+        return fila
+
+    def _salvar_fila(self) -> None:
+        temp = self.arq_fila.with_suffix(".tmp")
+        temp.write_text(json.dumps(self.fila_refs, ensure_ascii=False), encoding="utf-8")
+        temp.replace(self.arq_fila)
+
+    def _analisar_fila(self) -> None:
+        if self.motor.fim.wait(12 if self.fila_refs else 0):
+            return
+        while not self.motor.fim.is_set():
+            if not self.fila_refs:
+                self.aviso.wait(2); self.aviso.clear()
+                continue
+            limite = time.time() + 300
+            fila = getattr(self.motor, "fila", None)
+            while fila is not None and fila.qsize() and time.time() < limite and not self.motor.fim.wait(1):
+                pass  # os cortes das lives têm prioridade
+            if not self.motor.fim.is_set():
+                self.executar()
+
+    def _medir_separado(self, arq: Path) -> dict:
+        saida = arq.with_suffix(".json")
+        modelo = getattr(self.motor, "modelo_forcado", None) or self.motor.config.get("modelo") or ""
+        proc = subprocess.Popen(comando(arq, saida, str(modelo), str(self.motor.config.get("idioma") or "")), cwd=RAIZ, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **opcoes())
+        limite = time.time() + TEMPO_MAXIMO
+        try:
+            while proc.poll() is None:
+                if self.motor.fim.wait(.5) or time.time() > limite:
+                    proc.kill(); proc.wait()
+                    raise InterruptedError if self.motor.fim.is_set() else ValueError("Este vídeo demorou demais para ser analisado.")
+            dados = json.loads(saida.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raise ValueError("Não consegui analisar este vídeo.") from None
+        finally:
+            saida.unlink(missing_ok=True)
+        if "erro" in dados:
+            raise ValueError(dados["erro"])
+        return dados["medidas"]
 
     def _salvar(self) -> None:
         temp = self.arquivo.with_suffix(".tmp")
@@ -361,12 +419,29 @@ class Aprendizado:
             novo["ritmo"] = round(float(np.clip(60 / p["cortes_min"] * 1.4, 2.5, 6.0)), 1)
         if p.get("zoom_escala"):
             novo["zoom_forca"] = int(np.clip(round((p["zoom_escala"] - 1) / .15 * 100), 60, 160))
+        raiox = [r["medidas"]["raiox"] for r in self._exemplos(modelo) if r["medidas"].get("raiox")]
+        if raiox:
+            comum = lambda k: Counter(x["cores"][k] for x in raiox).most_common(1)[0][0]
+            novo["cor"] = comum("cor")
+            if (self.motor.config.get("estilo") or {}).get("filtro", "nenhum") == "nenhum" and comum("filtro") != "nenhum":
+                novo["filtro"], novo["filtro_forca"] = comum("filtro"), 55
+            if sum(bool(x.get("faixa")) for x in raiox) * 2 >= len(raiox):
+                novo["gancho"] = "branco"
         pref = self.preferencias()
         if "y" in pref["legenda"]:
             novo.pop("legenda_y", None); novo.pop("legenda_x", None)
         if "zoom_forca" in pref["global"]:
             novo.pop("zoom_forca", None)
         return novo
+
+    def raiox_do_modelo(self, ident: str) -> dict | None:
+        """O exemplo mais recente mostra como o vídeo foi desmontado."""
+        return next((r["medidas"]["raiox"] for r in reversed(self._exemplos(ident)) if r["medidas"].get("raiox")), None)
+
+    def guardar_marca(self, nome: str, chamada: str) -> None:
+        with self.trava:
+            self.m["marca"] = {"nome": nome, "chamada": chamada}
+            self._salvar()
 
     def definir_modelo(self, ident: str, dados: dict) -> dict:
         modelo = self.m["modelos"][ident]
@@ -389,6 +464,8 @@ class Aprendizado:
     def receber(self, nome: str, corpo, tamanho: int) -> dict:
         if Path(nome).suffix.lower() not in (".mp4", ".mov", ".mkv", ".webm", ".m4v"):
             raise ValueError("Envie um vídeo MP4, MOV, MKV ou WEBM.")
+        if shutil.disk_usage(self.pasta).free < tamanho + 2 * 1024 ** 3:
+            raise ValueError("Falta espaço no computador para analisar este vídeo.")
         arq = self.pasta / f"analise_{uuid.uuid4().hex[:10]}{Path(nome).suffix.lower()}"
         with open(arq, "wb") as f:
             restante = tamanho
@@ -401,25 +478,20 @@ class Aprendizado:
             arq.unlink(missing_ok=True)
             raise ValueError("O envio foi interrompido. Tente de novo.")
         self.fila_refs.append({"nome": Path(nome).stem[:60], "arquivo": str(arq)})
+        self._salvar_fila()
         if self.trabalho.get("estado") != "analisando":
             self.trabalho = {"estado": "fila", "nome": Path(nome).stem[:60], "restantes": len(self.fila_refs)}
-        self.motor.fila.put(("aprender", "referencia"))
+        self.aviso.set()
         return self.resumo()
 
     def executar(self) -> None:
         if not self.fila_refs:
             return
-        t = self.fila_refs.pop(0)
+        t = self.fila_refs[0]
         arq = Path(t["arquivo"])
-        self.trabalho = {"estado": "analisando", "nome": t["nome"], "restantes": len(self.fila_refs) + 1}
+        self.trabalho = {"estado": "analisando", "nome": t["nome"], "restantes": len(self.fila_refs)}
         try:
-            palavras = None
-            try:
-                modelo = self.motor._modelo_whisper()
-                palavras = edicao.transcrever(modelo, arq, self.motor.config["idioma"]) if modelo else None
-            except Exception:
-                palavras = None
-            medidas = medir_video(arq, palavras)
+            medidas = self._medir_separado(arq)
             with self.trava:
                 ref = {"id": uuid.uuid4().hex[:10], "nome": t["nome"], "criado": time.time(), "medidas": medidas}
                 self.m["referencias"].append(ref)
@@ -427,11 +499,18 @@ class Aprendizado:
                 self._agrupar(ref)
                 self._salvar()
             self.aplicar_estilo()
-            self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs)} if self.fila_refs else {"estado": "pronto", "nome": t["nome"]}
+            erro = None
+        except InterruptedError:
+            return  # o programa fechou: continua deste vídeo na próxima vez
         except Exception as e:
-            self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs), "erro": f"{t['nome']}: {str(e)[:160]}"} if self.fila_refs else {"estado": "erro", "erro": f"{t['nome']}: {str(e)[:160]}"}
-        finally:
-            arq.unlink(missing_ok=True)  # guarda só as medidas, nunca o vídeo de outra pessoa
+            erro = f"{t['nome']}: {str(e)[:160]}"
+        self.fila_refs.remove(t)
+        self._salvar_fila()
+        arq.unlink(missing_ok=True)  # guarda só as medidas, nunca o vídeo de outra pessoa
+        if self.fila_refs:
+            self.trabalho = {"estado": "fila", "restantes": len(self.fila_refs), **({"erro": erro} if erro else {})}
+        else:
+            self.trabalho = {"estado": "erro", "erro": erro} if erro else {"estado": "pronto", "nome": t["nome"]}
 
     def perfil(self, modelo: str | None = None, sem_filtro: bool = False) -> dict | None:
         """Junta os exemplos de um modelo: vale o que aparece na maioria deles."""
@@ -611,9 +690,13 @@ class Aprendizado:
         return self.resumo()
 
     def resumo(self) -> dict:
+        with self.trava:
+            return self._resumo()
+
+    def _resumo(self) -> dict:
         pref = self.preferencias()
         dados_modelos = (self.m["desempenho"] or {}).get("modelos") or {}
-        modelos = [{"id": i, "nome": m.get("nome") or "Modelo", "ativo": m.get("ativo", True), "uso": self.m["uso_modelos"].get(i, 0), "perfil": self.perfil(i, sem_filtro=True), "resultado": dados_modelos.get(i),
+        modelos = [{"id": i, "nome": m.get("nome") or "Modelo", "ativo": m.get("ativo", True), "uso": self.m["uso_modelos"].get(i, 0), "perfil": self.perfil(i, sem_filtro=True), "raiox": self.raiox_do_modelo(i), "resultado": dados_modelos.get(i),
                     "exemplos": [{"id": r["id"], "nome": r["nome"]} for r in self._exemplos(i)]} for i, m in self.m["modelos"].items() if self._exemplos(i)]
-        return {"modelos": modelos, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
-                "referencias": [{"id": r["id"], "nome": r["nome"], "medidas": r["medidas"]} for r in self.m["referencias"]], "desempenho": self.m["desempenho"], "pesos": self.m["pesos"], "minimo": MINIMO_VIDEOS}
+        return {"modelos": modelos, "marca": self.m.get("marca") or {"nome": "", "chamada": ""}, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
+                "referencias": [{"id": r["id"], "nome": r["nome"], "medidas": {k: v for k, v in r["medidas"].items() if k not in ("raiox", "marcas")}} for r in self.m["referencias"]], "desempenho": self.m["desempenho"], "pesos": self.m["pesos"], "minimo": MINIMO_VIDEOS}

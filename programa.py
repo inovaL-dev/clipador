@@ -260,9 +260,33 @@ def diagnostico(destino: Path) -> int:
     return 1 if any(v.startswith("FALHOU") for v in resultado.values()) else 0
 
 
+def vigiar_janela(sinal, recarregar, oculta, parar: threading.Event, limite: float = 100.0, pausa: float = 5.0) -> None:
+    """Se a tela parar de responder, abre o painel de novo sem interromper as gravações."""
+    tentativas, desde = 0, time.time()
+    while not parar.wait(pausa):
+        ultimo = sinal()
+        if not ultimo or oculta():
+            desde = time.time()
+            continue
+        if ultimo > desde:
+            desde, tentativas = ultimo, 0
+        if time.time() - desde >= limite and tentativas < 3:
+            tentativas += 1
+            desde = time.time()
+            try:
+                recarregar()
+            except Exception:
+                traceback.print_exc()
+
+
 def main() -> int:
     if sys.stdout is None:  # programas sem console não têm saída de texto
         sys.stdout = sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    if len(sys.argv) >= 4 and sys.argv[1] == "--medir-referencia":
+        preparar_ambiente()
+        from nucleo.medir_referencia import principal
+
+        return principal(*sys.argv[2:6])
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("links", nargs="*")
     ap.add_argument("--porta", type=int, default=8420)
@@ -293,7 +317,7 @@ def main() -> int:
             trazer_para_frente(trava.porta_aberta())
         return 0
 
-    estado: dict = {"motor": None, "servidor": None, "janela": None, "bandeja": None, "endereco": None, "saindo": False}
+    estado: dict = {"oculta": args.segundo_plano, "motor": None, "servidor": None, "janela": None, "bandeja": None, "endereco": None, "saindo": False}
     parar = threading.Event()
     trava_inicio = threading.Lock()
     prefs = Preferencias(base)
@@ -309,6 +333,7 @@ def main() -> int:
 
     def mostrar() -> None:
         if estado["janela"]:
+            estado["oculta"] = False
             estado["janela"].show(); estado["janela"].restore()
         elif estado["endereco"]:
             webbrowser.open(estado["endereco"])
@@ -320,6 +345,7 @@ def main() -> int:
     def ao_fechar():
         if estado["saindo"] or not estado["bandeja"] or not prefs.segundo_plano():
             return True
+        estado["oculta"] = True
         threading.Thread(target=estado["janela"].hide, daemon=True).start()
         try:
             estado["bandeja"].notify("O Clipador continua funcionando. Para fechar de vez, use o ícone perto do relógio.", NOME)
@@ -367,6 +393,7 @@ def main() -> int:
                 if estado["janela"]:
                     threading.Thread(target=barra_escura, daemon=True).start()
                     estado["janela"].load_url(f"{endereco}/?janela=1")
+                    threading.Thread(target=vigiar_janela, args=(lambda: Painel.ultimo_sinal, lambda: estado["janela"].load_url(f"{endereco}/?janela=1"), lambda: estado["oculta"], parar), daemon=True).start()
                 elif not args.sem_navegador and not args.segundo_plano:
                     webbrowser.open(endereco)
             except Exception:
