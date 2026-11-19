@@ -13,7 +13,20 @@
 <meta name="theme-color" content="#0b1518">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230b1518'/%3E%3Cpath fill='%23f2b544' d='M6 4h12l-6 7z'/%3E%3Crect x='11' y='9' width='2' height='11' rx='1' fill='%23f2b544'/%3E%3C/svg%3E">
 <link rel="preload" href="anton.woff2" as="font" type="font/woff2" crossorigin>
-<script>if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("anim");</script>
+<script>
+/* Se saiu uma publicação nova, troca a cópia guardada pelo navegador sem precisar de Ctrl + F5. */
+(() => {
+  const atual = "dev", u = new URL(location.href);
+  if (u.searchParams.get("v") === atual) { u.searchParams.delete("v"); history.replaceState(null, "", u); }
+  if (atual === "dev") return;
+  fetch(`versao.json?t=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()).then((d) => {
+    const destino = new URL(location.href);
+    if (!d.site || d.site === atual || new URL(document.URL).searchParams.get("v") === d.site || sessionStorage.getItem("site-recarregado") === d.site) return;
+    sessionStorage.setItem("site-recarregado", d.site); destino.searchParams.set("v", d.site); location.replace(destino);
+  }).catch(() => {});
+})();
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("anim");
+</script>
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body>

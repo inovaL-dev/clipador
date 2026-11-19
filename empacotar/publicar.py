@@ -156,6 +156,20 @@ def ultima_liberada(gh: str, alvo: str) -> list[dict]:
     return []
 
 
+def marcar_publicacao(pasta: Path, publicacao: dict) -> None:
+    """Dá um código a cada publicação para os navegadores trocarem a cópia antiga sozinhos."""
+    resumo = hashlib.sha256(json.dumps(publicacao, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    for arquivo in sorted(p for p in (RAIZ / "site").rglob("*") if p.is_file()):
+        resumo.update(arquivo.name.encode("utf-8") + arquivo.read_bytes())
+    codigo = resumo.hexdigest()[:12]
+    pagina = (pasta / "index.html").read_text(encoding="utf-8").replace('const atual = "dev"', f'const atual = "{codigo}"', 1)
+    pagina = pagina.replace('href="estilo.css"', f'href="estilo.css?v={codigo}"').replace('src="site.js"', f'src="site.js?v={codigo}"')
+    if publicacao:
+        pagina = re.sub(r"(<(?:b|span) data-versao>)[^<]*", rf"\g<1>{publicacao['versao']}", pagina)
+        (pasta / "versao.json").write_text(json.dumps({**publicacao, "site": codigo}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pasta / "index.html").write_text(pagina, encoding="utf-8")
+
+
 def publicar_site(git: str, gh: str, conta: dict) -> str:
     """Envia só a pasta site para o repositório público que vira o endereço do projeto."""
     dono = conta["login"]
@@ -171,10 +185,11 @@ def publicar_site(git: str, gh: str, conta: dict) -> str:
         shutil.copytree(RAIZ / "site", copia, dirs_exist_ok=True)
         (copia / ".nojekyll").write_text("", encoding="utf-8")
         historico = ultima_liberada(gh, f"{dono}/{REPOSITORIO}")
+        publicacao = {}
         if historico:
             baixar = f"https://github.com/{dono}/{REPOSITORIO}/releases/latest/download/Clipador-Instalador.exe"
-            atual = historico[0]
-            (copia / "versao.json").write_text(json.dumps({**atual, "baixar": baixar, "historico": historico}, ensure_ascii=False, indent=2), encoding="utf-8")
+            publicacao = {**historico[0], "baixar": baixar, "historico": historico}
+        marcar_publicacao(copia, publicacao)
         rodar(git, "checkout", "-q", "-B", "main", pasta=copia)
         rodar(git, "config", "user.name", conta.get("name") or dono, pasta=copia)
         rodar(git, "config", "user.email", f"{conta['id']}+{dono}@users.noreply.github.com", pasta=copia)
