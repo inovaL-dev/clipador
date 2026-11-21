@@ -546,6 +546,8 @@ class Painel(BaseHTTPRequestHandler):
                      "rostos": lambda d: e.rostos(d["projeto"], d.get("item", ""), d.get("t", 0), d.get("modo", "um"))}
             if m[3] in acoes:
                 return self._acao(acoes[m[3]])
+        if m := re.fullmatch(r"/api/cortes/([\w-]+)/melhorar", caminho):
+            return self._acao(lambda d: self.motor.melhorar_corte(m[1]))
         if caminho == "/api/canais":
             return self._acao(lambda d: self.motor.adicionar_varios([str(x) for x in d["links"]], bool(d.get("programar"))) if isinstance(d.get("links"), list)
                               else {"id": self.motor.adicionar(str(d.get("link", "")), programar=bool(d.get("programar")))})

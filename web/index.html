@@ -545,6 +545,8 @@
           <summary><span class="potencial-anel" id="ed-pot-anel"><b id="ed-pot-nota"></b></span><span><strong>Potencial de viralizar</strong><small id="ed-pot-nivel"></small></span></summary>
           <ul class="potencial-partes" id="ed-pot-partes"></ul>
           <ul class="potencial-dicas" id="ed-pot-dicas"></ul>
+          <p class="potencial-melhorado" id="ed-pot-melhorado" hidden></p>
+          <button class="botao" type="button" id="ed-melhorar" hidden>Melhorar o potencial sozinho</button>
           <p class="dica">Estimativa feita com a reação da live, o começo, a história e o ritmo do corte. Não é garantia de views: serve para escolher o que postar primeiro.</p>
         </details>
         <div class="ed-abaixo" id="ed-abaixo" hidden><span id="ed-abaixo-texto"></span><button class="botao" type="button" id="ed-forcar">Postar mesmo assim</button></div>
@@ -811,6 +813,9 @@
         </select>
       </div>
     </div>
+    <div class="bloco aj-vocabulario"><label for="aj-melhorar">Melhorar sozinho os cortes com potencial abaixo de</label>
+      <select id="aj-melhorar" name="melhorar_abaixo"><option value="0">Desligado</option><option value="60">60%</option><option value="70">70%</option><option value="75">75% (recomendado)</option><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select>
+      <p class="dica">Antes de montar o vídeo, o Clipador testa outros começos e fins e o corte sem as pausas longas, e fica com a versão de maior potencial. A força da reação na live não muda.</p></div>
     <div class="bloco aj-vocabulario"><label for="aj-vocabulario">Nomes e palavras das suas lives</label>
       <textarea id="aj-vocabulario" name="vocabulario" rows="3" maxlength="600" placeholder="Gaules, Cerol, Free Fire, GTA RP, Paulinho o Loko"></textarea>
       <p class="dica">Separe por vírgula. A legenda passa a acertar esses nomes, jogos e gírias. O nome do canal e o título da live já entram sozinhos.</p></div>

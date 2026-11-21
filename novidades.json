@@ -1,5 +1,16 @@
 [
   {
+    "versao": "1.15.0",
+    "data": "2026-11-21",
+    "notas": [
+      "Melhora automática: quando o potencial previsto de um corte fica abaixo de 75%, o Clipador testa outras versões antes de montar o vídeo (outros começos e fins, começar uma frase depois, sem as pausas longas) e fica com a de maior potencial. O limite muda em Ajustes, e dá para desligar.",
+      "O trecho em volta do momento nunca é cortado, porque ali muitas vezes é o jogo que conta a história.",
+      "Cortes prontos ganharam o botão Melhorar o potencial sozinho, na caixa do potencial. Ele refaz o vídeo só se achar uma versão melhor e não mexe em cortes já editados à mão na timeline.",
+      "A caixa do potencial mostra o que foi melhorado, de quanto para quanto. A tela Assistir a edição mostra a melhora acontecendo.",
+      "O potencial agora leva em conta os pedaços cortados na timeline."
+    ]
+  },
+  {
     "versao": "1.14.0",
     "data": "2026-11-21",
     "notas": [

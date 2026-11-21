@@ -26,7 +26,7 @@ from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_mar
 from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
-from . import bastidores, fala, ideias, potencial
+from . import bastidores, fala, ideias, melhorar, potencial
 from .fila_edicao import FilaEdicao
 from .gravadas import Gravadas
 from .gravador import Gravador
@@ -56,7 +56,7 @@ ETAPAS = {
 }
 _TRAVA_ARQUIVOS = threading.Lock()
 CONFIG_PADRAO = {
-    "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": fala.MODELO_PRECISO if fala.aguenta_modelo_preciso() else "small", "idioma": "pt", "vocabulario": "",
+    "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": fala.MODELO_PRECISO if fala.aguenta_modelo_preciso() else "small", "idioma": "pt", "vocabulario": "", "melhorar_abaixo": 75,
     "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 3, "foco_auto": True, "shorts_emendados": False,
     "ideias": dict(ideias.PADRAO_LIGADAS),
 }
@@ -348,6 +348,36 @@ class Motor:
         self.evento(canal.nome, "canal", f"Acompanhando {canal.nome} no {canal.nome_plataforma}")
         return canal.id
 
+    def melhorar_corte(self, corte_id: str) -> dict:
+        """Melhora um corte pronto sem a live: refaz o começo e o fim dentro do trecho e corta as pausas longas."""
+        meta = self.cortes[corte_id]
+        if meta.get("status") != "pronto":
+            raise ValueError("Espere o corte ficar pronto.")
+        if meta.get("projeto_exportado") or meta.get("montagem"):
+            raise ValueError("Este vídeo foi feito no editor. Melhore por lá.")
+        dur = float(meta.get("duracao_fonte") or meta["duracao"])
+        ed = meta.get("edicao")
+        if ed and ed.get("cortes") and (len(ed["cortes"]) > 1 or ed["cortes"][0][0] > .05 or ed["cortes"][0][1] < dur - .05):
+            raise ValueError("Este corte já tem cortes feitos à mão na timeline. Para não desfazer o seu trabalho, nada foi mudado.")
+        palavras = [p for g in meta.get("grupos") or [] for p in g.get("palavras") or []]
+        if not palavras:
+            raise ValueError("Este corte não tem fala reconhecida, então não há o que melhorar no texto e no tempo.")
+        momento_chat = float(meta["momento_fonte"] if meta.get("momento_fonte") is not None else dur * .6) + 4
+        r = melhorar.melhor_versao(palavras, momento_chat, dur, min(self.config["duracao_min"], dur), dur, (0.0, dur), meta.get("titulo_live") or "",
+                                   meta, self.aprendizado, limiar=100, manter_titulo=True)
+        atual = int((meta.get("potencial") or {}).get("nota") or r["antes"])
+        r["antes"] = atual
+        if not r["mudancas"] or r["depois"] < atual + melhorar.GANHO_MINIMO:
+            return {"melhorou": False, "nota": atual, "mensagem": f"Este já é o melhor corte possível com este trecho ({atual}%). O que pesa mais agora é a força da reação na live."}
+        e = r["escolhida"]
+        meta["edicao"] = ed or edicao_inicial(dur, [])
+        meta["edicao"]["cortes"] = [[round(a + e["ini"], 3), round(b + e["ini"], 3)] for a, b in e["cortes"]]
+        meta["melhorado"] = {"antes": r["antes"], "depois": r["depois"], "mudancas": r["mudancas"], "auto": False}
+        self._salvar_corte(meta)
+        self._etapa(meta, "fila")
+        self.fila.put(("refazer", corte_id))
+        return {"melhorou": True, "antes": r["antes"], "depois": r["depois"], "mudancas": r["mudancas"]}
+
     def adicionar_varios(self, links: list[str], programar: bool = False) -> dict:
         """Várias lives de uma vez: cada uma é acompanhada em paralelo, com gravação e chat próprios."""
         feitos, erros, vistos = [], [], set()
@@ -402,6 +432,10 @@ class Motor:
             cfg["sensibilidade"] = novos["sensibilidade"]
         if novos.get("modelo") in fala.MODELOS:
             cfg["modelo"] = novos["modelo"]
+        if "melhorar_abaixo" in novos:
+            if int(novos["melhorar_abaixo"]) not in (0, 60, 70, 75, 80, 85, 90):
+                raise ValueError("Escolha um valor da lista para a melhora automática.")
+            cfg["melhorar_abaixo"] = int(novos["melhorar_abaixo"])
         if isinstance(novos.get("vocabulario"), str):
             cfg["vocabulario"] = novos["vocabulario"].strip()[:600]
         if isinstance(novos.get("idioma"), str) and re.fullmatch(r"[a-z]{2}", novos["idioma"]):
@@ -891,9 +925,22 @@ class Motor:
         meta["tempo_transcricao"] = round(time.time() - inicio_etapa, 1)
         total = cam.dimensoes(bruto)[2] or meta["momento_rel"] + APOS_REACAO
         momento = min(meta["momento_rel"], total)
-        ini, fim = ctx.escolher_janela(
-            palavras, momento, total, self.config["duracao_min"], min(59.0, self.config["duracao_max"]) if self.config["duracao_max"] <= 60 else self.config["duracao_max"],
-        )  # Shorts acima de 1 minuto podem ser bloqueados por direitos autorais
+        dmax = min(59.0, self.config["duracao_max"]) if self.config["duracao_max"] <= 60 else self.config["duracao_max"]  # Shorts acima de 1 minuto podem ser bloqueados por direitos autorais
+        ini, fim = ctx.escolher_janela(palavras, momento, total, self.config["duracao_min"], dmax)
+        titulo = meta.get("titulo_live") or ""
+        cortes_melhores = None
+        limiar = int(self.config.get("melhorar_abaixo", 75) or 0)
+        if limiar and palavras:  # potencial baixo: testa outras versões antes de montar e fica com a melhor
+            try:
+                r = melhorar.melhor_versao(palavras, momento, total, self.config["duracao_min"], dmax, (ini, fim), titulo, meta, self.aprendizado, limiar)
+            except Exception:
+                r = None
+            if r and r["mudancas"]:
+                ini, fim, cortes_melhores = r["escolhida"]["ini"], r["escolhida"]["fim"], r["escolhida"]["cortes"]
+                meta["melhorado"] = {"antes": r["antes"], "depois": r["depois"], "mudancas": r["mudancas"], "auto": True}
+                self._bast(meta, {"log": ("decisao", f"Potencial de {r['antes']}% para {r['depois']}%: {', '.join(r['mudancas'])}")})
+            elif r:
+                self._bast(meta, {"log": ("decisao", f"Potencial previsto: {r['antes']}%" + (" (nenhuma outra versão ficou melhor)" if r["antes"] < limiar else ""))})
         duracao = fim - ini
         self._bast(meta, {"janela": [round(ini, 2), round(fim, 2)], "log": ("decisao", f"A história vai de {relogio(ini)} até {relogio(fim)}: {round(duracao)} segundos com começo, meio e fim")})
         fonte = pasta / "fonte.mp4"
@@ -902,7 +949,6 @@ class Motor:
             {"p": p["p"], "ini": round(max(0.0, p["ini"] - ini), 3), "fim": round(min(duracao, p["fim"] - ini), 3)}
             for p in palavras if p["fim"] > ini + 0.05 and p["ini"] < fim - 0.05
         ]
-        titulo = meta.get("titulo_live") or ""
         meta["duracao"] = round(duracao, 2)
         # O chat reage alguns segundos depois do que aconteceu na tela.
         meta["momento_fonte"] = round(min(max(0.0, momento - ini - 4), max(0.0, duracao - 1)), 2)
@@ -929,6 +975,9 @@ class Motor:
             if perfil_modelo and perfil_modelo.get("sfx_cortes") is not None and perfil_modelo["sfx_cortes"] < .2:
                 sons = sons[:1]  # este modelo quase não usa efeitos sonoros
             meta["edicao"] = edicao_inicial(duracao, sons)
+        if cortes_melhores and len(cortes_melhores) > 1:  # pausas longas saem do vídeo final
+            meta.setdefault("edicao", edicao_inicial(duracao, []))
+            meta["edicao"]["cortes"] = cortes_melhores
         meta["replanejar"] = True
         edicao.executar(
             ["ffmpeg", "-v", "error", "-y", "-ss", f"{min(momento - ini, duracao - 0.5):.2f}", "-i", str(fonte),

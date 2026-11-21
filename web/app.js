@@ -250,6 +250,10 @@ function mostrarPotencial(c) {
     el("span", { class: "pp-barra", style: `--v:${Math.max(0, x.pontos) / x.maximo}`, dados: { negativo: String(x.pontos < 0) } }),
     el("b", {}, x.nome === "No seu canal" ? `${x.pontos > 0 ? "+" : ""}${x.pontos}` : `${x.pontos}/${x.maximo}`),
     el("small", {}, x.texto))));
+  const mh = c.melhorado;
+  $("#ed-pot-melhorado").hidden = !mh;
+  if (mh) $("#ed-pot-melhorado").textContent = `${mh.auto ? "Melhorado sozinho" : "Melhorado"}: de ${mh.antes}% para ${mh.depois}% (${mh.mudancas.join(", ")}).`;
+  $("#ed-melhorar").hidden = !(p.nota < 90 && !c.projeto_exportado && !c.montagem);
   $("#ed-pot-dicas").replaceChildren(...(p.dicas || []).map((d) => el("li", {}, d)));
 }
 
@@ -558,6 +562,15 @@ $("#ed-excluir").addEventListener("click", (ev) => confirmar(ev.currentTarget, "
   atualizar();
 }));
 $("#ed-enquadrar").addEventListener("click", () => abrirCamera({ corte: corteAberto }));
+$("#ed-melhorar").addEventListener("click", async (ev) => {
+  const b = ev.currentTarget; b.disabled = true; b.textContent = "Testando outras versões…";
+  try {
+    const r = await api("POST", `/api/cortes/${corteAberto.id}/melhorar`);
+    if (r.melhorou) { avisar(`Potencial de ${r.antes}% para ${r.depois}%. Refazendo o vídeo`); acompanharRefazer(corteAberto.id); }
+    else avisar(r.mensagem);
+  } catch (e) { avisar(e.message); }
+  b.disabled = false; b.textContent = "Melhorar o potencial sozinho";
+});
 $("#ed-forcar").addEventListener("click", async () => {
   const liberar = !corteAberto.forcar_postagem;
   try { await api("PATCH", `/api/cortes/${corteAberto.id}`, { forcar_postagem: liberar }); corteAberto.forcar_postagem = liberar; const minimo = estado?.postagem?.config?.potencial_minimo || 0;
@@ -671,7 +684,7 @@ $("#abrir-ajustes").addEventListener("click", () => {
   if (!c) return;
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
-  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.corte_garantido.value = String(c.corte_garantido);
+  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.melhorar_abaixo.value = String(c.melhorar_abaixo ?? 75); f.corte_garantido.value = String(c.corte_garantido);
   f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 3); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados === true;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
@@ -680,7 +693,7 @@ $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   try {
-    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, vocabulario: f.vocabulario.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, vocabulario: f.vocabulario.value, melhorar_abaixo: +f.melhorar_abaixo.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
     $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
   } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
 });

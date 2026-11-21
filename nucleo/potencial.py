@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 from . import contexto as ctx
+from . import timeline as tl
 
 REACOES_FORTES = {"risada": 6, "choque": 6, "hype": 5, "clipe": 6, "admirado": 5, "streamer": 4, "jogo": 3, "destaque": 2, "manual": 2}
 GANCHO_BOM = re.compile(r"\b(olha|você|voce|nunca|ninguém|ninguem|primeira vez|não acredito|nao acredito|segredo|verdade|imagina|sabia|cuidado|meu deus|caraca|caramba)\b", re.I)
@@ -31,6 +32,12 @@ def calcular(meta: dict, aprendizado=None) -> dict:
     palavras = _palavras(meta)
     duracao = float(meta.get("duracao_fonte") or meta.get("duracao") or 0) or (float(palavras[-1]["fim"]) if palavras else 0.0)
     momento = meta.get("momento_fonte")
+    cortes = (meta.get("edicao") or {}).get("cortes")
+    if cortes and (len(cortes) > 1 or cortes[0][0] > .01 or cortes[0][1] < duracao - .01):  # o vídeo final tem pedaços cortados
+        palavras = [p for g in tl.mapear_grupos(meta.get("grupos") or [], cortes) for p in g["palavras"]]
+        duracao = tl.duracao_total(cortes)
+        if momento is not None:
+            momento = tl.proxima_saida(float(momento), cortes)
     partes, dicas = [], []
 
     # 1. Reação na live (até 30)
@@ -117,7 +124,7 @@ def calcular(meta: dict, aprendizado=None) -> dict:
                    "texto": "Muita emoção na voz e nas palavras." if pontos >= 7 else "Alguma emoção." if pontos >= 3 else "Fala calma, pouca emoção."})
 
     # 6. Duração (até 5)
-    d = float(meta.get("duracao") or duracao)
+    d = float(duracao if cortes else (meta.get("duracao") or duracao))
     pontos = 5 if 15 <= d <= 45 else 3 if 12 <= d <= 59 else 1
     if d > 59:
         dicas.append("Passa de 59 segundos: o YouTube pode não tratar como Short.")
