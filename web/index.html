@@ -54,9 +54,9 @@
     <form id="form-link" novalidate>
       <label class="so-leitor" for="link">Link da live</label>
       <div class="campo-link">
-        <input id="link" name="link" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-               placeholder="kick.com/canal, twitch.tv/canal, youtube.com/@canal ou x.com/i/broadcasts/…" required>
-        <button class="botao principal" type="submit">Acompanhar live</button>
+        <input id="link" name="link" type="text" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="Cole um ou vários links: kick.com/canal twitch.tv/outro youtube.com/@canal" required>
+        <button class="botao principal" type="submit" id="link-enviar">Acompanhar live</button>
       </div>
       <ul class="plataformas" id="plataformas" aria-label="Plataformas aceitas">
         <li data-p="kick">Kick</li><li data-p="twitch">Twitch</li><li data-p="youtube">YouTube</li><li data-p="x">X</li>
@@ -65,6 +65,7 @@
         <label class="marcar marcar-link"><input type="checkbox" id="link-programar"><span>Colocar os Shorts desta live na agenda de postagem</span></label>
         <button class="botao texto ir-envio" type="button" id="ir-envio"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V3m0 0L6 7m4-4 4 4M3 13v2.5A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5V13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Enviar um vídeo do computador</button>
       </div>
+      <p class="dica link-varios" id="link-varios">Dá para colar vários links de uma vez. Cada live é gravada e cortada ao mesmo tempo, com o chat de cada uma.</p>
       <p class="erro-campo" id="erro-link" role="alert" hidden></p>
     </form>
     <ol class="passos">
@@ -89,7 +90,10 @@
   </section>
 
   <div class="mesa" id="mesa" hidden>
-    <section class="lives" id="lives" aria-label="Lives acompanhadas"></section>
+    <div class="lives-coluna">
+      <p class="lives-capacidade" id="lives-capacidade" hidden></p>
+      <section class="lives" id="lives" aria-label="Lives acompanhadas"></section>
+    </div>
     <aside class="agora" aria-labelledby="agora-titulo">
       <h2 id="agora-titulo">Agora</h2>
       <p class="aviso" id="aviso-legenda" hidden></p>

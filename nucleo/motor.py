@@ -27,6 +27,7 @@ from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
 from . import bastidores, fala, ideias, potencial
+from .fila_edicao import FilaEdicao
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -101,7 +102,7 @@ class Motor:
         self.cortes: dict[str, dict] = {}
         self.bast: dict[str, dict] = {}  # bastidores da edição em andamento
         self.eventos: deque[dict] = deque(maxlen=80)
-        self.fila: queue.Queue = queue.Queue()
+        self.fila = FilaEdicao(self.cortes)  # com várias lives, os momentos mais fortes são editados primeiro
         self.fim = threading.Event()
         self.config = {**CONFIG_PADRAO, **self._ler(self.dados / "config.json", {})}
         self.config["estilo"] = est.normalizar(self.config.get("estilo"))
@@ -347,6 +348,27 @@ class Motor:
         self.evento(canal.nome, "canal", f"Acompanhando {canal.nome} no {canal.nome_plataforma}")
         return canal.id
 
+    def adicionar_varios(self, links: list[str], programar: bool = False) -> dict:
+        """Várias lives de uma vez: cada uma é acompanhada em paralelo, com gravação e chat próprios."""
+        feitos, erros, vistos = [], [], set()
+        for link in links[:30]:
+            link = str(link).strip()
+            if not link or link.casefold() in vistos:
+                continue
+            vistos.add(link.casefold())
+            try:
+                ident = self.adicionar(link, programar=programar)
+                feitos.append({"link": link, "id": ident, "nome": self.canais[ident].canal.nome})
+            except (ValueError, KeyError) as e:
+                erros.append({"link": link, "erro": str(e)})
+        return {"adicionadas": feitos, "erros": erros}
+
+    def lives_recomendadas(self) -> int:
+        """Quantas lives o computador acompanha bem ao mesmo tempo (gravação, chat, voz e imagem de cada uma)."""
+        nucleos = os.cpu_count() or 4
+        pesado = self.config.get("modelo") in ("medium", fala.MODELO_PRECISO)
+        return max(2, min(12, nucleos // (3 if pesado else 2)))
+
     def remover(self, canal_id: str) -> None:
         with self.trava:
             cv = self.canais.pop(canal_id, None)
@@ -485,14 +507,15 @@ class Motor:
         with self.trava:
             canais = [self._resumo_canal(c) for c in self.canais.values()]
             cortes = sorted(self.cortes.values(), key=lambda m: m["criado"], reverse=True)
+            lugares = self.fila.posicoes()
             resumo = [
-                {k: v for k, v in m.items() if k not in ("grupos", "palavras")} | {"etapa": ETAPAS.get(m["status"], ""), "ideia_nome": ideias.nome(m.get("ideia"))}
+                {k: v for k, v in m.items() if k not in ("grupos", "palavras")} | {"etapa": ETAPAS.get(m["status"], ""), "ideia_nome": ideias.nome(m.get("ideia")), "na_fila": lugares.get(m["id"])}
                 for m in cortes
             ]
             base = {
                 "agora": time.time(), "canais": canais, "cortes": resumo,
                 "eventos": list(self.eventos)[-40:][::-1], "config": self.config,
-                "sistema": {"legenda": self.legenda, "fila": self.fila.qsize()},
+                "sistema": {"legenda": self.legenda, "fila": self.fila.qsize(), "lives_recomendadas": self.lives_recomendadas()},
             }
         # Fora da trava do motor: a postagem usa as duas travas sempre na mesma ordem.
         # Cada parte é montada à parte: um problema em uma delas não apaga a tela inteira.

@@ -221,7 +221,9 @@ function cartao(c) {
     const atual = c.status === "fila" ? -1 : ETAPAS.findIndex(([k]) => k === c.status);
     const passou = c.status === "fila" ? 1 : atual;
     poster.append(el("ol", { class: "etapas" }, ...ETAPAS.map(([, nome], i) =>
-      el("li", { dados: { estado: i < passou ? "feito" : i === atual ? "atual" : "" } }, nome))), el("span", { class: "bs-assistir" }, "Assistir a edição"));
+      el("li", { dados: { estado: i < passou ? "feito" : i === atual ? "atual" : "" } }, nome))),
+      c.status === "fila" && c.na_fila ? el("span", { class: "na-fila" }, c.na_fila === 1 ? "Próximo a ser editado" : `${c.na_fila}º na fila de edição`) : null,
+      el("span", { class: "bs-assistir" }, "Assistir a edição"));
   }
   const titulo = c.gancho || (c.status === "erro" ? "Corte com problema" : c.motivo);
   return el("button", { class: "corte", type: "button", dados: { postado: String(!!c.postado) }, disabled: c.status === "pronto" ? null : undefined,
@@ -297,7 +299,7 @@ function renderCortes() {
   for (const [id, item] of cartoes) if (!vivos.has(id)) { item.n.remove(); cartoes.delete(id); }
   const minuto = Math.floor(estado.agora / 60);
   lista.forEach((c, i) => {
-    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, c.potencial?.nota, minuto].join("|");
+    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, c.potencial?.nota, c.na_fila, minuto].join("|");
     let item = cartoes.get(c.id);
     if (!item || item.sinal !== sinal) {
       const novo = cartao(c);
@@ -385,6 +387,13 @@ function renderTudo() {
   document.body.dataset.noAr = String(estado.canais.some((c) => c.status === "gravando"));
   $("#mesa").hidden = estado.canais.length === 0;
   const aoVivo = estado.canais.filter((c) => c.status === "gravando").length;
+  const ativos = estado.canais.filter((c) => c.status !== "encerrado").length, cabe = estado.sistema.lives_recomendadas || 4;
+  $("#lives").classList.toggle("lives-grade", estado.canais.length >= 2);
+  $("#lives-capacidade").hidden = ativos < 2;
+  $("#lives-capacidade").textContent = ativos > cabe
+    ? `Acompanhando ${ativos} lives. Este computador aguenta bem até ${cabe} ao mesmo tempo; com mais, os cortes podem demorar a ficar prontos. Os momentos mais fortes são editados primeiro.`
+    : `Acompanhando ${ativos} lives ao mesmo tempo (este computador aguenta bem até ${cabe}). Os momentos mais fortes de todas são editados primeiro.`;
+  $("#lives-capacidade").dataset.alerta = String(ativos > cabe);
   const edicao = estado.cortes.filter((c) => !FINAIS.has(c.status)).length;
   $("#resumo").textContent = !temAlgo ? "" : [aoVivo ? `${aoVivo} ${aoVivo > 1 ? "lives" : "live"} no ar` : "Nenhuma live no ar", edicao ? `${edicao} em edição` : null].filter(Boolean).join(", ");
   $("#n-vivo").textContent = aoVivo || "";
@@ -425,14 +434,28 @@ function confirmar(botao, rotulo, acao) {
   setTimeout(() => { botao.dataset.confirmar = "false"; botao.textContent = original; }, 3500);
 }
 
+/* Um ou vários links, separados por espaço, vírgula, ponto e vírgula ou quebra de linha. */
+function separarLinks(texto) {
+  return [...new Set(texto.split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /\.|^@/.test(x)))];
+}
+$("#link").addEventListener("input", () => { const n = separarLinks($("#link").value).length; $("#link-enviar").textContent = n > 1 ? `Acompanhar ${n} lives` : "Acompanhar live"; });
 $("#form-link").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const campo = $("#link"), erro = $("#erro-link");
   erro.hidden = true;
-  const link = campo.value.trim();
-  if (!link) { erro.textContent = "Cole o link de uma live para começar."; erro.hidden = false; campo.focus(); return; }
-  try { await api("POST", "/api/canais", { link, programar: $("#link-programar").checked }); campo.value = ""; $("#link-programar").checked = false; avisar("Live adicionada"); atualizar(); }
-  catch (e) { erro.textContent = e.message; erro.hidden = false; campo.focus(); }
+  const links = separarLinks(campo.value);
+  if (!links.length) { erro.textContent = "Cole o link de uma live para começar."; erro.hidden = false; campo.focus(); return; }
+  try {
+    if (links.length === 1) { await api("POST", "/api/canais", { link: links[0], programar: $("#link-programar").checked }); avisar("Live adicionada"); campo.value = ""; }
+    else {
+      const r = await api("POST", "/api/canais", { links, programar: $("#link-programar").checked });
+      const n = r.adicionadas.length;
+      avisar(n ? `${n} ${n === 1 ? "live adicionada" : "lives adicionadas"}: ${r.adicionadas.map((x) => x.nome).join(", ")}` : "Nenhuma live nova");
+      campo.value = r.erros.map((x) => x.link).join(" ");
+      if (r.erros.length) { erro.textContent = r.erros.map((x) => `${x.link}: ${x.erro}`).join(" "); erro.hidden = false; }
+    }
+    $("#link-programar").checked = false; atualizar();
+  } catch (e) { erro.textContent = e.message; erro.hidden = false; campo.focus(); }
 });
 
 /* ---------- Editor de corte ---------- */

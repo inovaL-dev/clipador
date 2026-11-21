@@ -547,7 +547,8 @@ class Painel(BaseHTTPRequestHandler):
             if m[3] in acoes:
                 return self._acao(acoes[m[3]])
         if caminho == "/api/canais":
-            return self._acao(lambda d: {"id": self.motor.adicionar(str(d.get("link", "")), programar=bool(d.get("programar")))})
+            return self._acao(lambda d: self.motor.adicionar_varios([str(x) for x in d["links"]], bool(d.get("programar"))) if isinstance(d.get("links"), list)
+                              else {"id": self.motor.adicionar(str(d.get("link", "")), programar=bool(d.get("programar")))})
         postagem = self.motor.postagem
         if caminho == "/api/postagem/config":
             return self._acao(lambda d: postagem.salvar_config(d))

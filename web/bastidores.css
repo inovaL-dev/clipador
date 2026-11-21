@@ -80,3 +80,4 @@
 
 @media (max-width: 52rem) { .bs-corpo { grid-template-columns: 1fr; } .bs-passos { display: none; } .bs-monitor { height: 40vh; } }
 @media (prefers-reduced-motion: reduce) { .bastidores * { animation: none !important; transition: none !important; } }
+.corte .poster .na-fila { position: absolute; left: 50%; top: .75rem; transform: translateX(-50%); padding: .2rem .6rem; border-radius: 99px; background: var(--mesa-alta); color: var(--giz-medio); font-size: .75rem; font-weight: 700; white-space: nowrap; }

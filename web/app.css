@@ -547,3 +547,8 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 .post-filtro { display: grid; gap: .5rem; margin: 0 0 1rem; padding: .875rem 1rem; border: 1px solid var(--fio-suave); border-radius: var(--raio); background: var(--mesa); }
 .post-filtro select { max-width: 22rem; }
 .ed-abaixo { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .625rem .875rem; border: 1px dashed var(--fio); border-radius: var(--raio); color: var(--giz-medio); font-size: .875rem; }
+.lives-coluna { display: grid; gap: .75rem; min-width: 0; align-content: start; }
+.lives-capacidade { margin: 0; padding: .5rem .75rem; border-radius: var(--raio-menor); background: var(--mesa); color: var(--giz-medio); font-size: .875rem; }
+.lives-capacidade[data-alerta="true"] { color: var(--corte); background: rgb(242 181 68 / .1); }
+@media (min-width: 125rem) { .lives.lives-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.link-varios { margin: .5rem 0 0; }
