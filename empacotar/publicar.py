@@ -130,6 +130,24 @@ def preparar_lancamento(atual: str) -> str:
     return nova
 
 
+def preparar_marca(git: str, gh: str, alvo: str, marca: str, versao: str) -> None:
+    """A marca vX.Y.Z no GitHub manda criar o instalador com os arquivos daquele momento."""
+    agora = rodar(git, "rev-parse", "HEAD").stdout.strip()
+    linhas = rodar(git, "ls-remote", "--tags", "origin", marca, f"{marca}^{{}}").stdout.split()
+    remota = linhas[-2] if len(linhas) >= 2 else ""  # a última linha aponta para o envio, mesmo em marca anotada
+    tem_instalador = not rodar(gh, "release", "view", marca, "--repo", alvo, "--json", "tagName", ok=False).returncode
+    if remota and tem_instalador:
+        print(f"\nA versão {versao} já tem instalador. Para gerar outro, aumente o número em nucleo/versao.py.")
+    elif remota == agora:
+        print(f"\nO GitHub já está criando o instalador da versão {versao}.")
+    else:
+        if remota:  # marca de uma tentativa anterior, com arquivos antigos e sem instalador: refaz com os de agora
+            print(f"\nA marca {marca} era de uma tentativa anterior, com arquivos antigos. Refazendo com os arquivos de agora.")
+        rodar(git, "tag", "-f", marca)
+        rodar(git, "push", "-f", "origin", marca)
+        print("\nO GitHub começou a criar o instalador.")
+
+
 def aguardar_instalador(gh: str, alvo: str, marca: str) -> bool:
     """Os usuários só recebem o aviso depois que o instalador estiver pronto para baixar."""
     pausa = float(os.environ.get("CLIPADOR_ESPERA", 30))
@@ -139,6 +157,8 @@ def aguardar_instalador(gh: str, alvo: str, marca: str) -> bool:
             return True
         r = rodar(gh, "run", "list", "--repo", alvo, "--workflow", "instalador.yml", "--branch", marca, "--limit", "1", "--json", "status,conclusion", ok=False)
         execucoes = json.loads(r.stdout or "[]") if not r.returncode else []
+        if not execucoes and _ == 6:  # 3 minutos sem o GitHub começar: pede a criação direto
+            rodar(gh, "workflow", "run", "instalador.yml", "--repo", alvo, "--ref", marca, ok=False)
         if execucoes and execucoes[0].get("status") == "completed" and execucoes[0].get("conclusion") != "success":
             print(f"O GitHub não conseguiu criar o instalador. Veja em https://github.com/{alvo}/actions")
             return False
@@ -274,12 +294,7 @@ def main() -> int:
     rodar(gh, "repo", "edit", alvo, "--description", DESCRICAO, "--enable-issues", "--enable-wiki=false", "--enable-projects=false", "--delete-branch-on-merge", *topicos)
 
     marca = f"v{versao}"
-    if rodar(git, "ls-remote", "--tags", "origin", marca).stdout.strip():
-        print(f"\nA versão {versao} já tem instalador. Para gerar outro, aumente o número em nucleo/versao.py.")
-    else:
-        rodar(git, "tag", "-f", marca)
-        rodar(git, "push", "origin", marca)
-        print("\nO GitHub começou a criar o instalador.")
+    preparar_marca(git, gh, alvo, marca, versao)
     aguardar_instalador(gh, alvo, marca)
     print("Publicando o site")
     site = publicar_site(git, gh, conta)
