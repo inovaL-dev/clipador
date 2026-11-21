@@ -233,7 +233,8 @@ class Painel(BaseHTTPRequestHandler):
             base = estilos.normalizar({**self.motor.config["estilo"], "cor": cor})
             leg = {g: pj.estilo_legenda({**base, "legenda": g}, 1080, 1920) for g in estilos.LEGENDAS}
             tit = {g: {**pj.estilo_titulo({**base, "gancho": g}, 54), "rot": estilos.TITULOS_EXTRA.get(g, (0,) * 9)[8] or (-2 if g == "branco" else 0)} for g in estilos.GANCHOS if g != "nenhum"}
-            return self._json({"legendas": leg, "titulos": tit})
+            nomes = estilos.fontes()
+            return self._json({"legendas": leg, "titulos": tit, "fontes": sorted(([k, nomes[k]] for k in nomes), key=lambda x: x[1].casefold())})
         if caminho == "/api/estudio/modelos-titulo":
             from . import projeto as pj
             cor = (parse_qs(partes.query).get("cor") or ["amarelo"])[0]

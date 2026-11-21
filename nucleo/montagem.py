@@ -304,7 +304,8 @@ class Montagens:
             aplicar_receita(final, receita, motor.aprendizado.raiox_do_modelo(meta["modelo"]), visual, pos, textos, efx, leg, audio, motor.biblioteca)
         elif titulo:
             textos["itens"].append({**titulo, "ini": 0.0, "dur": min(2.6, pos), "texto": meta["gancho"], "cena": final["cenas"][0]["id"]})
-        efx["itens"].append(pj._efeito(0, pos, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
+        if est.get("barra_progresso"):
+            efx["itens"].append(pj._efeito(0, pos, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
         if not receita:
             efx["itens"].append(pj._efeito(max(0.0, pos - .25), min(.25, pos), "escurecer", "Escurecer no final"))
         final["faixas"] = [f for f in (base, foco_f, topo, efx, textos, leg, audio) if f["itens"]]

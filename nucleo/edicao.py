@@ -332,7 +332,8 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
             cy = 880 if tomada["tipo"] == "rosto" else 960
             m = np.array([[z, 0, 540 - z * 540 + dx], [0, z, cy - z * cy + dy]], dtype=np.float64)
             quadro = efeitos.aplicar(quadro, m)
-            cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
+            if cor:
+                cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
             yield quadro
             continue
         if pip:  # o jogo aproxima na tela inteira e a webcam continua por cima
@@ -354,7 +355,8 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
             t = i / efeitos.FPS - momento
             if -.05 <= t <= 1.9:
                 _reacao_grande(quadro, pip, min(1.0, (t + .05) / .18, (1.9 - t) / .22))
-        cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
+        if cor:  # barra de progresso no topo, só se ligada em Estilo do vídeo
+            cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
         yield quadro
 
 
@@ -367,7 +369,7 @@ def _com_encerramento(quadros, extra: int):
     if ultimo is None or extra <= 0:
         return
     base = ultimo.copy()
-    base[:12] = base[12:13]  # tira a barra de progresso
+    base[:12] = base[12:13]  # tira a barra de progresso, se houver
     fundo = cv2.resize(cv2.GaussianBlur(cv2.resize(base, (270, 480), interpolation=cv2.INTER_AREA), (0, 0), 3.5), (1080, 1920), interpolation=cv2.INTER_CUBIC)
     for k in range(extra):
         p = k / max(1, extra - 1)
@@ -407,7 +409,7 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     destino = pasta / "corte_novo.mp4"
     fim_total = duracao + extra / efeitos.FPS
     try:
-        quadros = _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento, focos, tomadas)
+        quadros = _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]) if est.get("barra_progresso") else None, pip, momento, focos, tomadas)
         efeitos.gravar(
         destino, _com_encerramento(quadros, extra),
         total + extra, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam"), tomadas, extra / efeitos.FPS), fonte,

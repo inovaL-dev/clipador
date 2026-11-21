@@ -1139,6 +1139,8 @@ const MODELOS_GANCHO = [["faixa", "Faixa colorida", "Bloco na cor de destaque"],
 const CORES_ESTILO = [["amarelo", "#ffc933", "Amarelo"], ["verde", "#39ff88", "Verde"], ["vermelho", "#ff4b5c", "Vermelho"], ["azul", "#38bdf8", "Azul"], ["rosa", "#ff5fcf", "Rosa"], ["laranja", "#ff8a1f", "Laranja"], ["branco", "#ffffff", "Branco"]];
 let tempoPrevia = null;
 
+/* Mesmos modelos de nucleo/modelos_legenda.py (e de MODELOS_LEGENDA no editor). */
+const MODELOS_LEGENDA_EDITOR = [["viral_amarelo", "Viral amarelo", "Anton branca, palavra falada em amarelo"], ["caixa_verde", "Caixa verde", "Palavra falada dentro de um bloco verde"], ["uma_palavra", "Uma palavra", "Uma palavra por vez, grande"], ["desenho", "Desenho", "Letra de desenho animado, amarela"], ["quadrinho", "Quadrinho", "Balão amarelo de história em quadrinhos"], ["gamer", "Gamer", "Letra de jogo com brilho azul"], ["neon_rosa", "Neon rosa", "Letreiro rosa brilhante"], ["cinema", "Cinema", "Bebas Neue espaçada, sem destaque"], ["terror", "Terror", "Letra de filme de terror, vermelha"], ["faixa_preta", "Faixa preta", "Frase numa faixa preta arredondada"], ["pincel", "Pincel", "Escrita de pincel, palavras fortes em verde"], ["arcade", "Arcade", "Letra de videogame antigo"], ["karaoke_pop", "Karaokê pop", "As palavras já faladas ficam amarelas"], ["karaoke_caixa", "Karaokê caixa", "Palavra falada num bloco verde, letra Inter"], ["alternado", "Alternado", "Uma palavra branca, outra vermelha"], ["frase_em_bloco", "Frase em bloco", "Frase inteira num bloco amarelo"], ["sublinhado", "Sublinhado", "Frase limpa e sublinhada"], ["volumoso", "Volumoso", "Primeira palavra bem maior, com sombra dura"], ["retro_3d", "Retrô 3D", "Letra Bungee com relevo roxo"], ["sem_pontuacao", "Sem pontuação", "Poppins, sem vírgulas nem pontos"]];
 const opcaoEstilo = (nome, [valor, titulo, ajuda]) => el("label", { class: "es-opcao" }, el("input", { type: "radio", name: nome, value: valor }), el("span", {}, el("i", { class: "es-amostra", "aria-hidden": "true", dados: { v: valor } }), el("b", {}, titulo), el("small", {}, ajuda)));
 const fontesAmostra = new Set();
 function fonteAmostra(id) { if (!fontesAmostra.has(id)) { fontesAmostra.add(id); new FontFace(`am-${id}`, `url("/fontes/${id}.ttf")`).load().then((f) => document.fonts.add(f)).catch(() => {}); } return `"am-${id}", "Instrument Sans", sans-serif`; }
@@ -1153,21 +1155,25 @@ function pintarAmostra(n, e, palavras) {
 async function amostrasEstilo() {
   const cor = $('#form-estilo input[name="es-cor"]:checked')?.value || "amarelo";
   try { const r = await api("GET", `/api/estilo/amostras?cor=${cor}`);
-    $$("#es-legendas .es-amostra").forEach((n) => r.legendas[n.dataset.v] && pintarAmostra(n, r.legendas[n.dataset.v], n.dataset.v === "palavra" || n.dataset.v === "impacto" ? ["Olha"] : ["Olha", "isso"]));
+    if (r.fontes && $("#es-fonte-legenda").options.length < 2) ["#es-fonte-legenda", "#es-fonte-titulo"].forEach((q) => { const s = $(q), v = s.dataset.valor || ""; s.append(...r.fontes.map(([id, nome]) => el("option", { value: id }, nome))); s.value = v; mostrarFonte(s); });
+    $$("#es-legendas .es-amostra, #es-legendas-editor .es-amostra").forEach((n) => r.legendas[n.dataset.v] && pintarAmostra(n, r.legendas[n.dataset.v], r.legendas[n.dataset.v].palavra_a_palavra ? ["Olha"] : ["Olha", "isso"]));
     $$("#es-ganchos .es-amostra").forEach((n) => { if (r.titulos[n.dataset.v]) pintarAmostra(n, r.titulos[n.dataset.v], ["Título"]); else n.hidden = true; });
   } catch {}
 }
 $("#es-legendas").append(...MODELOS_LEGENDA.map((m) => opcaoEstilo("es-legenda", m)));
+$("#es-legendas-editor").append(...MODELOS_LEGENDA_EDITOR.map((m) => opcaoEstilo("es-legenda", m)));
+function mostrarFonte(sel) { const a = $(`#${sel.id}-amostra`); a.style.fontFamily = sel.value ? fonteAmostra(sel.value) : ""; a.hidden = !sel.value; }
+["#es-fonte-legenda", "#es-fonte-titulo"].forEach((q) => $(q).addEventListener("change", (e) => mostrarFonte(e.target)));
 $("#es-ganchos").append(...MODELOS_GANCHO.map((m) => opcaoEstilo("es-gancho", m)));
 $("#es-cores").addEventListener("change", amostrasEstilo);
 $("#es-cores").append(...CORES_ESTILO.map(([valor, cor, nome]) => el("label", { class: "es-cor", title: nome }, el("input", { type: "radio", name: "es-cor", value: valor, "aria-label": nome }), el("span", { style: `background:${cor}` }))));
-$("#ed-estilo-legenda").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_LEGENDA.map(([v, t]) => el("option", { value: v }, t)));
+$("#ed-estilo-legenda").append(el("option", { value: "" }, "Estilo padrão"), ...[...MODELOS_LEGENDA, ...MODELOS_LEGENDA_EDITOR].map(([v, t]) => el("option", { value: v }, t)));
 $("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...MODELOS_GANCHO.map(([v, t]) => el("option", { value: v }, t)));
 
 function estiloEscolhido() {
   const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
   return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked,
-    arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
+    barra_progresso: $("#es-barra").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
 }
 function atualizarPrevia() {
   clearTimeout(tempoPrevia);
@@ -1182,6 +1188,8 @@ $("#abrir-estilo").addEventListener("click", () => {
   if (!e) return;
   [["es-legenda", e.legenda], ["es-gancho", e.gancho], ["es-cor", e.cor]].forEach(([n, v]) => { const r = $(`#form-estilo input[name="${n}"][value="${v}"]`); if (r) r.checked = true; });
   $("#es-filtro").value = e.filtro || "nenhum"; $("#es-sons").checked = e.sons_auto !== false;
+  $("#es-barra").checked = e.barra_progresso === true;
+  [["#es-fonte-legenda", e.fonte_legenda], ["#es-fonte-titulo", e.fonte_titulo]].forEach(([q, v]) => { const s = $(q); s.dataset.valor = v || ""; s.value = v || ""; mostrarFonte(s); });
   $("#es-arroba").value = e.arroba || ""; $("#es-encerramento").checked = e.encerramento !== false;
   $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();
   atualizarPrevia(); $("#janela-estilo").showModal();

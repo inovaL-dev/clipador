@@ -617,6 +617,17 @@
     <div class="es-corpo">
       <div class="es-opcoes">
         <fieldset><legend>Legenda</legend><div class="es-grade" id="es-legendas"></div></fieldset>
+        <fieldset><legend>Mais modelos de legenda, os mesmos do editor</legend>
+          <p class="dica">Cada um já vem com a sua fonte e as suas cores.</p>
+          <div class="es-grade" id="es-legendas-editor"></div></fieldset>
+        <div class="es-duas">
+          <div class="bloco"><label for="es-fonte-legenda">Fonte da legenda</label>
+            <select id="es-fonte-legenda"><option value="">A fonte do modelo</option></select>
+            <p class="es-fonte-amostra" id="es-fonte-legenda-amostra" aria-hidden="true">Olha isso</p></div>
+          <div class="bloco"><label for="es-fonte-titulo">Fonte do título</label>
+            <select id="es-fonte-titulo"><option value="">A fonte do modelo</option></select>
+            <p class="es-fonte-amostra" id="es-fonte-titulo-amostra" aria-hidden="true">Título</p></div>
+        </div>
         <fieldset><legend>Título que aparece no vídeo</legend><div class="es-grade" id="es-ganchos"></div></fieldset>
         <fieldset><legend>Cor de destaque</legend><div class="es-cores" id="es-cores"></div></fieldset>
         <div class="es-duas">
@@ -626,6 +637,7 @@
             <select id="es-tempo"><option value="3">3 segundos</option><option value="5">5 segundos</option><option value="8">8 segundos</option></select></div>
         </div>
         <div class="bloco"><label for="es-filtro">Filtro dos próximos vídeos</label><select id="es-filtro"><option value="nenhum">Sem filtro</option><option value="cinema">Cinema</option><option value="vibrante">Vibrante</option><option value="gamer">Gamer</option><option value="quente">Quente</option><option value="frio">Frio</option><option value="por_do_sol">Pôr do sol</option><option value="dramatico">Dramático</option><option value="noir">Preto e branco</option><option value="vintage">Vintage</option><option value="desbotado">Desbotado</option><option value="vhs">Fita VHS</option><option value="sonho">Sonho</option></select></div>
+        <label class="marcar"><input type="checkbox" id="es-barra"><span>Mostrar a barra de progresso no topo do vídeo</span></label>
         <label class="marcar"><input type="checkbox" id="es-sons"><span>Colocar efeitos sonoros que combinam com cada corte</span></label>
         <div class="bloco"><label for="es-arroba">Seu @ nas redes</label>
           <input id="es-arroba" placeholder="@seucanal" maxlength="31" autocomplete="off" spellcheck="false">

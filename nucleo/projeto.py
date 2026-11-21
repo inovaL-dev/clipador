@@ -88,6 +88,11 @@ def estilo_legenda(est: dict, largura: int, altura: int) -> dict:
     x, y = estilos.ponto(est, "legenda_x" if vertical else "legenda_hx", "legenda_y" if vertical else "legenda_hy", largura, altura, largura // 2, edicao.BASE_LEGENDA if vertical else 1030)
     base = {"fonte": "Poppins-Bold", "tamanho": round(t * ASS), "cor": "#FFFFFF", "cor_destaque": destaque, "maiusculas": True, "ancora": "base", "x": x, "y": y, "largura": round(largura * (.84 if vertical else .7)),
             "contorno": round(t * .106), "contorno_cor": "#000000", "sombra": True, "sombra_y": 3, "sombra_blur": 3, "destaque": "palavra", "entrada": "pop", "saida": "nenhuma", "tempo_anim": .09}
+    if m := estilos.modelo_editor(est):  # modelos do editor: as mesmas opções, no tamanho da edição automática
+        k = estilos.LETRA_EDITOR * estilos.TAMANHOS[est["tamanho"]]
+        return {**base, "sombra": False, "destaque_caixa": False, "palavra_a_palavra": False, **m, "tamanho": round(m["tamanho"] * k),
+                **{c: round(m[c] * k) for c in ("contorno", "fundo_pad", "relevo") if c in m}}
+    fonte = {"fonte": est["fonte_legenda"]} if est.get("fonte_legenda") else {}
     return {**base, **{
         "destaque": {}, "caixa": {"destaque_caixa": True, "contorno": round(t * .09)},
         "palavra": {"tamanho": round(t * 1.25 * ASS), "maiusculas": False, "palavra_a_palavra": True, "destaque": "importantes", "contorno": round(t * .16)},
@@ -99,7 +104,7 @@ def estilo_legenda(est: dict, largura: int, altura: int) -> dict:
         "hormozi": {"fonte": "Anton", "tamanho": round(t * 1.3 * ASS), "destaque": "primeira", "cor_destaque": "#FF2D2D", "contorno": round(t * .12), "sombra_y": 5, "entrada": "carimbo", "tempo_anim": .12},
         "react": {"fonte": "Roboto-Black", "tamanho": round(t * 1.35 * ASS), "cor": destaque, "maiusculas": False, "destaque": "nenhum", "contorno": round(t * .12), "sombra": False, "entrada": "pop", "tempo_anim": .1,
                   **({"ancora": "topo", "y": 800} if vertical and est.get("legenda_y") is None else {})},
-    }[est["legenda"]]}
+    }[est["legenda"]], **fonte}
 
 
 def estilo_titulo(est: dict, tamanho: float) -> dict:
@@ -111,7 +116,7 @@ def estilo_titulo(est: dict, tamanho: float) -> dict:
         "contorno": {"cor": destaque, "fundo": False, "contorno": round(tamanho * .18), "tamanho": round(tamanho * 1.16)},
         "neon": {"cor": "#FFFFFF", "fundo": False, "sombra": True, "sombra_cor": destaque, "sombra_y": 0, "sombra_blur": 14, "sombra_opac": 100, "tamanho": round(tamanho * 1.16)},
         **{k: v for k, v in modelos_titulo(destaque, tamanho).items()},
-    }[est["gancho"]]}
+    }[est["gancho"]], **({"fonte": est["fonte_titulo"]} if est.get("fonte_titulo") else {})}
 
 
 def modelos_titulo(destaque: str, tamanho: float) -> dict:
@@ -245,7 +250,8 @@ def importar_corte(meta: dict, motor) -> dict:
                                                    {"escala": [{"t": 0.0, "v": .84, "e": "suave"}, {"t": .2, "v": 1.0, "e": "suave"}, {"t": round(d - .16, 3), "v": 1.0, "e": "suave"}, {"t": round(d, 3), "v": .84, "e": "suave"}],
                                                     "opac": [{"t": 0.0, "v": 0.0, "e": "linear"}, {"t": .12, "v": 100.0, "e": "linear"}, {"t": round(d - .1, 3), "v": 100.0, "e": "linear"}, {"t": round(d, 3), "v": 0.0, "e": "linear"}]}, mudo=True, cena=cena))
         p["faixas"].insert(len(p["faixas"]) - 1 if layout == "pip" else len(p["faixas"]), faixa_foco)
-    efx["itens"].append(_efeito(0, total, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
+    if est.get("barra_progresso"):
+        efx["itens"].append(_efeito(0, total, "progresso", "Barra de progresso", cor="#" + estilos.CORES[est["cor"]]))
     efx["itens"].append(_efeito(max(0, total - .25), min(.25, total), "escurecer", "Escurecer no final"))
     textos = _faixa("texto", "Textos")
     if meta.get("credito"):

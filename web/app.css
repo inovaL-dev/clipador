@@ -542,3 +542,5 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 .potencial-dicas li::before { content: "→"; position: absolute; left: 0; color: var(--c); }
 .potencial-dicas:empty { display: none; }
 .potencial > .dica { margin: .75rem 0 0; }
+.es-fonte-amostra { margin: .375rem 0 0; font-size: 1.5rem; line-height: 1.2; color: var(--giz); } .es-fonte-amostra[hidden] { display: none; }
+#form-estilo .es-duas { align-items: start; }

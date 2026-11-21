@@ -1,5 +1,16 @@
 [
   {
+    "versao": "1.11.1",
+    "data": "2026-11-21",
+    "notas": [
+      "Estilo do vídeo ganhou os 20 modelos de legenda do editor, cada um com a sua fonte e as suas cores: Viral amarelo, Caixa verde, Uma palavra, Desenho, Quadrinho, Gamer, Neon rosa, Cinema, Terror, Faixa preta, Pincel, Arcade, Karaokê pop, Karaokê caixa, Alternado, Frase em bloco, Sublinhado, Volumoso, Retrô 3D e Sem pontuação.",
+      "Escolha a fonte da legenda e a do título entre as 44 fontes do Clipador, com amostra na hora. A troca de fonte mantém o tamanho da letra.",
+      "A barra de progresso no topo dos vídeos sai por padrão. Quem quiser pode ligar de novo em Estilo do vídeo.",
+      "Os novos modelos também valem para escolher a legenda de um corte só e aparecem iguais quando o corte é aberto no editor.",
+      "O script de publicação no GitHub funciona com pastas que estavam em outro ramo e refaz a marca da versão quando o instalador ainda não foi criado."
+    ]
+  },
+  {
     "versao": "1.11.0",
     "data": "2026-11-21",
     "notas": [
