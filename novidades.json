@@ -1,5 +1,17 @@
 [
   {
+    "versao": "1.12.0",
+    "data": "2026-11-21",
+    "notas": [
+      "Legendas mais certeiras em português: nova precisão Máxima com o modelo large-v3-turbo, que erra bem menos que o anterior. Quem usava a Equilibrada passa para ela sozinho se o computador tiver 8 GB de memória ou mais.",
+      "Nomes e palavras das suas lives (em Ajustes): nomes, jogos e gírias que a legenda deve acertar. O nome do canal e o título da live entram sozinhos.",
+      "Correções aprendidas: quando você corrige uma palavra na legenda de um corte, o Clipador troca aquele erro sozinho nos próximos. Dá para ver e esquecer cada correção em Aprendizado.",
+      "A legenda tira as frases que o reconhecimento de fala inventa em silêncio ou música, como “Legendas pela comunidade Amara.org”, e as repetições em loop.",
+      "Busca mais cuidadosa na fala e detector de voz mais sensível, para não perder fala baixa por cima do som do jogo.",
+      "Ao corrigir a legenda à mão, as palavras que não mudaram mantêm o tempo certo da fala."
+    ]
+  },
+  {
     "versao": "1.11.1",
     "data": "2026-11-21",
     "notas": [

@@ -26,7 +26,7 @@ from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_mar
 from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
-from . import ideias, potencial
+from . import fala, ideias, potencial
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -55,7 +55,7 @@ ETAPAS = {
 }
 _TRAVA_ARQUIVOS = threading.Lock()
 CONFIG_PADRAO = {
-    "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": "small", "idioma": "pt",
+    "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": fala.MODELO_PRECISO if fala.aguenta_modelo_preciso() else "small", "idioma": "pt", "vocabulario": "",
     "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 3, "foco_auto": True, "shorts_emendados": False,
     "ideias": dict(ideias.PADRAO_LIGADAS),
 }
@@ -104,6 +104,13 @@ class Motor:
         self.fim = threading.Event()
         self.config = {**CONFIG_PADRAO, **self._ler(self.dados / "config.json", {})}
         self.config["estilo"] = est.normalizar(self.config.get("estilo"))
+        if self.config.get("fala_precisa") != 1:
+            # 1.11.1: quem estava na precisão equilibrada passa para o large-v3-turbo, que erra bem menos em português.
+            if self.config.get("modelo") == "small" and fala.aguenta_modelo_preciso():
+                self.config["modelo"] = fala.MODELO_PRECISO
+            self.config["fala_precisa"] = 1
+            if (self.dados / "config.json").exists():
+                self._gravar(self.dados / "config.json", self.config)
         if self.config.get("ideias_em_teste") != 1:
             # 1.11.0: o estilo React deixa de ser o padrão de todos os vídeos e vira uma ideia em teste,
             # que o aprendizado usa mais ou menos conforme o resultado. Desfaz a troca automática da 1.10.0.
@@ -330,8 +337,10 @@ class Motor:
         cfg = dict(self.config)
         if novos.get("sensibilidade") in LIMITES:
             cfg["sensibilidade"] = novos["sensibilidade"]
-        if novos.get("modelo") in ("base", "small", "medium"):
+        if novos.get("modelo") in fala.MODELOS:
             cfg["modelo"] = novos["modelo"]
+        if isinstance(novos.get("vocabulario"), str):
+            cfg["vocabulario"] = novos["vocabulario"].strip()[:600]
         if isinstance(novos.get("idioma"), str) and re.fullmatch(r"[a-z]{2}", novos["idioma"]):
             cfg["idioma"] = novos["idioma"]
         if "corte_garantido" in novos:
@@ -387,6 +396,7 @@ class Motor:
                 for atual, item in zip(meta.get("grupos") or [], dados["grupos"]):
                     texto = str((item or {}).get("texto", "")).strip()
                     if texto:
+                        self.aprendizado.aprender_legenda([p["p"] for p in atual.get("palavras") or []], texto.split())
                         novos.append(ctx.retextar(atual, texto))
                 if novos != meta.get("grupos"):
                     meta["grupos"] = novos
@@ -721,19 +731,32 @@ class Motor:
         finally:
             self.trava_escuta.release()
 
+    def contexto_fala(self, meta: dict | None = None) -> dict:
+        """Palavras esperadas e correções aprendidas, para a legenda acertar nomes e gírias."""
+        meta = meta or {}
+        return {"esperadas": fala.palavras_esperadas(self.config.get("vocabulario", ""), meta.get("canal", ""), meta.get("titulo_live", ""), self.aprendizado.palavras_corrigidas()),
+                "correcoes": self.aprendizado.correcoes()}
+
     def _modelo_whisper(self):
         nome = self.modelo_forcado or self.config["modelo"]
         if self._modelo is not None and self.legenda["nome"] == nome:
             return self._modelo
         self.legenda = {"estado": "carregando", "nome": nome}
+        from_faster = None
         try:
-            from faster_whisper import WhisperModel
+            from faster_whisper import WhisperModel as from_faster
 
-            self._modelo = WhisperModel(nome, device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
+            self._modelo = from_faster(nome, device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
             self.legenda = {"estado": "pronto", "nome": nome}
         except Exception as e:
             self._modelo = None
             self.legenda = {"estado": "indisponivel", "nome": nome, "erro": str(e)[:160]}
+            if from_faster is not None and nome != "small":  # sem internet ou sem memória para o modelo maior: segue com o equilibrado
+                try:
+                    self._modelo = from_faster("small", device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))
+                    self.legenda = {"estado": "pronto", "nome": nome, "aviso": f"Não deu para usar a precisão máxima ({str(e)[:100]}). Usando a equilibrada."}
+                except Exception:
+                    pass
         return self._modelo
 
     def _editor(self) -> None:
@@ -773,7 +796,7 @@ class Motor:
         self._etapa(meta, "transcrevendo")
         inicio_etapa = time.time()
         modelo = self._modelo_whisper()
-        palavras = edicao.transcrever(modelo, bruto, self.config["idioma"]) if modelo else []
+        palavras = edicao.transcrever(modelo, bruto, self.config["idioma"], **self.contexto_fala(meta)) if modelo else []
         meta["tempo_transcricao"] = round(time.time() - inicio_etapa, 1)
         total = cam.dimensoes(bruto)[2] or meta["momento_rel"] + APOS_REACAO
         momento = min(meta["momento_rel"], total)

@@ -347,8 +347,25 @@ def agrupar_legenda(palavras: list[dict]) -> list[dict]:
 def retextar(grupo: dict, texto: str) -> dict:
     """Aplica o texto corrigido à mão, redistribuindo o tempo entre as palavras."""
     novas = texto.split()
-    if novas == [p["p"] for p in grupo.get("palavras", [])]:
+    antigas = grupo.get("palavras") or []
+    if novas == [p["p"] for p in antigas]:
         return grupo
+    if antigas:  # só o que mudou ganha tempo novo; as palavras que ficaram iguais mantêm o tempo certo da fala
+        import difflib
+        norma = lambda w: re.sub(r"[^\w]", "", w).casefold()
+        saida = []
+        for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=[norma(p["p"]) for p in antigas], b=[norma(w) for w in novas], autojunk=False).get_opcodes():
+            if op == "equal" or (op == "replace" and i2 - i1 == j2 - j1):
+                saida += [{**antigas[i], "p": novas[j]} for i, j in zip(range(i1, i2), range(j1, j2))]
+            elif op in ("replace", "insert"):
+                a = float(antigas[i1 - 1]["fim"]) if op == "insert" and i1 else float(antigas[min(i1, len(antigas) - 1)]["ini"]) if op == "replace" else float(grupo["ini"])
+                b = float(antigas[i2 - 1]["fim"]) if op == "replace" else (float(antigas[i1]["ini"]) if i1 < len(antigas) else max(a + .2, float(grupo["fim"])))
+                b = max(b, a + .12 * (j2 - j1))
+                passo = (b - a) / (j2 - j1)
+                saida += [{"p": novas[j], "ini": round(a + k * passo, 3), "fim": round(a + (k + 1) * passo, 3)} for k, j in enumerate(range(j1, j2))]
+        if len(saida) == len(novas):
+            saida.sort(key=lambda p: p["ini"])
+            return {"ini": min(float(grupo["ini"]), saida[0]["ini"]), "fim": max(float(grupo["fim"]), saida[-1]["fim"]), "palavras": saida}
     ini, fim = float(grupo["ini"]), max(float(grupo["fim"]), float(grupo["ini"]) + 0.2)
     total = sum(len(p) + 1 for p in novas) or 1
     pos, saida = ini, []

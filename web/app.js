@@ -634,7 +634,7 @@ $("#abrir-ajustes").addEventListener("click", () => {
   if (!c) return;
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
-  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.corte_garantido.value = String(c.corte_garantido);
+  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.corte_garantido.value = String(c.corte_garantido);
   f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 3); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados === true;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
@@ -643,7 +643,7 @@ $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   try {
-    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, vocabulario: f.vocabulario.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
     $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
   } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
 });
@@ -1458,10 +1458,17 @@ async function desenharAprendizado() {
       i.resultado ? el("p", { class: "dica" }, `${i.resultado.media.toLocaleString("pt-BR")} visualizações em média (${n(i.resultado.n, "Short", "Shorts")})`) : null,
       i.ligada && d.ideias.filter((x) => x.ligada).length > 1 ? el("p", { class: "ap-chance" }, `Aparece em cerca de ${Math.round(i.chance * 100)}% dos próximos cortes`) : null);
   };
+  const secaoCorrecoes = el("section", {}, el("h3", {}, "Correções da legenda"),
+    el("p", { class: "dica" }, "Quando você corrige uma palavra na legenda de um corte, o Clipador passa a trocar aquele erro sozinho. Palavras comuns, como “mas” e “mais”, só são trocadas depois de você corrigir duas vezes."),
+    d.correcoes?.length ? el("ul", { class: "ap-correcoes" }, ...d.correcoes.map((x) => el("li", {},
+      el("span", {}, el("s", {}, x.errado), " → ", el("b", {}, x.certo), x.valendo ? null : el("small", {}, " (falta mais uma correção)")),
+      (() => { const b = el("button", { type: "button", class: "ap-esquecer" }, "Esquecer"); b.addEventListener("click", async () => { try { await api("POST", "/api/aprendizado", { esquecer_correcao: x.errado }); desenharAprendizado(); } catch (e) { avisar(e.message); } }); return b; })())))
+      : el("p", { class: "dica" }, "Nenhuma correção ainda."));
   c.replaceChildren(
     el("section", {}, el("h3", {}, "Ideias em teste"),
       el("p", { class: "dica" }, d.modelos.some((m) => m.ativo) ? "Enquanto houver modelos aprendidos com vídeos de referência, eles decidem o estilo. As ideias voltam a ser testadas se você desligar os modelos." : "Cada corte novo recebe uma destas ideias. O que você posta conta a favor; o que você apaga sem postar ou troca no corte conta contra. Com o YouTube conectado, as visualizações contam ainda mais. A ideia que vai melhor aparece mais, e as outras continuam aparecendo de vez em quando."),
       el("ul", { class: "ap-modelos" }, ...d.ideias.map(cartaoIdeia))),
+    secaoCorrecoes,
     el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Aprender com estes vídeos", "Envie vídeos que deram certo. O Clipador desmonta o gancho, o ritmo, as cores e os cortes, e salva o estilo. Os vídeos são apagados depois da análise."),
       envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), }, ["fila", "analisando"].includes(t.estado) ? `Analisando ${t.restantes > 1 ? `${t.restantes} vídeos` : "o vídeo"}…` : "Ensinar com vídeos"), t.erro ? el("p", { class: "erro-campo" }, t.erro) : null,
       d.modelos.length ? el("ul", { class: "ap-modelos" }, ...d.modelos.map(cartaoModelo)) : el("p", { class: "dica" }, "Envie vídeos de estilos diferentes. Cada estilo vira um modelo, e os próximos cortes usam todos eles.")),

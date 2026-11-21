@@ -13,6 +13,7 @@ import numpy as np
 from . import camera as cam
 from . import efeitos, estilos, filtros
 from . import foco
+from . import fala
 from . import tomadas as tm
 from .contexto import quebrar_linhas
 from .plataformas import sem_janela
@@ -32,24 +33,19 @@ def executar(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return r
 
 
-def transcrever(modelo, video: Path, idioma: str) -> list[dict]:
+def transcrever(modelo, video: Path, idioma: str, esperadas: str = "", correcoes: dict | None = None) -> list[dict]:
+    """Fala com o tempo de cada palavra. `esperadas`: nomes e termos da live; `correcoes`: erros já corrigidos por você."""
     import numpy as np
 
     pcm = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+        ["ffmpeg", "-v", "error", "-i", str(video), "-vn", "-af", "highpass=f=70", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
         capture_output=True, **sem_janela(),
     ).stdout
     if len(pcm) < 32000:
         return []
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
-    trechos, _ = modelo.transcribe(
-        audio, language=idioma, word_timestamps=True, vad_filter=True, beam_size=3,
-        condition_on_previous_text=False,
-    )
-    return [
-        {"p": p.word.strip(), "ini": round(p.start, 3), "fim": round(p.end, 3)}
-        for t in trechos for p in (t.words or []) if p.word.strip()
-    ]
+    trechos, _ = modelo.transcribe(audio, word_timestamps=True, **fala.opcoes(modelo, idioma, esperadas))
+    return fala.aplicar_correcoes(fala.limpar_trechos(trechos), correcoes or {})
 
 
 def ouvir_trecho(modelo, pcm, idioma: str) -> str:
@@ -57,11 +53,8 @@ def ouvir_trecho(modelo, pcm, idioma: str) -> str:
     import numpy as np
 
     audio = pcm.astype(np.float32) / 32768
-    trechos, _ = modelo.transcribe(
-        audio, language=idioma, beam_size=1, vad_filter=True, without_timestamps=True,
-        condition_on_previous_text=False,
-    )
-    return " ".join(t.text.strip() for t in trechos)
+    trechos, _ = modelo.transcribe(audio, without_timestamps=True, **fala.opcoes(modelo, idioma, rapido=True))
+    return " ".join(t.text.strip() for t in trechos if not fala.INVENTADAS.search(t.text or ""))
 
 
 def extrair_trecho(bruto: Path, ini: float, duracao: float, destino: Path) -> None:

@@ -209,3 +209,4 @@ body[data-vazio="true"] .comando-vitrine { display: grid; justify-items: center;
 @media (max-width: 60rem) { body[data-vazio="true"] .comando { grid-template-columns: minmax(0, 1fr); } body[data-vazio="true"] .comando-vitrine { display: none; } }
 @media (max-width: 52rem) { body[data-vazio="true"] .passos::before { display: none; } body[data-vazio="true"] .comando-opcoes { flex-direction: column; align-items: flex-start; } }
 .mt-tipo { padding: 0; margin: 0; border: 0; }
+.ajustes .aj-vocabulario { padding: 1rem 1.5rem 0; } .ajustes .aj-vocabulario textarea { width: 100%; resize: vertical; }

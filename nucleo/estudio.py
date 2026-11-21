@@ -324,7 +324,7 @@ class Estudio:
     def _transcrever(self, proj: dict, modelo) -> list[dict]:
         with tempfile.TemporaryDirectory(prefix="clipador_leg_") as tmp:
             fala, _ = comp.mixar({**proj, "faixas": [f for f in proj["faixas"] if f["tipo"] == "video"]}, self.midias, Path(tmp), comp.duracao_projeto(proj))
-            return edicao.transcrever(modelo, fala, self.motor.config["idioma"])
+            return edicao.transcrever(modelo, fala, self.motor.config["idioma"], **self.motor.contexto_fala())
 
     def _gerar_legendas(self, proj: dict, modelo) -> dict:
         palavras = self._transcrever(proj, modelo)
@@ -358,7 +358,7 @@ class Estudio:
         with tempfile.TemporaryDirectory(prefix="clipador_cena_") as tmp:
             amostra = Path(tmp) / "cena.wav"
             edicao.executar(["ffmpeg", "-v", "error", "-y", "-ss", f"{principal.get('entrada', 0.0):.3f}", "-t", f"{dur * principal.get('velocidade', 1):.3f}", "-i", str(fonte), "-vn", "-ac", "1", "-ar", "16000", str(amostra)])
-            palavras = edicao.transcrever(modelo, amostra, self.motor.config["idioma"])
+            palavras = edicao.transcrever(modelo, amostra, self.motor.config["idioma"], **self.motor.contexto_fala())
         for f in proj["faixas"]:
             if f["tipo"] == "legenda":
                 f["itens"] = [i for i in f["itens"] if not (i.get("cena") == cena or ini <= i["ini"] < fim)]

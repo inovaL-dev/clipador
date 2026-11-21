@@ -179,3 +179,7 @@ body[data-aba="editor"] main:has(.st-mesa:not([hidden])) { padding: .5rem; }
 .st-cab[data-arrastando] { outline: 1px dashed var(--corte); outline-offset: -2px; }
 .st-cab-nome { flex: 1; min-width: 0; height: 1.5rem; padding: 0 .375rem; color: var(--giz); background: var(--cabine); border: 1px solid var(--corte); border-radius: .25rem; font: inherit; font-weight: 600; }
 .ap-chance { color: var(--corte); font-size: .8125rem; font-weight: 600; }
+.ap-correcoes { display: grid; gap: .375rem; margin: .5rem 0 0; padding: 0; list-style: none; max-height: 16rem; overflow: auto; }
+.ap-correcoes li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .375rem .625rem; border-radius: .375rem; background: var(--mesa); font-size: .875rem; }
+.ap-correcoes s { color: var(--giz-medio); } .ap-correcoes small { color: var(--giz-medio); }
+.ap-esquecer { background: none; border: 0; color: var(--corte); font: inherit; font-weight: 600; cursor: pointer; }

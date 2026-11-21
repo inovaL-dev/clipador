@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 from . import camera as cam
-from . import edicao, estilos, ideias
+from . import edicao, estilos, fala, ideias
 from .medir_referencia import RAIZ, TEMPO_MAXIMO, comando, opcoes
 from .plataformas import sem_janela
 
@@ -721,6 +721,35 @@ class Aprendizado:
             self.m["canal_em"] = time.time()
             self._salvar()
 
+    # ------------------------------------------------------------ correções da legenda
+
+    def aprender_legenda(self, antes: list[str], depois: list[str]) -> None:
+        """Guarda as palavras que você corrigiu à mão para o Clipador acertar nos próximos cortes."""
+        trocas = fala.diferencas(antes, depois)
+        if not trocas or not self.m["ativo"]["edicoes"]:
+            return
+        with self.trava:
+            memo = self.m.setdefault("correcoes", {})
+            for errado, certo in trocas:
+                item = memo.get(errado)
+                if item and fala.chave(item["certo"]) == fala.chave(certo):
+                    item["n"] += 1
+                    item["certo"] = certo
+                else:
+                    memo[errado] = {"certo": certo, "n": 1, "quando": time.time()}
+            if len(memo) > 400:  # guarda as mais usadas
+                for k, _ in sorted(memo.items(), key=lambda kv: (kv[1]["n"], kv[1].get("quando", 0)))[:len(memo) - 400]:
+                    memo.pop(k)
+            self._salvar()
+
+    def correcoes(self) -> dict:
+        return fala.correcoes_valendo(self.m.get("correcoes") or {})
+
+    def palavras_corrigidas(self) -> list[str]:
+        """Nomes e termos que você já escreveu certo, para o Whisper esperar por eles."""
+        itens = sorted((self.m.get("correcoes") or {}).values(), key=lambda v: -v["n"])
+        return [v["certo"] for v in itens if v["certo"][:1].isupper() or any(c.isdigit() for c in v["certo"]) or len(v["certo"]) >= 6][:25]
+
     # ------------------------------------------------------------ ideias em teste
 
     def ideias_ligadas(self) -> list[str]:
@@ -787,6 +816,8 @@ class Aprendizado:
         for k in ("referencias", "edicoes", "resultados"):
             if k in dados:
                 self.m["ativo"][k] = bool(dados[k])
+        if isinstance(dados.get("esquecer_correcao"), str):
+            (self.m.get("correcoes") or {}).pop(dados["esquecer_correcao"], None)
         self._salvar(); self.aplicar_estilo()
         return self.resumo()
 
@@ -800,7 +831,7 @@ class Aprendizado:
     def esquecer(self) -> dict:
         antes = self.m.get("estilo_antes")
         aplicado = self.m.get("estilo_aplicado") or {}
-        self.m.update(modelos={}, uso_modelos={}, pesos_modelos={}, ideias={}, pesos_ideias={}, referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
+        self.m.update(modelos={}, uso_modelos={}, pesos_modelos={}, ideias={}, pesos_ideias={}, correcoes={}, referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
         self._salvar()
         atual = dict(self.motor.config["estilo"])
         volta = {k: (antes or {}).get(k) for k, v in aplicado.items() if atual.get(k) == v}
@@ -820,5 +851,8 @@ class Aprendizado:
         chances, dados_ideias = self.chances_ideias(), (self.m["desempenho"] or {}).get("ideias") or {}
         lista_ideias = [{"id": i, "nome": x["nome"], "descricao": x["descricao"], "ligada": i in chances, "chance": chances.get(i, 0.0), "resultado": dados_ideias.get(i),
                          **{k: (self.m.get("ideias", {}).get(i) or {}).get(k, 0) for k in ("usos", "postados", "descartados", "trocados")}} for i, x in ideias.IDEIAS.items()]
-        return {"ideias": lista_ideias, "modelos": modelos, "marca": self.m.get("marca") or {"nome": "", "chamada": ""}, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
+        valendo = self.correcoes()
+        lista_correcoes = [{"errado": k, "certo": v["certo"], "n": v["n"], "valendo": k in valendo}
+                           for k, v in sorted((self.m.get("correcoes") or {}).items(), key=lambda kv: -kv[1].get("quando", 0))][:60]
+        return {"correcoes": lista_correcoes, "ideias": lista_ideias, "modelos": modelos, "marca": self.m.get("marca") or {"nome": "", "chamada": ""}, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
                 "referencias": [{"id": r["id"], "nome": r["nome"], "medidas": {k: v for k, v in r["medidas"].items() if k not in ("raiox", "marcas")}} for r in self.m["referencias"]], "desempenho": self.m["desempenho"], "pesos": self.m["pesos"], "minimo": MINIMO_VIDEOS}
