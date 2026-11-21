@@ -3,13 +3,14 @@
 (() => {
 const S = { aberto: false, tipo: null, id: null, p: null, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, px: 30, sujo: false, gerando: false,
   h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, caixas: new Map(), painel: "midia", zoomMao: false, filtros: [], fontes: [], sons: [], sug: [], clipe: [], ondas: new Map(), ultimoSom: 0, altFaixa: 1, vel: 1, ferr: "sel" };
-const ALTURAS = { video: 46, texto: 28, legenda: 30, efeito: 24, audio: 44 };  // áudio mais alto para ver e arrastar o volume
+const ALTURAS = { video: 64, texto: 28, legenda: 30, efeito: 26, audio: 50 };  // vídeo com película e áudio com onda, nas alturas do Drift  // áudio mais alto para ver e arrastar o volume
 const altF = (f) => Math.round(ALTURAS[f.tipo] * S.altFaixa);
 const ROTULOS = { video: "Vídeo", imagem: "Imagem", forma: "Forma", texto: "Texto", legenda: "Legenda", efeito: "Efeito", audio: "Áudio" };
-const ANIM = [["nenhuma", "Nenhuma"], ["fade", "Aparecer"], ["pop", "Pop"], ["zoom", "Zoom"], ["subir", "Subir"], ["descer", "Descer"], ["esquerda", "Da direita"], ["direita", "Da esquerda"], ["quique", "Quicar"], ["digitando", "Digitando"]];
-const TRANS = [["corte", "Corte seco"], ["dissolver", "Dissolver"], ["preto", "Passar pelo preto"], ["branco", "Clarão branco"], ["zoom", "Zoom"], ["esquerda", "Deslizar para a esquerda"], ["direita", "Deslizar para a direita"], ["cima", "Deslizar para cima"], ["baixo", "Deslizar para baixo"], ["chicote", "Chicote"], ["queda", "Chicote vertical"], ["impulso", "Impulso de zoom"], ["giro", "Giro"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["clarao_rapido", "Clarão rápido"], ["desfoque_rapido", "Desfoque rápido"]];
-const EFEITOS = [["clarao", "Clarão"], ["tremor", "Tremor"], ["vinheta", "Vinheta"], ["escurecer", "Escurecer aos poucos"], ["clarear", "Surgir do preto"], ["desfoque", "Desfoque"], ["filtro", "Filtro de cor"], ["progresso", "Barra de progresso"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["pulso", "Pulso de zoom"], ["sacudir", "Sacudir"], ["barras", "Barras de cinema"], ["pb", "Preto e branco"], ["brilho", "Brilho"], ["negativo", "Negativo"], ["espelho", "Espelho"]];
-const PAD_EST = { fonte: "Poppins-Bold", tamanho: 66, cor: "#FFFFFF", opacidade: 100, maiusculas: false, alinhamento: "centro", ancora: "centro", espacamento: 0, entrelinha: 115, largura: 900, contorno: 0, contorno_cor: "#000000", sombra: false, sombra_cor: "#000000", sombra_opac: 60, sombra_x: 0, sombra_y: 4, sombra_blur: 8, fundo: false, fundo_cor: "#000000", fundo_opac: 75, fundo_raio: 14, fundo_pad: 18, borda: 0, borda_cor: "#FFFFFF", destaque: "nenhum", cor_destaque: "#FFC933", destaque_caixa: false, palavra_a_palavra: false, entrada: "nenhuma", saida: "nenhuma", efeito_texto: "nenhum", efeito_forca: 100, tempo_anim: .15 };
+const ANIM = [["nenhuma", "Nenhuma"], ["fade", "Aparecer"], ["pop", "Pop"], ["zoom", "Zoom"], ["subir", "Subir"], ["descer", "Descer"], ["esquerda", "Da direita"], ["direita", "Da esquerda"], ["quique", "Quicar"], ["digitando", "Digitando"], ["desfocar", "Desfocar"], ["carimbo", "Carimbo"], ["cair", "Cair quicando"], ["girar", "Girar"], ["piscar", "Piscar"], ["glitch", "Glitch"], ["esticar", "Esticar"], ["encolher", "Encolher"]];
+const TRANS = [["corte", "Corte seco"], ["dissolver", "Dissolver"], ["preto", "Passar pelo preto"], ["branco", "Clarão branco"], ["zoom", "Zoom"], ["esquerda", "Deslizar para a esquerda"], ["direita", "Deslizar para a direita"], ["cima", "Deslizar para cima"], ["baixo", "Deslizar para baixo"], ["chicote", "Chicote"], ["queda", "Chicote vertical"], ["impulso", "Impulso de zoom"], ["giro", "Giro"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["clarao_rapido", "Clarão rápido"], ["desfoque_rapido", "Desfoque rápido"], ["limpar_esquerda", "Cortina para a esquerda"], ["limpar_direita", "Cortina para a direita"], ["limpar_cima", "Cortina para cima"], ["limpar_baixo", "Cortina para baixo"], ["diagonal", "Diagonal"], ["iris", "Íris"], ["relogio", "Relógio"], ["persianas", "Persianas"], ["pixelar", "Pixelar"], ["zoom_cruzado", "Zoom cruzado"], ["tinta", "Tinta"], ["luz", "Clarão de luz"]];
+const MISTURAS = ["limpar_esquerda", "limpar_direita", "limpar_cima", "limpar_baixo", "diagonal", "iris", "relogio", "persianas", "pixelar", "zoom_cruzado", "tinta", "luz"];
+const EFEITOS = [["clarao", "Clarão"], ["tremor", "Tremor"], ["vinheta", "Vinheta"], ["escurecer", "Escurecer aos poucos"], ["clarear", "Surgir do preto"], ["desfoque", "Desfoque"], ["filtro", "Filtro de cor"], ["progresso", "Barra de progresso"], ["glitch", "Glitch"], ["rgb", "Separação de cores"], ["pulso", "Pulso de zoom"], ["sacudir", "Sacudir"], ["barras", "Barras de cinema"], ["pb", "Preto e branco"], ["brilho", "Brilho"], ["negativo", "Negativo"], ["espelho", "Espelho"], ["grao", "Grão de filme"], ["vhs", "Fita VHS"], ["super8", "Super 8"], ["estrobo", "Estroboscópio"], ["luz_vazada", "Luz vazada"], ["pixelar", "Pixelar"], ["duotone", "Duas cores"], ["contorno_neon", "Contorno neon"], ["caleidoscopio", "Caleidoscópio"], ["meio_tom", "Meio-tom de HQ"], ["desfoque_movimento", "Desfoque de movimento"]];
+const PAD_EST = { fonte: "Poppins-Bold", tamanho: 66, cor: "#FFFFFF", opacidade: 100, maiusculas: false, alinhamento: "centro", ancora: "centro", espacamento: 0, entrelinha: 115, largura: 900, contorno: 0, contorno_cor: "#000000", sombra: false, sombra_cor: "#000000", sombra_opac: 60, sombra_x: 0, sombra_y: 4, sombra_blur: 8, fundo: false, fundo_cor: "#000000", fundo_opac: 75, fundo_raio: 14, fundo_pad: 18, borda: 0, borda_cor: "#FFFFFF", destaque: "nenhum", cor_destaque: "#FFC933", destaque_caixa: false, palavra_a_palavra: false, entrada: "nenhuma", saida: "nenhuma", efeito_texto: "nenhum", efeito_forca: 100, tempo_anim: .15, destaque_escala: 100, sublinhado: false, sublinhado_cor: "#FF3B30", sublinhado_esp: 8, relevo: 0, relevo_cor: "#1E1E1E", sem_pontuacao: false };
 const FORTES = /^(nossa|caraca|meu|deus|absurdo|insano|incrivel|incrível|mano|socorro|nunca|sempre|muito|demais)/i;
 const tela = $("#st-canvas"), g = tela.getContext("2d"), sobre = $("#st-sobre"), exato = $("#st-exato"), rolagem = $("#st-rolagem"), faixasEl = $("#st-faixas"), trilhas = $("#st-trilhas"), regua = $("#st-regua");
 const lim = (v, a, b) => Math.min(b, Math.max(a, v)), arred = (v, n = 3) => +(+v).toFixed(n);
@@ -163,7 +164,7 @@ function filtroCss(i) {
   const fil = i.filtro || S.p?.global?.filtro, a = i.ajustes || {}, css = [];
   const f = fil?.nome && S.filtros.find((x) => x.id === fil.nome); if (f && f.css !== "none") css.push(f.css);
   if (a.brilho) css.push(`brightness(${1 + a.brilho / 100})`); if (a.contraste) css.push(`contrast(${1 + a.contraste / 100})`); if (a.saturacao) css.push(`saturate(${1 + a.saturacao / 100})`);
-  if (a.desfoque) css.push(`blur(${a.desfoque * S.escTela}px)`); return css.join(" ") || "none";
+  if (a.matiz) css.push(`hue-rotate(${a.matiz}deg)`); if (a.desfoque) css.push(`blur(${a.desfoque * S.escTela}px)`); return css.join(" ") || "none";
 }
 function desenharVisual(item, u, m = {}) {
   const v = (p) => val(item, p, u), e = v("escala") * (m.esc ?? 1), bw = v("w") * e, bh = v("h") * e, x = v("x") + (m.dx || 0), y = v("y") + (m.dy || 0), rot = v("rot") * Math.PI / 180, al = v("opac") / 100 * (m.al ?? 1);
@@ -187,6 +188,18 @@ function comTransicao(f, item, u) {
   const tr = item.transicao || {}, tipo = tr.tipo || "corte", d = tr.dur ?? .4;
   if (tipo === "corte" || u >= d || !["video", "imagem"].includes(item.tipo)) { desenharVisual(item, u); return; }
   const p = suave(lim(u / d, 0, 1)), a = f.itens.find((x) => x !== item && Math.abs(x.ini + x.dur - item.ini) < .08), ua = S.t - (a?.ini ?? 0), W = S.p.largura, H = S.p.altura;
+  if (MISTURAS.includes(tipo)) { // mesma ideia do motor: as duas cenas se misturam por uma máscara
+    if (a) desenharVisual(a, ua);
+    if (tipo === "zoom_cruzado") { if (a) desenharVisual(a, ua, { esc: 1 + p * .8 }); desenharVisual(item, u, { al: lim((p - .35) / .3, 0, 1), esc: 1.8 - .8 * p }); return; }
+    if (["pixelar", "tinta", "luz"].includes(tipo)) { desenharVisual(item, u, { al: lim((p - .4) / .2, 0, 1) }); if (tipo === "luz") { g.fillStyle = "#ffc878"; g.globalAlpha = .85 * (1 - Math.abs(2 * p - 1)); g.fillRect(0, 0, W, H); g.globalAlpha = 1; } return; }
+    g.save(); g.beginPath(); const R = Math.hypot(W, H) / 2;
+    if (tipo === "limpar_direita") g.rect(0, 0, W * p, H); else if (tipo === "limpar_esquerda") g.rect(W * (1 - p), 0, W * p, H); else if (tipo === "limpar_baixo") g.rect(0, 0, W, H * p); else if (tipo === "limpar_cima") g.rect(0, H * (1 - p), W, H * p);
+    else if (tipo === "diagonal") { const L = p * (W + H) * 1.02; g.moveTo(0, 0); g.lineTo(L, 0); g.lineTo(0, L); g.closePath(); }
+    else if (tipo === "iris") g.arc(W / 2, H / 2, R * p * 1.05, 0, Math.PI * 2);
+    else if (tipo === "relogio") { g.moveTo(W / 2, H / 2); g.arc(W / 2, H / 2, R * 1.2, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); g.closePath(); }
+    else if (tipo === "persianas") for (let k = 0; k < 9; k++) g.rect(0, k * H / 9, W, H / 9 * p);
+    g.clip(); desenharVisual(item, u); g.restore(); return;
+  }
   if (tipo === "dissolver") { if (a) desenharVisual(a, ua); desenharVisual(item, u, { al: p }); }
   else if (tipo === "preto" || tipo === "branco") { if (p < .5) { if (a) desenharVisual(a, ua); } else desenharVisual(item, u); g.fillStyle = tipo === "preto" ? "#000" : "#fff"; g.globalAlpha = p < .5 ? p * 2 : (1 - p) * 2; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
   else if (tipo === "zoom") { if (a) desenharVisual(a, ua); desenharVisual(item, u, { al: p, esc: 1.35 - .35 * p }); }
@@ -194,17 +207,25 @@ function comTransicao(f, item, u) {
   else { const [dx, dy] = { esquerda: [W, 0], direita: [-W, 0], cima: [0, H], baixo: [0, -H] }[tipo] || [0, 0]; if (a) desenharVisual(a, ua, { dx: -dx * p, dy: -dy * p }); desenharVisual(item, u, { dx: dx * (1 - p), dy: dy * (1 - p) }); }
 }
 function animar(est, u, dur) {
-  const r = { al: 1, dx: 0, dy: 0, esc: 1, mostrar: 1 }, tempo = Math.max(.01, est.tempo_anim);
-  for (const [tipo, p] of [[est.entrada, Math.min(1, u / tempo)], [est.saida, Math.min(1, (dur - u) / tempo)]]) {
+  const r = { al: 1, dx: 0, dy: 0, esc: 1, mostrar: 1, rot: 0, sx: 1, sy: 1, blur: 0, gl: 0 }, tempo = Math.max(.01, est.tempo_anim);
+  for (const [lado, tipo, p] of [[1, est.entrada, Math.min(1, u / tempo)], [-1, est.saida, Math.min(1, (dur - u) / tempo)]]) {
     if (p >= 1 || tipo === "nenhuma") continue; const e = 1 - (1 - p) ** 3;
     if (tipo === "fade") r.al *= p; else if (tipo === "pop") { r.esc *= .7 + .3 * (e + Math.sin(p * Math.PI) * .12); r.al *= Math.min(1, p * 2); }
     else if (tipo === "zoom") { r.esc *= 1.5 - .5 * e; r.al *= p; } else if (tipo === "subir") { r.dy += (1 - e) * 60; r.al *= p; } else if (tipo === "descer") { r.dy -= (1 - e) * 60; r.al *= p; }
     else if (tipo === "esquerda") { r.dx += (1 - e) * 90; r.al *= p; } else if (tipo === "direita") { r.dx -= (1 - e) * 90; r.al *= p; }
     else if (tipo === "quique") { r.esc *= 1 + Math.sin(p * Math.PI * 2.5) * (1 - p) * .35; r.al *= Math.min(1, p * 3); } else if (tipo === "digitando") r.mostrar = Math.min(r.mostrar, p);
+    else if (tipo === "desfocar") { r.blur = Math.max(r.blur, (1 - e) * est.tamanho * .35); r.al *= Math.min(1, p * 1.6); r.esc *= 1.08 - .08 * e; }
+    else if (tipo === "carimbo") { r.esc *= 2.2 - 1.2 * p * p + (p > .8 ? .06 * Math.sin(Math.min(1, (p - .8) / .2) * Math.PI) : 0); r.al *= Math.min(1, p * 2.5); }
+    else if (tipo === "cair") { r.dy -= Math.abs(Math.cos(p * Math.PI * 1.5)) * (1 - p) ** 1.6 * est.tamanho * 2.4 * lado; r.al *= Math.min(1, p * 4); }
+    else if (tipo === "girar") { r.rot += (1 - e) * -200 * lado; r.esc *= .3 + .7 * e; r.al *= Math.min(1, p * 2); }
+    else if (tipo === "piscar") r.al *= p < .85 && Math.floor(p * 14) % 2 === 0 ? 0 : Math.min(1, .4 + p);
+    else if (tipo === "glitch") { r.gl = Math.max(r.gl, 1 - p); r.dx += Math.sin(p * 91) * est.tamanho * .25 * (1 - p); r.al *= Math.min(1, .3 + p); }
+    else if (tipo === "esticar") { r.sx *= .6 + .4 * e + Math.sin(p * Math.PI) * .15; r.sy *= 1.5 - .5 * e - Math.sin(p * Math.PI) * .1; r.al *= Math.min(1, p * 2); }
+    else if (tipo === "encolher") { r.esc *= e; r.al *= Math.min(1, p * 1.5); }
   }
   return r;
 }
-const EF_TEXTO = [["nenhum", "Sem efeito"], ["neon", "Neon"], ["brilho", "Brilho"], ["reflexo", "Reflexo"], ["ouro", "Ouro"], ["fogo", "Fogo"], ["gelo", "Gelo"], ["arcoiris", "Arco-íris"], ["glitch", "Glitch"], ["rgb", "Cores separadas"], ["onda", "Onda"], ["pulsar", "Pulsar"], ["batida", "Batida"], ["tremer", "Tremer"], ["balancar", "Balançar"], ["flutuar", "Flutuar"], ["piscar", "Piscar"]];
+const EF_TEXTO = [["nenhum", "Sem efeito"], ["neon", "Neon"], ["brilho", "Brilho"], ["reflexo", "Reflexo"], ["ouro", "Ouro"], ["fogo", "Fogo"], ["gelo", "Gelo"], ["arcoiris", "Arco-íris"], ["glitch", "Glitch"], ["rgb", "Cores separadas"], ["onda", "Onda"], ["cromado", "Cromado"], ["por_do_sol", "Pôr do sol"], ["doce", "Doce"], ["holografico", "Holográfico"], ["pulsar", "Pulsar"], ["batida", "Batida"], ["tremer", "Tremer"], ["balancar", "Balançar"], ["flutuar", "Flutuar"], ["piscar", "Piscar"], ["respirar", "Respirar"]];
 function movTexto(est, u) {
   const r = { dx: 0, dy: 0, esc: 1, rot: 0, al: 1 }, f = (est.efeito_forca ?? 100) / 100, t = est.tamanho, tipo = est.efeito_texto, T = Math.PI * 2;
   if (tipo === "pulsar") r.esc = 1 + .07 * f * Math.sin(u * T * 1.6);
@@ -212,36 +233,58 @@ function movTexto(est, u) {
   else if (tipo === "tremer") { const n = Math.floor(u * 24); r.dx = t * .05 * f * Math.sin(n * 12.9898); r.dy = t * .05 * f * Math.sin(n * 78.233); }
   else if (tipo === "balancar") r.rot = 5 * f * Math.sin(u * T * .9); else if (tipo === "flutuar") r.dy = t * .14 * f * Math.sin(u * T * .7);
   else if (tipo === "piscar") r.al = Math.sin(u * T * 3) < -.2 ? 1 - Math.min(1, f) * .75 : 1;
+  else if (tipo === "respirar") { r.esc = 1 + .04 * f * Math.sin(u * T * .45); r.al = 1 - .12 * Math.min(1, f) * (.5 - .5 * Math.cos(u * T * .45)); }
   return r;
 }
 function tintaTexto(est, u, lar, alt) {
   const faixa = (pares) => { const d = g.createLinearGradient(0, -alt / 2, 0, alt / 2); pares.forEach(([p, c]) => d.addColorStop(p, c)); return d; };
   if (est.efeito_texto === "ouro") return faixa([[.2, "#fff7be"], [.5, "#f5be46"], [.85, "#a8660f"]]); if (est.efeito_texto === "gelo") return faixa([[.25, "#ffffff"], [.8, "#6ed7ff"]]); if (est.efeito_texto === "fogo") return faixa([[.2, "#ff3c14"], [.55, "#ff9619"], [.85, "#ffeb78"]]);
+  if (est.efeito_texto === "cromado") return faixa([[0, "#fafcff"], [.42, "#cdd7e6"], [.5, "#465064"], [.62, "#96a0b4"], [1, "#f5f8ff"]]);
+  if (est.efeito_texto === "por_do_sol") return faixa([[.2, "#ffd65a"], [.55, "#ff6e50"], [.85, "#b4328c"]]); if (est.efeito_texto === "doce") return faixa([[.2, "#ff96dc"], [.55, "#ff6ec7"], [.85, "#78c8ff"]]);
+  if (est.efeito_texto === "holografico") { const d = g.createLinearGradient(-lar / 2, -alt / 2, lar / 2, alt / 2); for (let n = 0; n <= 6; n++) d.addColorStop(n / 6, `hsl(${(n * 50 + u * 54) % 360} 70% 82%)`); return d; }
   if (est.efeito_texto === "arcoiris") { const d = g.createLinearGradient(-lar / 2, 0, lar / 2, 0); for (let n = 0; n <= 6; n++) d.addColorStop(n / 6, `hsl(${(n * 60 + u * 160) % 360} 90% 60%)`); return d; }
   return null;
 }
-function desenharTexto(txt, est, x, y, esc, rot, al, ativa, u = 0) {
-  g.save(); g.font = `${est.tamanho}px ${fonteCss(est.fonte)}`; g.textBaseline = "alphabetic"; g.letterSpacing = `${est.espacamento}px`;
-  const vazio = g.measureText(" ").width, linhas = []; let n = 0;
-  for (const bloco of String(txt).split("\n")) { let at = [], us = 0; for (const b of bloco.split(/\s+/).filter(Boolean)) { const q = est.maiusculas ? b.toLocaleUpperCase("pt-BR") : b, w = g.measureText(q).width; if (at.length && us + vazio + w > est.largura) { linhas.push(at); at = []; us = 0; } us += (at.length ? vazio : 0) + w; at.push({ q, w, n: n++ }); } linhas.push(at); }
-  const passo = est.tamanho * est.entrelinha / 100, altT = est.tamanho * 1.5 + passo * (linhas.length - 1), largs = linhas.map((l) => l.reduce((s, p) => s + p.w, 0) + vazio * Math.max(0, l.length - 1)), lar = Math.max(1, ...largs), pad = est.fundo ? est.fundo_pad : 0, h = altT + pad * 2;
+const PONTUACAO = /[.,;:!?…"“”()¿¡]+/g;
+function acentoJs(est, k, total, ativa, orig) { // mesma regra do motor: quais palavras ganham a cor de destaque
+  const m = est.destaque;
+  if ((m === "palavra" || m === "ambos") && k === ativa) return true;
+  if ((m === "importantes" || m === "ambos") && (FORTES.test(orig) || /[!?]$/.test(orig))) return true;
+  if (m === "falado") return ativa != null && k <= ativa; if (m === "primeira") return k === 0; if (m === "ultima") return k === total - 1; if (m === "alternadas") return k % 2 === 1;
+  return false;
+}
+function desenharTexto(txt, est, x, y, esc, rot, al, ativa, u = 0, an = null) {
+  g.save(); const kEsc = lim((est.destaque_escala ?? 100) / 100, .5, 2), fN = `${est.tamanho}px ${fonteCss(est.fonte)}`, fA = `${est.tamanho * kEsc}px ${fonteCss(est.fonte)}`;
+  g.font = fN; g.textBaseline = "alphabetic"; g.letterSpacing = `${est.espacamento}px`;
+  const vazio = g.measureText(" ").width, mede = (q, ac) => { if (!ac || kEsc === 1) return g.measureText(q).width; g.font = fA; const w = g.measureText(q).width; g.font = fN; return w; };
+  const blocos = String(txt).split("\n").map((bl) => bl.split(/\s+/).filter(Boolean).map((o) => { let q = est.maiusculas ? o.toLocaleUpperCase("pt-BR") : o; if (est.sem_pontuacao) q = q.replace(PONTUACAO, "") || q; return { q, o }; }));
+  const total = blocos.reduce((s0, bl) => s0 + bl.length, 0), linhas = []; let n = 0;
+  for (const bl of blocos) { let at = [], us = 0; for (const { q, o } of bl) { const ac = acentoJs(est, n, total, ativa, o), w = mede(q, ac); if (at.length && us + vazio + w > est.largura) { linhas.push(at); at = []; us = 0; } us += (at.length ? vazio : 0) + w; at.push({ q, w, n: n++, ac }); } linhas.push(at); }
+  const extra = kEsc > 1 ? est.tamanho * (kEsc - 1) : 0, passo = est.tamanho * est.entrelinha / 100 + extra, altT = est.tamanho * 1.5 + passo * (linhas.length - 1) + extra, largs = linhas.map((l) => l.reduce((s0, p) => s0 + p.w, 0) + vazio * Math.max(0, l.length - 1)), lar = Math.max(1, ...largs), pad = est.fundo ? est.fundo_pad : 0, h = altT + pad * 2;
   const cy = y + (est.ancora === "topo" ? h / 2 : est.ancora === "base" ? -h / 2 : 0);
-  g.translate(x, cy); g.rotate(rot * Math.PI / 180); g.scale(esc, esc); g.globalAlpha = lim(al * est.opacidade / 100, 0, 1);
+  g.translate(x, cy); g.rotate(rot * Math.PI / 180); g.scale(esc * (an?.sx ?? 1), esc * (an?.sy ?? 1)); g.globalAlpha = lim(al * est.opacidade / 100, 0, 1);
+  if (an?.blur > .3) g.filter = `blur(${an.blur * S.escTela * esc}px)`;
   if (est.fundo) { g.fillStyle = est.fundo_cor; const a0 = g.globalAlpha; g.globalAlpha = a0 * est.fundo_opac / 100; g.beginPath(); g.roundRect(-lar / 2 - pad, -h / 2, lar + pad * 2, h, est.fundo_raio); g.fill(); g.globalAlpha = a0; if (est.borda) { g.strokeStyle = est.borda_cor; g.lineWidth = est.borda; g.stroke(); } }
-  if (est.sombra) { g.shadowColor = est.sombra_cor + Math.round(est.sombra_opac * 2.55).toString(16).padStart(2, "0"); g.shadowBlur = est.sombra_blur * 2 * S.escTela; g.shadowOffsetX = est.sombra_x * S.escTela; g.shadowOffsetY = est.sombra_y * S.escTela; }
-  const fxT = est.efeito_texto, fxF = (est.efeito_forca ?? 100) / 100, tinta = tintaTexto(est, u, lar, altT), desvio = fxT === "rgb" || fxT === "glitch" ? est.tamanho * .06 * fxF : 0;
-  if (fxT === "neon" || fxT === "brilho" || fxT === "fogo" || fxT === "gelo") { g.shadowColor = fxT === "neon" ? est.cor_destaque : fxT === "brilho" ? est.cor : fxT === "fogo" ? "#ff5a0f" : "#5ac8ff"; g.shadowBlur = est.tamanho * .5 * fxF * S.escTela; g.shadowOffsetX = 0; g.shadowOffsetY = 0; }
-  g.lineJoin = "round"; linhas.forEach((l, i) => {
-    let px = -lar / 2 + (est.alinhamento === "esquerda" ? 0 : est.alinhamento === "direita" ? lar - largs[i] : (lar - largs[i]) / 2); const py = -altT / 2 + est.tamanho * 1.1 + passo * i;
-    for (const p of l) { const py0 = py;
-      const atv = ativa === p.n && ["palavra", "ambos"].includes(est.destaque), imp = ["importantes", "ambos"].includes(est.destaque) && (FORTES.test(p.q) || /[!?]$/.test(p.q));
-      if (est.destaque_caixa && ativa === p.n) { g.fillStyle = est.cor_destaque; g.beginPath(); g.roundRect(px - est.tamanho * .14, py - est.tamanho * 1.02, p.w + est.tamanho * .28, est.tamanho * 1.34, est.tamanho * .16); g.fill(); }
-      if (est.contorno && !(est.destaque_caixa && ativa === p.n)) { g.strokeStyle = est.contorno_cor; g.lineWidth = est.contorno * 2; g.strokeText(p.q, px, py); }
-      if (desvio) { g.fillStyle = "#ff2a55"; g.fillText(p.q, px + desvio, py0); g.fillStyle = "#22e0ff"; g.fillText(p.q, px - desvio, py0); }
-      g.fillStyle = tinta || (atv ? (est.destaque_caixa ? "#141414" : est.cor_destaque) : imp ? est.cor_destaque : est.cor); g.fillText(p.q, px, fxT === "onda" ? py0 + Math.sin(px / (est.tamanho * 1.1) - u * 6) * est.tamanho * .13 * fxF : py0); px += p.w + vazio;
-    }
-  });
-  g.restore(); return { x, y: cy, w: (lar + pad * 2 + est.contorno * 2) * esc, h: h * esc, rot };
+  const sombra = () => { if (est.sombra) { g.shadowColor = est.sombra_cor + Math.round(est.sombra_opac * 2.55).toString(16).padStart(2, "0"); g.shadowBlur = est.sombra_blur * 2 * S.escTela; g.shadowOffsetX = est.sombra_x * S.escTela; g.shadowOffsetY = est.sombra_y * S.escTela; } };
+  sombra();
+  const fxT = est.efeito_texto, fxF = (est.efeito_forca ?? 100) / 100, tinta = tintaTexto(est, u, lar, altT), desvio = (fxT === "rgb" || fxT === "glitch" ? est.tamanho * .06 * fxF : 0) + (an?.gl || 0) * est.tamanho * .08;
+  if (fxT === "neon" || fxT === "brilho" || fxT === "fogo" || fxT === "gelo" || fxT === "holografico") { g.shadowColor = fxT === "neon" ? est.cor_destaque : fxT === "brilho" || fxT === "holografico" ? est.cor : fxT === "fogo" ? "#ff5a0f" : "#5ac8ff"; g.shadowBlur = est.tamanho * .5 * fxF * S.escTela; g.shadowOffsetX = 0; g.shadowOffsetY = 0; }
+  const pos = []; linhas.forEach((l, i) => { let px = -lar / 2 + (est.alinhamento === "esquerda" ? 0 : est.alinhamento === "direita" ? lar - largs[i] : (lar - largs[i]) / 2); const py = -altT / 2 + est.tamanho * 1.1 + extra + passo * i; for (const p of l) { pos.push({ ...p, px, py, i }); px += p.w + vazio; } });
+  g.lineJoin = "round";
+  if (est.relevo > 0) { // letras em 3D: cópias empurradas na diagonal, como o pack Retrô 3D do Drift
+    const passos = Math.min(16, Math.max(2, Math.round(est.relevo))); g.save(); g.shadowColor = "transparent";
+    for (let k = passos; k >= 1; k--) { const d = est.relevo * k / passos * .7; g.fillStyle = est.relevo_cor || "#1E1E1E"; g.strokeStyle = est.relevo_cor || "#1E1E1E"; g.lineWidth = est.contorno * 2;
+      for (const p of pos) { g.font = p.ac && kEsc !== 1 ? fA : fN; if (est.contorno) g.strokeText(p.q, p.px + d, p.py + d); g.fillText(p.q, p.px + d, p.py + d); } }
+    g.restore(); }
+  for (const p of pos) {
+    const atv = ativa === p.n && ["palavra", "ambos"].includes(est.destaque); g.font = p.ac && kEsc !== 1 ? fA : fN;
+    if (est.destaque_caixa && ativa === p.n) { g.fillStyle = est.cor_destaque; g.beginPath(); g.roundRect(p.px - est.tamanho * .14, p.py - est.tamanho * 1.02, p.w + est.tamanho * .28, est.tamanho * 1.34, est.tamanho * .16); g.fill(); }
+    if (est.contorno && !(est.destaque_caixa && ativa === p.n)) { g.strokeStyle = est.contorno_cor; g.lineWidth = est.contorno * 2; g.strokeText(p.q, p.px, p.py); }
+    if (desvio) { g.fillStyle = "#ff2a55"; g.fillText(p.q, p.px + desvio, p.py); g.fillStyle = "#22e0ff"; g.fillText(p.q, p.px - desvio, p.py); }
+    g.fillStyle = tinta || (p.ac ? (est.destaque_caixa && atv ? "#141414" : est.cor_destaque) : est.cor); g.fillText(p.q, p.px, fxT === "onda" ? p.py + Math.sin(p.px / (est.tamanho * 1.1) - u * 6) * est.tamanho * .13 * fxF : p.py);
+  }
+  if (est.sublinhado) { const e0 = est.sublinhado_esp ?? 8; g.fillStyle = est.sublinhado_cor || "#FF3B30"; linhas.forEach((l, i) => { const ws = pos.filter((p) => p.i === i); if (!ws.length) return; const a0 = ws[0], z = ws[ws.length - 1]; g.beginPath(); g.roundRect(a0.px, a0.py + e0 * .6 + est.tamanho * .12, z.px + z.w - a0.px, e0, e0 / 2); g.fill(); }); }
+  g.restore(); return { x, y: cy, w: (lar + pad * 2 + est.contorno * 2 + (est.relevo || 0)) * esc, h: h * esc, rot };
 }
 function pintarItemTexto(i, u) {
   const est = estiloDe(i), an = animar(est, u, i.dur); let txt = i.texto || "", ativa = null;
@@ -249,7 +292,7 @@ function pintarItemTexto(i, u) {
   if (an.mostrar < 1) txt = txt.slice(0, Math.round(txt.length * an.mostrar));
   const leg = i.tipo === "legenda", x = leg ? est.x ?? S.p.largura / 2 : val(i, "x", u), y = leg ? est.y ?? S.p.altura * .86 : val(i, "y", u);
   const mv = movTexto(est, u);
-  S.caixas.set(i.id, desenharTexto(txt, est, x + an.dx + mv.dx, y + an.dy + mv.dy, (leg ? 1 : val(i, "escala", u)) * an.esc * mv.esc, (leg ? 0 : val(i, "rot", u)) + mv.rot, an.al * mv.al * (leg ? 1 : val(i, "opac", u) / 100), ativa, u));
+  S.caixas.set(i.id, desenharTexto(txt, est, x + an.dx + mv.dx, y + an.dy + mv.dy, (leg ? 1 : val(i, "escala", u)) * an.esc * mv.esc, (leg ? 0 : val(i, "rot", u)) + mv.rot + an.rot, an.al * mv.al * (leg ? 1 : val(i, "opac", u) / 100), ativa, u, an));
 }
 function pintarEfeito(i, u) {
   const W = S.p.largura, H = S.p.altura, [ax, ay, aw, ah] = i.area || [0, 0, W, H], f = i.forca ?? 1;
@@ -258,6 +301,24 @@ function pintarEfeito(i, u) {
   else if (i.efeito === "progresso") { g.fillStyle = i.cor || "#FFC933"; g.fillRect(0, 0, W * (i.ini + u) / duracao(), 9); return; }
   else if (i.efeito === "vinheta") { const gr = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .7); gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, `rgba(0,0,0,${.42 * f * suave(lim(Math.min(u / .2, (i.dur - u) / .3), 0, 1))})`); g.fillStyle = gr; g.fillRect(0, 0, W, H); return; }
   if (k > .01) { g.globalAlpha = lim(k, 0, 1); g.fillStyle = cor; g.fillRect(ax, ay, aw, ah); g.globalAlpha = 1; }
+  efeitoExtraCanvas(i, u, ax, ay, aw, ah, f);
+}
+let ruidoPadrao = null;
+function ruido() { if (!ruidoPadrao) { const c = document.createElement("canvas"); c.width = c.height = 160; const x = c.getContext("2d"), d = x.createImageData(160, 160); for (let n = 0; n < d.data.length; n += 4) { const v = Math.random() * 255; d.data[n] = d.data[n + 1] = d.data[n + 2] = v; d.data[n + 3] = 255; } x.putImageData(d, 0, 0); ruidoPadrao = g.createPattern(c, "repeat"); } return ruidoPadrao; }
+function efeitoExtraCanvas(i, u, ax, ay, aw, ah, f) { // aproximação ao vivo; com o vídeo parado aparece o quadro exato do motor
+  const tipo = i.efeito, n = Math.round((i.ini + u) * (S.p.fps || 30)); if (!["grao", "vhs", "super8", "estrobo", "luz_vazada", "pixelar", "duotone", "caleidoscopio"].includes(tipo)) return;
+  g.save(); g.beginPath(); g.rect(ax, ay, aw, ah); g.clip();
+  if (tipo === "estrobo") { if (Math.floor(n / 3) % 2 === 0) { g.fillStyle = "#fff"; g.globalAlpha = .75 * Math.min(1, f); g.fillRect(ax, ay, aw, ah); } }
+  else if (tipo === "luz_vazada") { const cx = ax + aw * (.5 + .45 * Math.sin(u * .9)), cy = ay + ah * (.3 + .25 * Math.cos(u * .7)), gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(aw, ah) * .55); gr.addColorStop(0, `rgba(255,140,60,${.85 * Math.min(1, f)})`); gr.addColorStop(1, "rgba(255,140,60,0)"); g.globalCompositeOperation = "screen"; g.fillStyle = gr; g.fillRect(ax, ay, aw, ah); }
+  else if (tipo === "duotone") { g.globalCompositeOperation = "saturation"; g.fillStyle = "#808080"; g.globalAlpha = Math.min(1, f); g.fillRect(ax, ay, aw, ah); g.globalCompositeOperation = "color"; g.fillStyle = "#ff7aa8"; g.fillRect(ax, ay, aw, ah); }
+  else if (tipo === "pixelar" || tipo === "caleidoscopio") {
+    const e = S.escTela, sx = ax * e, sy = ay * e, sw = Math.max(2, aw * e), sh = Math.max(2, ah * e); g.setTransform(1, 0, 0, 1, 0, 0);
+    if (tipo === "pixelar") { const bloco = Math.max(2, Math.round(Math.max(sw, sh) * .035 * f)), c = document.createElement("canvas"); c.width = Math.max(1, Math.round(sw / bloco)); c.height = Math.max(1, Math.round(sh / bloco)); c.getContext("2d").drawImage(tela, sx, sy, sw, sh, 0, 0, c.width, c.height); g.imageSmoothingEnabled = false; g.drawImage(c, sx, sy, sw, sh); }
+    else { const c = document.createElement("canvas"); c.width = sw / 2; c.height = sh / 2; c.getContext("2d").drawImage(tela, sx, sy, sw / 2, sh / 2, 0, 0, sw / 2, sh / 2); g.globalAlpha = Math.min(1, f); for (const [fx, fy] of [[-1, 1], [1, -1], [-1, -1]]) { g.save(); g.translate(sx + sw / 2, sy + sh / 2); g.scale(fx, fy); g.drawImage(c, 0, 0); g.restore(); } }
+  } else { g.globalAlpha = (tipo === "grao" ? .16 : .1) * Math.min(1, f); g.globalCompositeOperation = "overlay"; g.fillStyle = ruido(); g.translate((n * 37) % 160, (n * 53) % 160); g.fillRect(ax - 160, ay - 160, aw + 320, ah + 320); g.setTransform(S.escTela, 0, 0, S.escTela, 0, 0);
+    if (tipo === "vhs") { g.globalCompositeOperation = "source-over"; g.globalAlpha = .18 * Math.min(1, f); g.fillStyle = "#000"; for (let y = ay; y < ay + ah; y += 3) g.fillRect(ax, y, aw, 1); }
+    if (tipo === "super8") { g.globalCompositeOperation = "soft-light"; g.globalAlpha = .5 * Math.min(1, f); g.fillStyle = "#ff9a3c"; g.fillRect(ax, ay, aw, ah); } }
+  g.restore();
 }
 function pintarProjeto() {
   g.setTransform(S.escTela, 0, 0, S.escTela, 0, 0); g.filter = "none"; g.globalAlpha = 1; g.fillStyle = "#000"; g.fillRect(0, 0, S.p.largura, S.p.altura); S.caixas.clear();
@@ -406,30 +467,50 @@ function montarLinha() {
       if (f.tipo === "video" && ehCorte(f, i)) { const tr = i.transicao?.tipo && i.transicao.tipo !== "corte", nome = tr ? nomeTr(i.transicao.tipo) : "Adicionar transição"; const m = el("button", { class: "st-tr", type: "button", title: nome, "aria-label": `${nome} em ${tempoTxt(i.ini)}`, style: `left:${i.ini * S.px}px`, dados: { t: i.ini, ...(tr ? { on: "1" } : {}) } }); m.innerHTML = svg('<path d="M4 5l8 7-8 7zM20 5l-8 7 8 7z"/>'); n.append(m); } }
     if (S.alvoF === f.id) n.dataset.alvo = "1";
     return n; }));
-  const alt = trilhas.scrollHeight, d = devicePixelRatio || 1, topo = $("#st-regua-topo"); regua.width = W * d; regua.height = alt * d; regua.style.width = `${W}px`; regua.style.height = `${alt}px`; regua.style.left = `${esq}px`;
+  const alt = trilhas.scrollHeight, d = devicePixelRatio || 1, topo = $("#st-regua-topo"), filmes = $("#st-filmes"); for (const cv of [regua, filmes]) { cv.width = W * d; cv.height = alt * d; cv.style.width = `${W}px`; cv.style.height = `${alt}px`; cv.style.left = `${esq}px`; }
+  const cf = filmes.getContext("2d"); cf.scale(d, d);
   topo.width = W * d; topo.height = 24 * d; topo.style.width = `${W}px`; topo.style.height = "24px";
-  const r0 = topo.getContext("2d"); r0.scale(d, d); r0.fillStyle = "#0b1518"; r0.fillRect(0, 0, W, 24); r0.font = "11px 'Instrument Sans',sans-serif"; r0.fillStyle = "#a6babc"; r0.strokeStyle = "#2c444e";
+  const r0 = topo.getContext("2d"); r0.scale(d, d); r0.fillStyle = corTema("--regua-fundo", "#0b1518"); r0.fillRect(0, 0, W, 24); r0.font = `500 10.5px ${corTema("--texto", "Inter, sans-serif")}`; r0.fillStyle = corTema("--giz-medio", "#a6babc"); r0.strokeStyle = corTema("--fio", "#2c444e");
   const passo = [.1, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((p) => p * S.px >= 64) || 1200;
-  for (let t = Math.floor(esq / S.px / passo) * passo; t * S.px < esq + W; t += passo) { const x = t * S.px - esq; r0.beginPath(); r0.moveTo(x + .5, 16); r0.lineTo(x + .5, 24); r0.stroke(); r0.fillText(passo < 1 ? tempoTxt(t) : relogio(t), x + 3, 13); }
-  r0.fillStyle = "#5ad1b3"; for (const m of S.p.marcadores || []) { const x = m * S.px - esq; r0.beginPath(); r0.moveTo(x - 5, 14); r0.lineTo(x + 5, 14); r0.lineTo(x, 23); r0.fill(); }
+  for (let t = Math.floor(esq / S.px / passo) * passo; t * S.px < esq + W; t += passo) { const x = t * S.px - esq; r0.beginPath(); r0.moveTo(x + .5, 16); r0.lineTo(x + .5, 24); r0.stroke(); r0.fillText(passo < 1 ? tempoTxt(t) : relogio(t), x + 3, 13); for (let k = 1; k < 5; k++) { const xm = x + k * passo * S.px / 5; r0.beginPath(); r0.moveTo(xm + .5, 20); r0.lineTo(xm + .5, 24); r0.stroke(); } }
+  r0.fillStyle = corTema("--marcador", "#5ad1b3"); for (const m of S.p.marcadores || []) { const x = m * S.px - esq; r0.beginPath(); r0.moveTo(x - 5, 14); r0.lineTo(x + 5, 14); r0.lineTo(x, 23); r0.fill(); }
   const c = regua.getContext("2d"); c.scale(d, d);
   let y = 0; c.fillStyle = "rgba(255,255,255,.42)"; const topoRegua = regua.getBoundingClientRect().top, linhasDom = [...trilhas.children];
   for (const [k, f] of [...S.p.faixas].reverse().entries()) { const linhaDom = linhasDom[k]; let h = altF(f);
     if (linhaDom) { const r = linhaDom.getBoundingClientRect(); y = r.top - topoRegua + 3; h = linhaDom.clientHeight - 6; } // a onda fica dentro do bloco, mesmo com bordas e zoom de faixa
+    if (f.tipo === "video") for (const i of f.itens) if ((i.tipo === "video" || i.tipo === "imagem") && i.ini + i.dur >= de && i.ini <= ate) filme(cf, i, y, h, esq, W);
     if (["video", "audio"].includes(f.tipo)) for (const i of f.itens) { if (i.mudo || i.tipo === "imagem" || i.tipo === "forma" || i.ini + i.dur < de || i.ini > ate) continue; const m = S.p.midias[i.midia], o = m && ondaDe(m); if (!o?.length || !m.dur) continue;
-      const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); const aud = i.tipo === "audio", nivel = (u) => aud ? Math.min(2, ganhoEmItem(i, u)) : 1;
-      for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, Math.min(1, v * nivel(u)) * (h - 10)); c.fillRect(x, y + h - 3 - a, 1.2, a); }
+      const x0 = Math.max(0, i.ini * S.px - esq), x1 = Math.min(W, (i.ini + i.dur) * S.px - esq); const aud = i.tipo === "audio", nivel = (u) => aud ? Math.min(2, ganhoEmItem(i, u)) : 1, alto = aud ? h - 10 : Math.max(4, (h - 16) * .42);
+      c.fillStyle = aud ? "rgba(255,255,255,.5)" : "rgba(255,255,255,.38)";
+      for (let x = x0; x < x1; x += 2) { const u = (x + esq) / S.px - i.ini, v = o[Math.floor(((i.entrada || 0) + u * (i.velocidade || 1)) / m.dur * o.length)] || 0, a = Math.max(1, Math.min(1, v * nivel(u)) * alto); c.fillRect(x, y + h - 3 - a, 1.2, a); }
       if (aud) { c.save(); c.strokeStyle = "rgba(255,201,51,.95)"; c.lineWidth = 1.5; c.beginPath(); for (let x = x0; x <= x1; x += 2) { const u = (x + esq) / S.px - i.ini, yy = y + 3 + (1 - nivel(u) / 2) * (h - 6); x === x0 ? c.moveTo(x, yy) : c.lineTo(x, yy); } c.stroke(); c.restore(); } }
     y += h + 1; }
   moverAgulha(false);
   const n = S.sel.size, u = sel1(); $("#st-sel").textContent = n > 1 ? `${n} elementos selecionados` : u ? `${ROTULOS[u.tipo]}: ${tempoTxt(u.ini)} a ${tempoTxt(u.ini + u.dur)}` : "";
+}
+const temaCache = new Map();
+function corTema(v, padrao) { if (!temaCache.has(v)) temaCache.set(v, getComputedStyle(document.documentElement).getPropertyValue(v).trim() || padrao); return temaCache.get(v); }
+function tiraDe(m) { // miniaturas do clipe, como a película dos clipes no Drift
+  const k = `${m.raiz}:${m.rel}`; S.tiras ||= new Map();
+  if (!S.tiras.has(k)) { S.tiras.set(k, null); api("GET", `/api/estudio/tira?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`).then((t) => { const im = new Image(); im.onload = () => { S.tiras.set(k, { ...t, im }); desenharLinha(); }; im.src = t.img; }).catch(() => {}); }
+  return S.tiras.get(k);
+}
+function filme(c, i, y, h, esq, W) {
+  const m = S.p.midias[i.midia]; if (!m) return; const topo = y + 15, alt = h - 16; if (alt < 12) return;
+  const x0 = i.ini * S.px - esq, x1 = (i.ini + i.dur) * S.px - esq, v0 = Math.max(0, x0), v1 = Math.min(W, x1); if (v1 <= v0) return;
+  c.save(); c.beginPath(); c.rect(v0 + 1, topo, v1 - v0 - 2, alt); c.clip(); c.globalAlpha = .92;
+  if (i.tipo === "imagem") { const im = elImagem(i.midia, m); if (im.naturalWidth) { const lw = alt * im.naturalWidth / im.naturalHeight; for (let x = x0; x < v1; x += lw) if (x + lw > v0) c.drawImage(im, x, topo, lw, alt); } c.restore(); return; }
+  const t = tiraDe(m); if (!t?.im) { c.restore(); return; }
+  const lw = Math.max(12, alt * t.lar / t.alt);
+  for (let x = x0; x < v1; x += lw) { if (x + lw < v0) continue; const u = (x - x0 + lw / 2) / S.px, mt = (i.entrada || 0) + u * (i.velocidade || 1), k = lim(Math.floor(mt / t.passo), 0, t.n - 1); c.drawImage(t.im, k * t.lar, 0, t.lar, t.alt, x, topo, lw, alt); }
+  c.restore();
 }
 function ganhoEmItem(i, u) { const fi = +i.fade_in || 0, fo = +i.fade_out || 0; let g = (i.volume ?? 100) / 100; if (fi > 0 && u < fi) g *= Math.max(0, u / fi); if (fo > 0 && u > i.dur - fo) g *= Math.max(0, (i.dur - u) / fo); return g; }
 function ondaDe(m) { const k = `${m.raiz}:${m.rel}`; if (!S.ondas.has(k)) { S.ondas.set(k, []); api("GET", `/api/estudio/onda?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`).then((o) => { S.ondas.set(k, o); desenharLinha(); }).catch(() => {}); } return S.ondas.get(k); }
 const rotuloItem = (i) => i.tipo === "legenda" || i.tipo === "texto" ? i.texto : i.nome || ROTULOS[i.tipo];
 function alvoTrMudou() { if (S.painel !== "transicoes" || !$("#st-tr-alvo")) return; const c = alvoTr(), k = c ? `c${c.t}` : "n"; if (k !== S.chaveTr) { S.chaveTr = k; if (!S.tocando) montarPainel(); } else if (!c) $("#st-tr-alvo strong").textContent = `Novo corte em ${tempoTxt(S.t)}`; }
 function moverAgulha(seguir = true) { alvoTrMudou(); const x = S.t * S.px; $("#st-agulha").style.transform = `translateX(${x}px)`; $("#st-tempo").textContent = `${tempoTxt(S.t)} / ${tempoTxt(duracao())}`; if (seguir && S.tocando && (x > rolagem.scrollLeft + rolagem.clientWidth - 40 || x < rolagem.scrollLeft)) rolagem.scrollLeft = x - 60; }
-function pontosIma(ignorar) { const p = [0, S.t]; for (const [, i] of itens()) if (!ignorar.has(i.id)) p.push(i.ini, i.ini + i.dur); return p; }
+function pontosIma(ignorar) { const p = [0, S.t, ...(S.p.marcadores || [])]; for (const [, i] of itens()) if (!ignorar.has(i.id)) p.push(i.ini, i.ini + i.dur); return p; }
 const imantar = (t, pts) => { if (!$("#st-ima").checked) return t; const m = 8 / S.px; let m0 = m, r = t; for (const p of pts) if (Math.abs(p - t) < m0) { m0 = Math.abs(p - t); r = p; } return r; };
 const compativel = (fx, i) => ({ video: ["video", "imagem", "forma"], texto: ["texto"], legenda: ["legenda"], efeito: ["efeito"], audio: ["audio"] }[fx.tipo] || []).includes(i.tipo);
 let arr = null;
@@ -582,6 +663,7 @@ addEventListener("keydown", (ev) => {
   if (k === " ") return faz(() => (S.tocando ? pausar() : tocar())); if (k === "j") return faz(() => vaivem(-1)); if (k === "l") return faz(() => vaivem(1)); if (k === "k") return faz(pausar);
   if (sh && k === "z") return faz(ajustarZoom); if (k === "q") return faz(() => aparar("esq")); if (k === "w") return faz(() => aparar("dir")); if (k === "[") return faz(() => aparar("esq", false)); if (k === "]") return faz(() => aparar("dir", false));
   if (k === "a") return faz(() => ferramenta("sel")); if (k === "b") return faz(() => ferramenta("lamina")); if (k === "s") return faz(dividir); if (k === "n") return faz(() => { $("#st-ima").checked = !$("#st-ima").checked; avisar($("#st-ima").checked ? "Ímã ligado" : "Ímã desligado"); }); if (k === "m") return faz(marcador);
+  if (k === "f" && sh) return faz(() => { const i = alvoAgulha(); if (i?.tipo === "video") congelarQuadro(i).catch((e) => avisar(e.message)); else avisar("Coloque a agulha sobre um vídeo"); });
   if ((k === "delete" || k === "backspace") && pontoAtual()) return faz(apagarPonto);
   if (k === "escape" && S.ponto) return faz(() => { S.ponto = null; montarInspetor(); desenharLinha(); });
   if (k === "delete" || k === "backspace") return faz(sh ? apagarJuntando : apagar); if (k === "escape") return faz(() => { ferramenta("sel"); S.sel.clear(); selecaoMudou(); });
@@ -621,7 +703,8 @@ function controlesEstilo(est, por) {
     sec("Layout", escolha("Alinhar", [["centro", "Centro"], ["esquerda", "Esquerda"], ["direita", "Direita"]], est().alinhamento, (v) => por("alinhamento", v)), n("espacamento", "Espaço letras", -5, 40), n("entrelinha", "Entrelinhas", 70, 220), n("largura", "Largura", 100, 3000, 10)),
     sec("Contorno e sombra", n("contorno", "Contorno", 0, 40), corCampo("Cor", est().contorno_cor, (v) => por("contorno_cor", v)), marca("Sombra", est().sombra, (v) => por("sombra", v)), corCampo("Cor", est().sombra_cor, (v) => por("sombra_cor", v)), n("sombra_x", "Sombra X", -40, 40), n("sombra_y", "Sombra Y", -40, 40), n("sombra_blur", "Suavidade", 0, 40), n("sombra_opac", "Força", 0, 100)),
     sec("Fundo e borda", marca("Caixa de fundo", est().fundo, (v) => por("fundo", v)), corCampo("Cor", est().fundo_cor, (v) => por("fundo_cor", v)), n("fundo_opac", "Opacidade", 0, 100), n("fundo_raio", "Arredondar", 0, 80), n("fundo_pad", "Margem", 0, 80), n("borda", "Borda", 0, 20), corCampo("Cor borda", est().borda_cor, (v) => por("borda_cor", v))),
-    sec("Destaque de palavras", escolha("Destacar", [["nenhum", "Nada"], ["palavra", "Palavra falada"], ["importantes", "Palavras importantes"], ["ambos", "Falada e importantes"]], est().destaque, (v) => por("destaque", v)), corCampo("Cor", est().cor_destaque, (v) => por("cor_destaque", v)), marca("Caixa na palavra falada", est().destaque_caixa, (v) => por("destaque_caixa", v)), marca("Uma palavra por vez", est().palavra_a_palavra, (v) => por("palavra_a_palavra", v))),
+    sec("Destaque de palavras", escolha("Destacar", REGRAS, est().destaque, (v) => por("destaque", v)), corCampo("Cor", est().cor_destaque, (v) => por("cor_destaque", v)), n("destaque_escala", "Tamanho", 50, 200), marca("Caixa na palavra falada", est().destaque_caixa, (v) => por("destaque_caixa", v)), marca("Uma palavra por vez", est().palavra_a_palavra, (v) => por("palavra_a_palavra", v))),
+    sec("Sublinhado e relevo 3D", marca("Sublinhar", est().sublinhado, (v) => por("sublinhado", v)), corCampo("Cor", est().sublinhado_cor, (v) => por("sublinhado_cor", v)), n("sublinhado_esp", "Espessura", 2, 40), n("relevo", "Relevo 3D", 0, 40), corCampo("Cor do relevo", est().relevo_cor, (v) => por("relevo_cor", v)), marca("Tirar a pontuação", est().sem_pontuacao, (v) => por("sem_pontuacao", v))),
     sec("Animação", escolha("Entrada", ANIM, est().entrada, (v) => por("entrada", v)), escolha("Saída", ANIM, est().saida, (v) => por("saida", v)), n("tempo_anim", "Tempo (s)", .03, 1.5, .01))];
 }
 function alinhar(i, modo) { antes(); const b = S.caixas.get(i.id), W = S.p.largura, H = S.p.altura, w = b?.w ?? 0, h = b?.h ?? 0, m = { e: ["x", w / 2], c: ["x", W / 2], d: ["x", W - w / 2], t: ["y", h / 2], m: ["y", H / 2], b: ["y", H - h / 2] }[modo]; porP(i, m[0], arred(m[1], 1)); mudou(); atualizarCampos(); }
@@ -701,6 +784,42 @@ function rqAplicar() {
   $("#rq-centro").addEventListener("click", () => { const r = RQ.r; RQ.r = { ...r, x: (1 - r.w) / 2, y: (1 - r.h) / 2 }; rqDesenhar(); });
   sobre.addEventListener("dblclick", () => { const o = !cap() && sel1(); if (o?.tipo === "video") abrirReenquadrar(o); });
 }
+/* ---------- Ferramentas trazidas do ViralCutter e do Drift ---------- */
+const REGRAS = [["nenhum", "Nada"], ["palavra", "Palavra falada"], ["falado", "Já faladas (karaokê)"], ["importantes", "Palavras importantes"], ["ambos", "Falada e importantes"], ["primeira", "Primeira palavra"], ["ultima", "Última palavra"], ["alternadas", "Uma sim, outra não"]];
+function btnTrab(txt, fn, cls = "botao") { const b = btn(txt, async () => { if (b.disabled) return; const t0 = b.textContent; b.disabled = true; b.textContent = "Trabalhando…"; try { await fn(b); } catch (e) { avisar(e.message); } finally { b.disabled = false; b.textContent = t0; } }, cls); return b; }
+async function enquadrar(i, modo, b) {
+  await salvar(); const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/rostos`, { projeto: S.p, item: i.id, t: S.t, modo });
+  antes(); S.p = r.projeto; mudou(true); montarCabecas(); avisar(modo === "dois" ? "Tela dividida: uma pessoa em cima e outra embaixo" : modo === "fala" ? "O vídeo agora segue quem está falando" : "O vídeo agora mostra o rosto no centro");
+}
+async function congelarQuadro(i, b) { // como no Drift: o vídeo para numa imagem e tudo depois anda para a frente
+  if (S.t <= i.ini + .02 || S.t >= i.ini + i.dur - .02) throw new Error("Coloque a agulha sobre o vídeo, no quadro que quer congelar");
+  const m = S.p.midias[i.midia], fonte = (i.entrada || 0) + (S.t - i.ini) * (i.velocidade || 1), d = 1.5;
+  const img = await api("POST", "/api/estudio/congelar", { raiz: m.raiz, rel: m.rel, t: fonte }); S.p.midias[img.id] = img; antes();
+  const t = arred(S.t), [f] = achar(i.id);
+  for (const fx of S.p.faixas) { const novos = []; for (const x of fx.itens) {
+    if (x.ini >= t - .001) { x.ini = arred(x.ini + d); novos.push(x); continue; }
+    if (x.ini + x.dur > t + .001) { if ((fx.tipo === "audio" && (x.categoria || "efeito") === "musica") || x.tipo === "texto") { x.dur = arred(x.dur + d); novos.push(x); continue; } /* música e títulos continuam durante a pausa */ const [a, c] = partir(x, t); c.ini = arred(c.ini + d); novos.push(a, c); continue; }
+    novos.push(x); } fx.itens = novos; }
+  const parado = { id: nid(), tipo: "imagem", nome: "Quadro congelado", midia: img.id, ini: t, dur: d, t: clonar(i.t), kf: {}, ajustes: clonar(i.ajustes || {}), filtro: i.filtro ? clonar(i.filtro) : undefined };
+  for (const p0 of Object.keys(i.kf || {})) parado.t[p0] = arred(val(i, p0, t - i.ini), 4);
+  f.itens.push(parado); S.sel = new Set([parado.id]); S.p.marcadores = (S.p.marcadores || []).map((x) => (x >= t ? arred(x + d) : x)); mudou(true); avisar("Quadro congelado por 1,5 s. Arraste a borda para mudar o tempo");
+}
+function controlesEfeitoAudio(b) {
+  const lista = S.fxAudio || [], grupos = [...new Set(lista.map((x) => x.grupo))], sel = el("select", { "aria-label": "Efeito de áudio" }, el("option", { value: "" }, "Sem efeito"), ...grupos.map((gp) => el("optgroup", { label: gp }, ...lista.filter((x) => x.grupo === gp).map((x) => el("option", { value: x.id }, x.nome)))));
+  sel.value = b.efeito_audio || ""; sel.addEventListener("change", () => { antes(); if (sel.value) b.efeito_audio = sel.value; else delete b.efeito_audio; mudou(); });
+  const ouvir = btnTrab("Ouvir com o efeito", async () => { const m = S.p.midias[b.midia]; if (!m) return; const u = lim(S.t - b.ini, 0, Math.max(0, b.dur - .5)); const r = await fetch("/api/estudio/ouvir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raiz: m.raiz, rel: m.rel, entrada: (b.entrada || 0) + u * (b.velocidade || 1), dur: Math.min(6, b.dur - u), vel: b.velocidade || 1, efeito: sel.value || null }) }); if (!r.ok) throw new Error((await r.json()).erro); const a = new Audio(URL.createObjectURL(await r.blob())); a.volume = .9; await a.play(); });
+  return [linha("Efeito", sel), ouvir, el("p", { class: "dica" }, "Toca 6 segundos a partir da agulha, igual ao vídeo final.")];
+}
+async function marcarBatidas(b) {
+  const m = S.p.midias[b.midia]; if (!m) return; const r = await api("POST", "/api/estudio/batidas", { raiz: m.raiz, rel: m.rel, entrada: b.entrada || 0, dur: b.dur, vel: b.velocidade || 1 });
+  if (!r.batidas.length) throw new Error("Não encontrei um ritmo claro neste som"); antes(); const l = S.p.marcadores ||= [];
+  for (const t of r.batidas) { const x = arred(b.ini + t); if (!l.some((y) => Math.abs(y - x) < .05)) l.push(x); } l.sort((a, c) => a - c); $("#st-ima").checked = true; mudou(); avisar(`${r.batidas.length} batidas marcadas (${r.bpm} BPM)`);
+}
+function botaoLut() {
+  const inp = el("input", { type: "file", accept: ".cube", hidden: "" });
+  inp.addEventListener("change", async () => { const a = inp.files[0]; if (!a) return; try { const r = await fetch(`/api/estudio/luts?nome=${encodeURIComponent(a.name)}`, { method: "POST", body: a }), d = await r.json(); if (!r.ok) throw new Error(d.erro); S.filtros = d; montarInspetor(); avisar("LUT adicionada à lista de filtros"); } catch (e) { avisar(e.message); } inp.value = ""; });
+  return el("div", { class: "st-botoes" }, btn("Enviar LUT (.cube)", () => inp.click()), inp);
+}
 function montarInspetor() {
   vivos = []; const c = $("#st-insp"); if (cap()) { inspetorCapa(c); return; } if (S.ponto && (!S.sel.has(S.ponto.id) || !pontoAtual())) S.ponto = null;
   const l = selecionados(), i = l.length === 1 ? l[0] : null;
@@ -709,7 +828,9 @@ function montarInspetor() {
   if (!i && legs.length !== l.length) { c.replaceChildren(el("h2", {}, `${l.length} elementos`), el("p", { class: "dica" }, "Use Dividir, Duplicar ou Apagar na timeline.")); return; }
   const b = i || legs[0], blocos = [el("h2", {}, i ? `${ROTULOS[i.tipo]}` : `${l.length} textos selecionados`)];
   if (i?.tipo === "video") blocos.push(sec("", btn("Reenquadrar vídeo", () => abrirReenquadrar(i), "botao principal rq-abrir"), el("p", { class: "dica" }, "Mostre as laterais que ficaram de fora."),
-    i.mudo ? el("p", { class: "dica" }, "O som deste vídeo está desligado ou já foi separado.") : btn("Separar áudio", () => separarAudio(i), "botao rq-abrir")));
+    i.mudo ? el("p", { class: "dica" }, "O som deste vídeo está desligado ou já foi separado.") : btn("Separar áudio", () => separarAudio(i), "botao rq-abrir")),
+    sec("Enquadramento automático", el("div", { class: "st-botoes" }, btnTrab("Seguir o rosto", (b) => enquadrar(i, "um", b)), btnTrab("Seguir quem fala", (b) => enquadrar(i, "fala", b)), btnTrab("Tela dividida (2 pessoas)", (b) => enquadrar(i, "dois", b))), el("p", { class: "dica" }, "Seguir quem fala: com duas ou mais pessoas, o vídeo pula para quem está com a palavra, pelo movimento da boca e pela voz. Seguir o rosto e a tela dividida usam o momento da agulha."),
+      btnTrab("Congelar quadro na agulha", (b) => congelarQuadro(i, b))));
   if (i) blocos.push(secTempo(i));
   if (["video", "imagem", "forma"].includes(b.tipo)) {
     blocos.push(sec("Posição e tamanho", campoT(b, "x", "X", { min: -S.p.largura, max: S.p.largura * 2 }), campoT(b, "y", "Y", { min: -S.p.altura, max: S.p.altura * 2 }), campoT(b, "escala", "Escala", { min: .05, max: 5, step: .01 }), campoT(b, "rot", "Rotação", { min: -180, max: 180 }), campoT(b, "opac", "Opacidade", { min: 0, max: 100 }), campoT(b, "w", "Largura", { min: 10, max: S.p.largura * 2 }), campoT(b, "h", "Altura", { min: 10, max: S.p.altura * 2 }),
@@ -721,9 +842,9 @@ function montarInspetor() {
         sec("Recorte", campoT(b, "cl", "Esquerda", { min: 0, max: .9, step: .005 }), campoT(b, "cr", "Direita", { min: 0, max: .9, step: .005 }), campoT(b, "ct", "Topo", { min: 0, max: .9, step: .005 }), campoT(b, "cb", "Base", { min: 0, max: .9, step: .005 })));
       const fil = () => b.filtro || {}, aj = (k, rot, a, z) => campo(rot, { get: () => b.ajustes?.[k] ?? 0, set: (v) => { (b.ajustes ||= {})[k] = v; }, min: a, max: z });
       blocos.push(sec("Transição de entrada", escolha("Tipo", TRANS, b.transicao?.tipo || "corte", (v) => { b.transicao = { tipo: v, dur: b.transicao?.dur ?? .4 }; }), campo("Duração", { get: () => b.transicao?.dur ?? .4, set: (v) => { b.transicao = { tipo: b.transicao?.tipo || "corte", dur: v }; }, min: .1, max: 2, step: .05 })),
-        sec("Cor", escolha("Filtro", [["", "Igual ao projeto"], ...S.filtros.map((f) => [f.id, f.nome])], fil().nome || "", (v) => { b.filtro = v ? { nome: v, forca: fil().forca ?? 100 } : null; }), campo("Intensidade", { get: () => fil().forca ?? 100, set: (v) => { if (b.filtro) b.filtro.forca = v; } }), aj("brilho", "Brilho", -60, 60), aj("contraste", "Contraste", -60, 60), aj("saturacao", "Saturação", -100, 100), aj("temperatura", "Temperatura", -100, 100), aj("desfoque", "Desfoque", 0, 60)));
+        sec("Cor", escolha("Filtro", [["", "Igual ao projeto"], ...S.filtros.map((f) => [f.id, f.nome])], fil().nome || "", (v) => { b.filtro = v ? { nome: v, forca: fil().forca ?? 100 } : null; }), campo("Intensidade", { get: () => fil().forca ?? 100, set: (v) => { if (b.filtro) b.filtro.forca = v; } }), aj("brilho", "Brilho", -60, 60), aj("contraste", "Contraste", -60, 60), aj("saturacao", "Saturação", -100, 100), aj("temperatura", "Temperatura", -100, 100), aj("matiz", "Matiz", -180, 180), aj("nitidez", "Nitidez", 0, 100), aj("vinheta", "Vinheta", 0, 100), aj("desfoque", "Desfoque", 0, 60), botaoLut()));
     } else blocos.push(sec("Aparência", corCampo("Cor", b.cor, (v) => { b.cor = v; }), campo("Opacidade", { get: () => b.cor_opac ?? 100, set: (v) => { b.cor_opac = v; } }), campo("Arredondar", { get: () => b.raio ?? 0, set: (v) => { b.raio = v; }, max: 200 }), campo("Borda", { get: () => b.borda ?? 0, set: (v) => { b.borda = v; }, max: 40 }), corCampo("Cor borda", b.borda_cor, (v) => { b.borda_cor = v; })));
-    if (b.tipo === "video") blocos.push(sec("Som e velocidade", campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), marca("Sem som", b.mudo, (v) => { b.mudo = v; }), campo("Velocidade", { get: () => b.velocidade ?? 1, set: (v) => { const f = (b.velocidade ?? 1) / v; b.velocidade = v; b.dur = arred(b.dur * f); }, min: .25, max: 4, step: .05 })));
+    if (b.tipo === "video") blocos.push(sec("Som e velocidade", campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), marca("Sem som", b.mudo, (v) => { b.mudo = v; }), campo("Velocidade", { get: () => b.velocidade ?? 1, set: (v) => { const f = (b.velocidade ?? 1) / v; b.velocidade = v; b.dur = arred(b.dur * f); }, min: .25, max: 4, step: .05 }), ...controlesEfeitoAudio(b)));
   } else if (b.tipo === "legenda" || b.tipo === "texto") {
     const t = el("textarea", { "aria-label": "Texto" }); t.value = b.texto;
     t.addEventListener("change", () => { antes(); b.texto = t.value; if (b.palavras) { const ps = t.value.split(/\s+/).filter(Boolean), tot = ps.reduce((s, p) => s + p.length + 1, 0) || 1; let pos = 0; b.palavras = ps.map((p) => { const d = b.dur * (p.length + 1) / tot, w = { p, ini: arred(pos), fim: arred(pos + d) }; pos += d; return w; }); } mudou(); desenharLinha(); });
@@ -742,7 +863,9 @@ function montarInspetor() {
   } else if (b.tipo === "efeito") {
     blocos.push(sec("Efeito", escolha("Tipo", EFEITOS, b.efeito, (v) => { b.efeito = v; }), campo("Força", { get: () => b.forca ?? 1, set: (v) => { b.forca = v; }, min: 0, max: b.efeito === "tremor" ? 30 : 1, step: b.efeito === "tremor" ? .5 : .01 }), b.efeito === "filtro" ? escolha("Filtro", S.filtros.map((f) => [f.id, f.nome]), b.filtro, (v) => { b.filtro = v; }) : null, b.efeito === "progresso" ? corCampo("Cor", b.cor, (v) => { b.cor = v; }) : null));
   } else if (b.tipo === "audio") {
-    blocos.push(sec("Áudio", el("p", {}, b.nome), escolha("Tipo", [["efeito", "Efeito sonoro"], ["musica", "Música de fundo"], ["voz", "Voz"]], b.categoria || "efeito", (v) => { b.categoria = v; }), campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), campo("Entrada suave", { get: () => b.fade_in ?? 0, set: (v) => { b.fade_in = v; }, max: 10, step: .1 }), campo("Saída suave", { get: () => b.fade_out ?? 0, set: (v) => { b.fade_out = v; }, max: 10, step: .1 })));
+    blocos.push(sec("Áudio", el("p", {}, b.nome), escolha("Tipo", [["efeito", "Efeito sonoro"], ["musica", "Música de fundo"], ["voz", "Voz"]], b.categoria || "efeito", (v) => { b.categoria = v; }), campo("Volume", { get: () => b.volume ?? 100, set: (v) => { b.volume = v; }, max: 200 }), campo("Entrada suave", { get: () => b.fade_in ?? 0, set: (v) => { b.fade_in = v; }, max: 10, step: .1 }), campo("Saída suave", { get: () => b.fade_out ?? 0, set: (v) => { b.fade_out = v; }, max: 10, step: .1 })), sec("Efeito de áudio", ...controlesEfeitoAudio(b)),
+      sec("Ritmo", btnTrab("Marcar as batidas na timeline", (x) => marcarBatidas(b, x)), el("p", { class: "dica" }, "Coloca marcadores em cada batida. Com o ímã ligado, os cortes grudam no ritmo."),
+        (b.categoria || "efeito") === "musica" ? marca("Abaixar a música quando alguém fala", S.p.global.abaixar_musica, (v) => { S.p.global.abaixar_musica = v; }) : null));
   }
   c.replaceChildren(...blocos);
 }
@@ -791,8 +914,39 @@ const MODELOS_LEGENDA = [
   ["Faixa preta", { fonte: "Kanit-Black", tamanho: 56, cor: "#FFFFFF", cor_destaque: "#FFC933", contorno: 0, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: true, fundo_cor: "#101010", fundo_opac: 88, fundo_raio: 14, borda: 0, sombra: false, entrada: "subir" }],
   ["Pincel", { fonte: "Caveat-Brush", tamanho: 86, cor: "#FFFFFF", cor_destaque: "#5AD1B3", contorno: 6, maiusculas: false, destaque: "importantes", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "fade" }],
   ["Arcade", { fonte: "Press-Start-2P", tamanho: 38, cor: "#FFFFFF", cor_destaque: "#39FF88", contorno: 5, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: false, entrada: "digitando" }],
+  // Packs de legenda inspirados no Drift: a própria regra decide quais palavras mudam
+  ["Hormozi", { fonte: "Anton", tamanho: 92, cor: "#FFFFFF", cor_destaque: "#FF2D2D", contorno: 6, maiusculas: true, destaque: "primeira", destaque_escala: 115, destaque_caixa: false, palavra_a_palavra: false, sombra: true, sombra_y: 6, sombra_blur: 10, entrada: "carimbo", tempo_anim: .12 }],
+  ["Karaokê pop", { fonte: "Montserrat-Black", tamanho: 80, cor: "#FFFFFF", cor_destaque: "#FFD400", contorno: 5, maiusculas: true, destaque: "falado", destaque_escala: 112, destaque_caixa: false, palavra_a_palavra: false, sombra: true, entrada: "fade" }],
+  ["Karaokê caixa", { fonte: "Inter-ExtraBold", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#22C55E", contorno: 3, maiusculas: false, destaque: "palavra", destaque_caixa: true, palavra_a_palavra: false, sombra: true, entrada: "fade" }],
+  ["Alternado", { fonte: "Montserrat-Black", tamanho: 78, cor: "#FFFFFF", cor_destaque: "#FF3B30", contorno: 4, maiusculas: true, destaque: "alternadas", destaque_caixa: false, palavra_a_palavra: false, sombra: true, entrada: "subir" }],
+  ["Frase em bloco", { fonte: "Montserrat-Black", tamanho: 66, cor: "#141414", cor_destaque: "#141414", contorno: 0, maiusculas: false, destaque: "nenhum", destaque_caixa: false, palavra_a_palavra: false, fundo: true, fundo_cor: "#FFC400", fundo_opac: 100, fundo_raio: 10, fundo_pad: 14, sombra: false, entrada: "pop" }],
+  ["Sublinhado", { fonte: "Archivo-Black", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#FFFFFF", contorno: 3, maiusculas: false, destaque: "nenhum", destaque_caixa: false, palavra_a_palavra: false, sublinhado: true, sublinhado_cor: "#E62828", sublinhado_esp: 8, sombra: true, entrada: "direita" }],
+  ["Volumoso", { fonte: "Archivo-Black", tamanho: 72, cor: "#FFFFFF", cor_destaque: "#FFC933", contorno: 4, maiusculas: true, destaque: "primeira", destaque_escala: 135, destaque_caixa: false, palavra_a_palavra: false, sombra: true, sombra_y: 6, sombra_blur: 0, sombra_opac: 90, entrada: "cair" }],
+  ["Retrô 3D", { fonte: "Bungee", tamanho: 64, cor: "#FFFFFF", cor_destaque: "#FFD65A", contorno: 3, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, efeito_texto: "por_do_sol", relevo: 10, relevo_cor: "#3C1E5A", sombra: false, entrada: "pop" }],
+  ["Sem pontuação", { fonte: "Poppins-Black", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#5AD1B3", contorno: 6, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, sem_pontuacao: true, sombra: true, entrada: "pop" }],
 ];
-function modeloEm(p, m) { const base = { fundo: false, borda: 0, espacamento: 0, saida: "nenhuma", sombra_cor: "#000000", sombra_x: 0, sombra_y: 4, sombra_blur: 6, sombra_opac: 60 }; p.global.legenda = { ...p.global.legenda, ...base, ...m }; p.faixas.forEach((f) => f.itens.forEach((i) => { if (i.tipo === "legenda") i.estilo = {}; })); }
+/* Packs de texto do Drift, refeitos com as fontes do Clipador: cada um já vem com animação. */
+const PACKS_TEXTO = [
+  ["Título", "Título principal", { fonte: "Montserrat-Black", tamanho: 96, contorno: 2, sombra: true, sombra_y: 6, sombra_blur: 16, sombra_opac: 45, entrada: "subir", saida: "encolher", tempo_anim: .5 }],
+  ["Faixa inferior", "Ana Souza · Convidada", { fonte: "Poppins-Bold", tamanho: 48, alinhamento: "esquerda", fundo: true, fundo_cor: "#000000", fundo_opac: 63, fundo_pad: 12, fundo_raio: 6, entrada: "direita", saida: "esquerda", tempo_anim: .5 }],
+  ["Citação", "Palavras que ficam", { fonte: "Pacifico", tamanho: 64, efeito_texto: "brilho", efeito_forca: 35, entrada: "desfocar", saida: "fade", tempo_anim: .7 }],
+  ["Impacto", "PARA TUDO", { fonte: "Anton", tamanho: 124, contorno: 4, efeito_texto: "fogo", relevo: 10, relevo_cor: "#1E1E1E", sombra: true, sombra_y: 8, sombra_blur: 14, entrada: "carimbo", saida: "encolher", tempo_anim: .35 }],
+  ["Pop", "Notícia boa!", { fonte: "Fredoka-Bold", tamanho: 84, contorno: 9, efeito_texto: "doce", entrada: "quique", saida: "encolher", tempo_anim: .6 }],
+  ["Neon", "NOITE NEON", { fonte: "Bebas-Neue", tamanho: 116, cor: "#EBFFFF", cor_destaque: "#00DCFF", espacamento: 4, efeito_texto: "neon", entrada: "piscar", saida: "fade", tempo_anim: .9 }],
+  ["Manuscrito", "Com carinho", { fonte: "Caveat-Brush", tamanho: 90, sombra: true, sombra_y: 4, sombra_blur: 6, entrada: "digitando", saida: "fade", tempo_anim: .6 }],
+  ["Ouro", "PADRÃO OURO", { fonte: "Alfa-Slab-One", tamanho: 88, contorno: 1, contorno_cor: "#785A14", espacamento: 4, efeito_texto: "ouro", sombra: true, sombra_y: 6, sombra_blur: 14, sombra_opac: 50, entrada: "fade", saida: "fade", tempo_anim: .6 }],
+  ["Cromado", "CROMADO", { fonte: "Bungee", tamanho: 100, contorno: 1, contorno_cor: "#2A2A2A", efeito_texto: "cromado", sombra: true, sombra_y: 5, sombra_blur: 8, sombra_opac: 50, entrada: "zoom", saida: "encolher", tempo_anim: .5 }],
+  ["Retrô 3D", "MUITO DEMAIS", { fonte: "Bungee", tamanho: 100, contorno: 3, efeito_texto: "por_do_sol", relevo: 16, relevo_cor: "#3C1E5A", entrada: "cair", saida: "encolher", tempo_anim: .5 }],
+  ["Glitch", "SINAL PERDIDO", { fonte: "Sora-ExtraBold", tamanho: 88, efeito_texto: "glitch", entrada: "glitch", saida: "glitch", tempo_anim: .3 }],
+  ["Quadrinho", "KAPOW!", { fonte: "Bangers", tamanho: 104, cor: "#FFD640", contorno: 6, relevo: 8, relevo_cor: "#000000", entrada: "carimbo", saida: "pop", tempo_anim: .35 }],
+  ["Gelo", "CONGELADO", { fonte: "Bebas-Neue", tamanho: 116, contorno: 2, contorno_cor: "#8CD2FF", espacamento: 4, efeito_texto: "gelo", entrada: "desfocar", saida: "encolher", tempo_anim: .7 }],
+  ["Adesivo", "Adesivo!", { fonte: "Titan-One", tamanho: 80, cor: "#FF3B30", fundo: true, fundo_cor: "#FFFFFF", fundo_opac: 100, fundo_pad: 22, fundo_raio: 40, borda: 6, borda_cor: "#141414", sombra: true, sombra_y: 6, sombra_blur: 0, sombra_opac: 35, entrada: "girar", saida: "encolher", tempo_anim: .5 }],
+  ["Arco-íris", "Que colorido", { fonte: "Poppins-Black", tamanho: 92, contorno: 3, efeito_texto: "arcoiris", entrada: "cair", saida: "encolher", tempo_anim: .5 }],
+  ["Holográfico", "Suave e sonhador", { fonte: "Montserrat-Black", tamanho: 80, efeito_texto: "holografico", entrada: "desfocar", saida: "fade", tempo_anim: .6 }],
+  ["Cinema", "O COMEÇO", { fonte: "Bebas-Neue", tamanho: 78, cor: "#F2F2F2", espacamento: 14, efeito_texto: "brilho", efeito_forca: 30, entrada: "desfocar", saida: "fade", tempo_anim: 1 }],
+  ["Sublinhado", "Sublinhe isto", { fonte: "Archivo-Black", tamanho: 80, contorno: 2, sublinhado: true, sublinhado_cor: "#E62828", entrada: "direita", saida: "esquerda", tempo_anim: .4 }],
+];
+function modeloEm(p, m) { const base = { fundo: false, borda: 0, espacamento: 0, saida: "nenhuma", sombra_cor: "#000000", sombra_x: 0, sombra_y: 4, sombra_blur: 6, sombra_opac: 60, destaque_escala: 100, sublinhado: false, relevo: 0, efeito_texto: "nenhum", sem_pontuacao: false, tempo_anim: .15 }; p.global.legenda = { ...p.global.legenda, ...base, ...m }; p.faixas.forEach((f) => f.itens.forEach((i) => { if (i.tipo === "legenda") i.estilo = {}; })); }
 function aplicarModeloLegenda(m) { antes(); modeloEm(S.p, m); mudou(true); avisar("Modelo aplicado a todas as legendas"); }
 const cartaoModelo = ([nome, m]) => { const b = cartaoPrevia(btn(nome, null, "st-modelo"), () => { const l = textoDaPrevia(), ini = l?.tipo === "legenda" ? l.ini : S.t; return { chave: `modelo:${nome}:${ini}`, nome: `Modelo ${nome}`, ini, fim: ini + 2.6, mudar: (p) => modeloEm(p, m), aplicar: () => aplicarModeloLegenda(m) }; }); Object.assign(b.style, { fontFamily: fonteCss(m.fonte), color: m.fundo ? m.cor : m.cor_destaque, background: m.fundo ? m.fundo_cor : "#0b1518" }); return b; };
 /* ---------- Modelos de título, como no CapCut ---------- */
@@ -817,6 +971,19 @@ function secTitulos() {
   if (modelosTitulo) encher(modelosTitulo); else { grade.append(el("p", { class: "dica" }, "Carregando modelos")); fetch("/api/estudio/modelos-titulo").then((r) => r.json()).then((l) => { modelosTitulo = l; encher(l); }).catch(() => grade.replaceChildren(el("p", { class: "dica" }, "Não foi possível carregar os modelos."))); }
   return sec("Modelos de título", dica, grade);
 }
+function vestirPack(i, est) { i.estilo = { ...clonar(PAD_EST), largura: 960, ...clonar(est) }; }
+function secPacks() {
+  const W = S.p.largura, H = S.p.altura, alvo = () => { const s0 = sel1(); return s0?.tipo === "texto" ? s0 : null; };
+  const novo = (txt, est) => { const i = { tipo: "texto", nome: "Texto", dur: 3, texto: txt, estilo: {}, t: { x: W / 2, y: H * .42, escala: 1, rot: est.fonte === "Titan-One" ? -4 : 0, opac: 100 }, kf: {} }; vestirPack(i, est); return i; };
+  const cartao = ([nome, amostra, est]) => { const b = btn(nome, null, "st-modelo st-pack");
+    Object.assign(b.style, { fontFamily: fonteCss(est.fonte), color: est.fundo ? est.cor : est.cor || "#FFFFFF", background: est.fundo ? est.fundo_cor : "", letterSpacing: est.espacamento ? `${Math.min(4, est.espacamento / 4)}px` : "", WebkitTextStroke: est.contorno ? `1px ${est.contorno_cor || "#000"}` : "", textShadow: est.relevo ? `2px 2px 0 ${est.relevo_cor}, 3px 3px 0 ${est.relevo_cor}` : est.efeito_texto === "neon" ? `0 0 6px ${est.cor_destaque}, 0 0 14px ${est.cor_destaque}` : "", textDecoration: est.sublinhado ? `underline ${est.sublinhado_cor} 3px` : "" });
+    if (["ouro", "fogo", "gelo", "cromado", "por_do_sol", "doce", "holografico", "arcoiris"].includes(est.efeito_texto)) b.dataset.fx = est.efeito_texto;
+    return cartaoPrevia(b, () => { const a = alvo(), ini = a ? a.ini : S.t;
+      return { chave: `pack:${nome}:${a?.id || S.t}`, nome: `Texto ${nome}`, ini, fim: ini + 1.8, fps: 16,
+        mudar: (p) => { if (a) { const x = p.faixas.flatMap((f) => f.itens).find((y) => y.id === a.id); if (x) vestirPack(x, est); } else entrarNaFaixa(p, "texto", novo(amostra, est)); },
+        aplicar: () => { if (a) { antes(); vestirPack(a, est); mudou(true); selecaoMudou(); avisar(`Estilo ${nome} aplicado`); } else colocar("texto", novo(amostra, est)); } }; }); };
+  return sec("Packs de texto", el("p", { class: "dica" }, "Estilos prontos com fonte, cor e animação. Selecione um texto para trocar o estilo dele."), el("div", { class: "st-modelos st-packs-texto" }, ...PACKS_TEXTO.map(cartao)));
+}
 function pTexto() {
   const W = S.p.largura, H = S.p.altura, item = (txt, est) => ({ tipo: "texto", nome: "Texto", dur: 4, texto: txt, estilo: est, t: { x: W / 2, y: H / 2, escala: 1, rot: 0, opac: 100 }, kf: {} });
   const tx = (nome, txt, est) => cartaoPrevia(btn(nome, null), () => ({ chave: `texto:${nome}:${S.t}`, nome, ini: S.t, fim: S.t + 1.2, fps: 16, mudar: (p) => entrarNaFaixa(p, "texto", item(txt, est)), aplicar: () => colocar("texto", item(txt, est)) }));
@@ -824,7 +991,7 @@ function pTexto() {
   const gerar = btn("Gerar legendas de novo", (ev) => confirmar(ev.currentTarget, "Trocar todas", () => trabalho("legendas", { projeto: S.p }, gerar, () => avisar("Legendas geradas"))));
   return [el("h2", {}, "Textos e elementos"), el("div", { class: "st-botoes" }, tx("Texto", "Seu texto aqui", { tamanho: 72, contorno: 6 }), tx("Título grande", "TÍTULO", { fonte: "Anton", tamanho: 150, cor: "#FFC933", contorno: 10, entrada: "pop", tempo_anim: .25 }), tx("Faixa", "Faixa de destaque", { tamanho: 56, fundo: true, fundo_cor: "#FFC933", cor: "#141414", fundo_opac: 100 })),
     el("div", { class: "st-botoes" }, ...[["retangulo", "Retângulo"], ["circulo", "Círculo"]].map(([f, n]) => btn(n, () => colocar("video", { tipo: "forma", forma: f, nome: n, dur: 4, cor: "#FFC933", t: { x: W / 2, y: H / 2, w: 420, h: f === "circulo" ? 420 : 220, escala: 1, rot: 0, opac: 100 }, kf: {} })))),
-    secTitulos(),
+    secPacks(), secTitulos(),
     sec("Modelos de legenda", el("div", { class: "st-modelos" }, ...MODELOS_LEGENDA.map(cartaoModelo))),
     sec("Legendas", gerar, linha("Atrasar (s)", des), btn("Mover todas as legendas", () => { const d = +des.value; if (!d) return; antes(); itens().forEach(([, i]) => { if (i.tipo === "legenda") i.ini = Math.max(0, arred(i.ini + d)); }); mudou(); avisar("Sincronia ajustada"); }))];
 }
@@ -872,8 +1039,8 @@ function pEfeitos() {
 }
 
 /* ---------- Transições ---------- */
-const NOMES_TR = { dissolver: "Dissolver", preto: "Pelo preto", branco: "Clarão branco", zoom: "Zoom", esquerda: "Para a esquerda", direita: "Para a direita", cima: "Para cima", baixo: "Para baixo", chicote: "Chicote", queda: "Chicote vertical", impulso: "Impulso", giro: "Giro", glitch: "Glitch", rgb: "Cores separadas", clarao_rapido: "Clarão rápido", desfoque_rapido: "Desfoque rápido" };
-const GRUPOS_TR = [["Suaves", ["dissolver", "preto", "branco", "zoom"]], ["Deslizar", ["esquerda", "direita", "cima", "baixo"]], ["Impacto", ["chicote", "queda", "impulso", "giro", "glitch", "rgb", "clarao_rapido", "desfoque_rapido"]]];
+const NOMES_TR = { dissolver: "Dissolver", preto: "Pelo preto", branco: "Clarão branco", zoom: "Zoom", esquerda: "Para a esquerda", direita: "Para a direita", cima: "Para cima", baixo: "Para baixo", chicote: "Chicote", queda: "Chicote vertical", impulso: "Impulso", giro: "Giro", glitch: "Glitch", rgb: "Cores separadas", clarao_rapido: "Clarão rápido", desfoque_rapido: "Desfoque rápido", limpar_esquerda: "Cortina ←", limpar_direita: "Cortina →", limpar_cima: "Cortina ↑", limpar_baixo: "Cortina ↓", diagonal: "Diagonal", iris: "Íris", relogio: "Relógio", persianas: "Persianas", pixelar: "Pixelar", zoom_cruzado: "Zoom cruzado", tinta: "Tinta", luz: "Clarão de luz" };
+const GRUPOS_TR = [["Suaves", ["dissolver", "preto", "branco", "zoom"]], ["Deslizar", ["esquerda", "direita", "cima", "baixo"]], ["Cortinas", ["limpar_esquerda", "limpar_direita", "limpar_cima", "limpar_baixo", "diagonal", "persianas"]], ["Formas", ["iris", "relogio", "tinta", "pixelar"]], ["Impacto", ["chicote", "queda", "impulso", "giro", "glitch", "rgb", "clarao_rapido", "desfoque_rapido", "zoom_cruzado", "luz"]]];
 const nomeTr = (t) => NOMES_TR[t] || "Corte seco", visual = (i) => ["video", "imagem"].includes(i.tipo);
 function ehCorte(f, i) { return visual(i) && i.ini > .05 && f.itens.some((x) => x !== i && visual(x) && Math.abs(x.ini + x.dur - i.ini) < .08); }
 function listaCortes() { const m = new Map(); for (const f of S.p.faixas) if (f.tipo === "video") for (const i of f.itens) if (ehCorte(f, i)) { const k = [...m.keys()].find((t) => Math.abs(t - i.ini) < .08) ?? i.ini; m.set(k, [...(m.get(k) || []), i]); } return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([t, l]) => ({ t, itens: l })); }
@@ -993,12 +1160,38 @@ function pCenas() {
     refazerB.title = "Refazer zooms e legendas só desta cena";
     return el("li", {}, el("div", { onclick: () => { irPara(a); S.sel = new Set(itens().filter(([, i]) => i.cena === c.id).map(([, i]) => i.id)); selecaoMudou(); }, style: "cursor:pointer" }, el("strong", {}, c.nome), el("span", {}, `${tempoTxt(a)}, ${tempoTxt(b - a)}`)), btn("▲", () => moverCena(n, -1)), btn("▼", () => moverCena(n, 1)), refazerB, btn("×", () => cortarTempo([[a, b]]).catch((e) => avisar(e.message)))); }))];
 }
+const VICIOS = /^(h?ã+h*|a{2,}h*|ah+|é{2,}|e{2,}h*|eh+m*|h?u+m+|hm+|ah+n+|hã+|o{2,}|ô{2,})$/, VICIOS_MAIS = /^(né|tipo|então|assim)$/;
+function palavrasDaFala() { const ws = []; for (const [f, i] of itens()) if (i.tipo === "legenda" && !f.oculta) for (const w of (i.palavras?.length ? i.palavras : [{ p: i.texto, ini: 0, fim: i.dur }])) ws.push({ p: w.p, ini: i.ini + w.ini, fim: i.ini + w.fim }); return ws.sort((a, b) => a.ini - b.ini); }
+function cortesDaFala(limiar, vicios, mais) {
+  const ws = palavrasDaFala(), l = [], norm = (t) => String(t).toLocaleLowerCase("pt-BR").replace(/[^\p{L}]/gu, "");
+  if (limiar > 0) for (let k = 1; k < ws.length; k++) { const a = ws[k - 1].fim + .12, b = ws[k].ini - .12; if (ws[k].ini - ws[k - 1].fim >= limiar && b > a) l.push([a, b]); }
+  if (vicios) for (const w of ws) { const n0 = norm(w.p); if (VICIOS.test(n0) || (mais && VICIOS_MAIS.test(n0))) l.push([w.ini - .03, w.fim + .03]); }
+  l.sort((a, b) => a[0] - b[0]); const j = []; for (const [a, b] of l) { if (j.length && a <= j[j.length - 1][1] + .05) j[j.length - 1][1] = Math.max(j[j.length - 1][1], b); else j.push([a, b]); }
+  return j.map(([a, b]) => [arred(Math.max(0, a)), arred(b)]).filter(([a, b]) => b - a >= .08);
+}
+function secPausas() { // como o "Edit the words" do Drift: corta silêncios e vícios a partir das palavras da legenda
+  const lim0 = el("input", { type: "number", value: S.limPausa ?? .7, min: ".2", max: "5", step: ".1", "aria-label": "Pausa mínima em segundos" }), vic = el("input", { type: "checkbox", checked: "" }), mais = el("input", { type: "checkbox" }), info = el("p", { class: "dica" });
+  const contar = () => { S.limPausa = +lim0.value; const l = cortesDaFala(+lim0.value, vic.checked, mais.checked), tot = l.reduce((s0, [a, b]) => s0 + b - a, 0); info.textContent = palavrasDaFala().length ? (l.length ? `${l.length} trechos para cortar, ${String(arred(tot, 1)).replace(".", ",")} s no total.` : "Nada para cortar com essas opções.") : "Gere as legendas primeiro: o corte usa o tempo de cada palavra."; return l; };
+  [lim0, vic, mais].forEach((x) => x.addEventListener("input", contar)); contar();
+  return sec("Cortar pausas e vícios", linha("Pausa maior que (s)", lim0), el("label", { class: "marcar" }, vic, el("span", {}, "Vícios: é, ã, hum, ahn")), el("label", { class: "marcar" }, mais, el("span", {}, "Também né, tipo, então, assim")), info,
+    btnTrab("Cortar agora", async () => { const l = contar(); if (!l.length) return; await cortarTempo(l); avisar(`${l.length} trechos cortados`); contar(); }, "botao destaque"));
+}
+function secTraduzir() {
+  const sel = el("select", { "aria-label": "Idioma" }, ...(S.idiomas || []).map((x) => el("option", { value: x.id }, x.nome))); sel.value = S.idiomaTr || "en"; sel.addEventListener("change", () => { S.idiomaTr = sel.value; });
+  return sec("Traduzir legendas", el("p", { class: "dica" }, "Cria uma faixa nova com as legendas no outro idioma e esconde a original. Precisa de internet."), linha("Idioma", sel),
+    btnTrab("Traduzir", async () => { await salvar(); const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/traduzir`, { projeto: S.p, idioma: sel.value }); antes(); S.p = r.projeto; mudou(true); montarCabecas(); avisar("Legendas traduzidas. A faixa original ficou escondida."); }));
+}
+async function baixarXml() {
+  await salvar(); const r = await fetch(`/api/estudio/${S.tipo}/${S.id}/xml`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projeto: S.p }) });
+  if (!r.ok) throw new Error((await r.json()).erro); const nome = decodeURIComponent((r.headers.get("Content-Disposition") || "").split("''")[1] || "projeto.zip"), url = URL.createObjectURL(await r.blob());
+  el("a", { href: url, download: nome }).click(); setTimeout(() => URL.revokeObjectURL(url), 5000); avisar("Arquivo para o Premiere ou DaVinci baixado");
+}
 function pIa() {
   const lista = el("ul", { class: "st-lista" }), marcados = new Set(S.sug.map((s) => s.id));
   const pintarL = () => lista.replaceChildren(...S.sug.map((s) => { const c = el("input", { type: "checkbox", "aria-label": s.titulo }); c.checked = marcados.has(s.id); c.addEventListener("change", () => (c.checked ? marcados.add(s.id) : marcados.delete(s.id))); return el("li", { class: "st-sug" }, c, el("div", { onclick: () => irPara(s.t), style: "cursor:pointer" }, el("strong", {}, s.titulo)), el("p", {}, s.detalhe)); }));
   const analisar = btn("Analisar o vídeo", async () => { analisar.disabled = true; analisar.textContent = "Analisando…"; try { S.sug = (await api("POST", `/api/estudio/${S.tipo}/${S.id}/analisar`, { projeto: S.p })).sugestoes; marcados.clear(); S.sug.forEach((s) => marcados.add(s.id)); pintarL(); if (!S.sug.length) avisar("Nenhum problema encontrado"); } catch (e) { avisar(e.message); } analisar.disabled = false; analisar.textContent = "Analisar o vídeo"; }, "botao destaque");
   pintarL();
-  return [el("h2", {}, "Assistente de IA"), el("p", { class: "dica" }, "Procura zooms errados, legendas sobre rostos, pausas, ritmo e efeitos fora da fala. Nada muda até você aplicar."), analisar, lista,
+  return [el("h2", {}, "Assistente de IA"), el("p", { class: "dica" }, "Procura zooms errados, legendas sobre rostos, pausas, ritmo e efeitos fora da fala. Nada muda até você aplicar."), analisar, lista, secPausas(), secTraduzir(),
     btn("Aplicar as marcadas", async () => { const l = S.sug.filter((s) => marcados.has(s.id)); if (!l.length) return; try { const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/aplicar`, { projeto: S.p, sugestoes: l }); antes(); S.p = r.projeto; S.sug = S.sug.filter((s) => !marcados.has(s.id)); mudou(true); montarCabecas(); avisar("Correções aplicadas"); } catch (e) { avisar(e.message); } }),
     btn("Voltar à edição original da IA", (ev) => confirmar(ev.currentTarget, "Descartar minhas mudanças", async () => { const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/restaurar`, {}); antes(); S.p = r.projeto; S.sel.clear(); mudou(true); montarCabecas(); }), "botao perigo")];
 }
@@ -1011,7 +1204,8 @@ function pGlobal() {
   api("GET", "/api/estudio/presets").then(pintarP).catch(() => {});
   return [el("h2", {}, "Ajustes do vídeo inteiro"), sec("Todas as legendas", escolha("Fonte", opFontes(), L().fonte, (v) => por("fonte", v)), campo("Tamanho", { get: () => L().tamanho, set: (v) => por("tamanho", v), min: 12, max: 200 }), corCampo("Cor", L().cor, (v) => por("cor", v)), corCampo("Destaque", L().cor_destaque, (v) => por("cor_destaque", v)), escolha("Entrada", ANIM, L().entrada, (v) => por("entrada", v)), escolha("Saída", ANIM, L().saida, (v) => por("saida", v))),
     sec("Todos os textos", corCampo("Cor", "#FFFFFF", (v) => itens().forEach(([, i]) => { if (i.tipo === "texto") (i.estilo ||= {}).cor = v; })), escolha("Fonte", opFontes(), "Poppins-Bold", (v) => itens().forEach(([, i]) => { if (i.tipo === "texto") (i.estilo ||= {}).fonte = v; }))),
-    sec("Volume", vol("volume_fala", "Fala"), vol("volume_musica", "Música"), vol("volume_efeitos", "Efeitos")), sec("Zoom e movimento", campo("Força", { get: () => G.zoom_forca ?? 100, set: (v) => { G.zoom_forca = v; }, max: 200 })),
+    sec("Volume", vol("volume_fala", "Fala"), vol("volume_musica", "Música"), vol("volume_efeitos", "Efeitos"), marca("Abaixar a música quando alguém fala", G.abaixar_musica, (v) => { G.abaixar_musica = v; }), campo("Quanto abaixa", { get: () => G.abaixar_forca ?? 65, set: (v) => { G.abaixar_forca = v; }, min: 10, max: 95 })),
+    sec("Levar para outro editor", el("p", { class: "dica" }, "Baixa a timeline em XML para o Premiere Pro ou o DaVinci Resolve, com as legendas em .srt."), btnTrab("Baixar XML", baixarXml)), sec("Zoom e movimento", campo("Força", { get: () => G.zoom_forca ?? 100, set: (v) => { G.zoom_forca = v; }, max: 200 })),
     sec("Cor", escolha("Filtro", S.filtros.map((f) => [f.id, f.nome]), G.filtro?.nome || "nenhum", (v) => { G.filtro = v === "nenhum" ? null : { nome: v, forca: G.filtro?.forca ?? 100 }; })),
     sec("Transições", trans, linha("Duração", dur), btn("Usar em todas as cenas", () => { antes(); G.transicao = { tipo: trans.value, dur: +dur.value || .4 }; padTrans(G.transicao); mudou(); avisar("Transições padronizadas"); })),
     sec("Presets", nome, btn("Salvar preset", async () => { try { pintarP(await api("POST", "/api/estudio/presets", { nome: nome.value, global: conteudo() })); nome.value = ""; } catch (e) { avisar(e.message); } }), lista)];
@@ -1064,10 +1258,11 @@ $("#st-m-video").addEventListener("click", () => trocarModo("video")); $("#st-m-
 /* ---------- Exportar ---------- */
 $("#st-exportar").addEventListener("click", () => {
   const ops = cap() ? [["1280", "1280 × 720", "Tamanho do YouTube"], ["1920", "1920 × 1080", "Alta definição"], ["3840", "3840 × 2160", "4K"]] : [["720", "720p", "Mais rápido"], ["1080", "1080p", "Recomendado"], ["1440", "1440p", "Quadros maiores"], ["2160", "4K", "Só vale a pena se o vídeo original for 4K"]];
-  $("#st-dx-t").textContent = cap() ? "Exportar capa" : "Exportar vídeo"; $("#st-res").replaceChildren(...ops.map(([v, a, b], n) => el("label", {}, Object.assign(el("input", { type: "radio", name: "st-res", value: v }), { checked: n === (cap() ? 0 : 1) }), el("strong", {}, a), el("span", { class: "dica" }, b))));
+  $("#st-dx-t").textContent = cap() ? "Exportar capa" : "Exportar vídeo"; $("#st-dx-xml").hidden = cap(); $("#st-res").replaceChildren(...ops.map(([v, a, b], n) => el("label", {}, Object.assign(el("input", { type: "radio", name: "st-res", value: v }), { checked: n === (cap() ? 0 : 1) }), el("strong", {}, a), el("span", { class: "dica" }, b))));
   const orig = Object.values(S.p.midias).filter((m) => m.tipo === "video" && m.alt).sort((a, b) => b.alt - a.alt)[0], baixa = orig && Math.min(orig.lar, orig.alt) < 1080;
   $("#st-dx-nota").textContent = cap() ? "A capa também passa a ser usada neste vídeo." : `${orig ? `A live foi gravada em ${orig.lar} × ${orig.alt}. ` : ""}${baixa ? "A transmissão não chegou em Full HD, então o vídeo sai em 1080p, mas sem ganhar detalhes novos. " : ""}O arquivo final substitui o vídeo atual na agenda.`; $("#st-dlg-exportar").showModal();
 });
+$("#st-dx-xml").addEventListener("click", async () => { try { await baixarXml(); } catch (e) { avisar(e.message); } });
 $("#st-form-exportar").addEventListener("submit", async (ev) => {
   const v = +$("#st-res input:checked").value;
   try {
@@ -1101,7 +1296,7 @@ $("#tl-busca").addEventListener("input", () => { pagEscolha = 1; renderEscolha()
 async function abrirTimeline(tipo, id) {
   abrirAba("editor"); $("#tl-escolha").hidden = true; $("#st-mesa").hidden = false; $("#st-nome").textContent = "Preparando o projeto…";
   try {
-    if (!S.fontes.length) [S.fontes, S.filtros] = await Promise.all([api("GET", "/api/estudio/fontes"), api("GET", "/api/filtros")]);
+    if (!S.fontes.length) [S.fontes, S.filtros, S.fxAudio, S.idiomas] = await Promise.all([api("GET", "/api/estudio/fontes"), api("GET", "/api/filtros"), api("GET", "/api/estudio/efeitos-audio").catch(() => []), api("GET", "/api/estudio/idiomas").catch(() => [])]);
     const r = await api("GET", `/api/estudio/${tipo}/${id}`);
     videos.forEach((v) => { v.pause(); v.removeAttribute("src"); v.load(); }); videos.clear(); imagens.clear(); buffers.clear();
     Object.assign(S, { aberto: true, tipo, id, p: r.projeto, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, sujo: false, sug: [], h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, painel: "midia" });

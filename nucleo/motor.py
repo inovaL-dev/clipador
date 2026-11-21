@@ -26,6 +26,7 @@ from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_mar
 from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
+from . import ideias, potencial
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -55,7 +56,8 @@ ETAPAS = {
 _TRAVA_ARQUIVOS = threading.Lock()
 CONFIG_PADRAO = {
     "sensibilidade": "media", "duracao_min": 25, "duracao_max": 60, "modelo": "small", "idioma": "pt",
-    "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 4, "foco_auto": True, "shorts_emendados": True,
+    "corte_garantido": 3, "estilo": est.PADRAO, "montagem_auto": True, "montagem_cenas": 3, "foco_auto": True, "shorts_emendados": False,
+    "ideias": dict(ideias.PADRAO_LIGADAS),
 }
 ROTULOS_EXTRAS = {
     "manual": "Manual", "destaque": "Melhor momento", "streamer": "Reação do streamer",
@@ -102,6 +104,25 @@ class Motor:
         self.fim = threading.Event()
         self.config = {**CONFIG_PADRAO, **self._ler(self.dados / "config.json", {})}
         self.config["estilo"] = est.normalizar(self.config.get("estilo"))
+        if self.config.get("ideias_em_teste") != 1:
+            # 1.11.0: o estilo React deixa de ser o padrão de todos os vídeos e vira uma ideia em teste,
+            # que o aprendizado usa mais ou menos conforme o resultado. Desfaz a troca automática da 1.10.0.
+            if self.config.get("estilo_react") == 1 and self.config["estilo"].get("legenda") == "react":
+                self.config["estilo"] = est.normalizar({**self.config["estilo"], "legenda": est.PADRAO["legenda"]})
+            self.config["estilo"]["camera_dinamica"] = False
+            self.config.pop("estilo_react", None)
+            self.config["ideias"] = {**ideias.PADRAO_LIGADAS, **(self.config.get("ideias") or {})}
+            self.config["ideias_em_teste"] = 1
+            if (self.dados / "config.json").exists():
+                self._gravar(self.dados / "config.json", self.config)
+        if self.config.get("cortes_com_contexto") != 1:
+            # 1.9.1: os cortes passam a respeitar o assunto inteiro. Os Shorts de cenas emendadas, que picavam
+            # os momentos em pedaços de poucos segundos, ficam desligados; quem quiser liga de novo nos Ajustes.
+            self.config.update(shorts_emendados=False, cortes_com_contexto=1)
+            if self.config.get("montagem_cenas") == 4:
+                self.config["montagem_cenas"] = 3
+            if (self.dados / "config.json").exists():
+                self._gravar(self.dados / "config.json", self.config)
         if self.config["corte_garantido"] not in INTERVALOS_GARANTIDOS:
             self.config["corte_garantido"] = CONFIG_PADRAO["corte_garantido"]
         self.legenda = {"estado": "carregando", "nome": None}
@@ -114,6 +135,9 @@ class Motor:
         self.postagem = Postagem(self)
         self.biblioteca = Biblioteca(self.dados)
         self.estudio = Estudio(self)
+        from .posts import Posts
+
+        self.posts = Posts(self)
         self.aprendizado = Aprendizado(self)
         self.longos = Longos(self)
         self.gravadas = Gravadas(self)
@@ -175,6 +199,10 @@ class Motor:
                 if meta["status"] not in ("pronto", "erro"):
                     meta.update(status="fila", erro=None, retomado=True)
             self.cortes[meta["id"]] = meta
+        # Cortes de versões anteriores ganham o potencial sem precisar refazer nada
+        for meta in sorted(self.cortes.values(), key=lambda m: bool(m.get("montagem"))):
+            if meta.get("status") == "pronto" and not meta.get("potencial"):
+                self._avaliar(meta)
 
     def retomar(self) -> None:
         """Depois de tudo pronto para trabalhar, devolve à fila o que foi interrompido."""
@@ -229,10 +257,25 @@ class Motor:
         self._gravar(self.saida / meta["id"] / "corte.json", meta)
 
     def _etapa(self, meta: dict, status: str, erro: str | None = None) -> None:
+        if status == "pronto":
+            self._avaliar(meta)
         with self.trava:
             meta["status"] = status
             meta["erro"] = erro
         self._salvar_corte(meta)
+
+    def _avaliar(self, meta: dict) -> None:
+        """Calcula o potencial de viralizar. Nunca impede o corte de ficar pronto."""
+        try:
+            if meta.get("montagem"):
+                nota = potencial.de_montagem(meta, self.cortes)
+            else:
+                nota = potencial.calcular(meta, getattr(self, "aprendizado", None))
+            if nota:
+                meta["potencial"] = nota
+        except Exception:
+            import traceback
+            print("[potencial] " + traceback.format_exc(), flush=True)
 
     def evento(self, canal: str, tipo: str, texto: str) -> None:
         with self.trava:
@@ -297,6 +340,8 @@ class Motor:
             cfg["corte_garantido"] = int(novos["corte_garantido"])
         if isinstance(novos.get("estilo"), dict):
             cfg["estilo"] = est.validar(novos["estilo"])
+        if isinstance(novos.get("ideias"), dict):
+            cfg["ideias"] = {**(cfg.get("ideias") or {}), **{k: bool(v) for k, v in novos["ideias"].items() if k in ideias.IDEIAS}}
         for chave in ("montagem_auto", "foco_auto", "shorts_emendados"):
             if chave in novos:
                 cfg[chave] = bool(novos[chave])
@@ -328,6 +373,8 @@ class Motor:
             raise ValueError("Este vídeo foi personalizado no Editor. Abra o Editor para fazer novas mudanças.")
         with self.trava:
             if "postado" in dados:
+                if bool(dados["postado"]) != bool(meta.get("postado")):
+                    self.aprendizado.sinal_ideia(meta, "postados", 1 if dados["postado"] else -1)
                 meta["postado"] = bool(dados["postado"])
             if isinstance(dados.get("post"), str):
                 meta["post"] = dados["post"][:4000]
@@ -345,10 +392,18 @@ class Motor:
                     meta["grupos"] = novos
                     refazer = True
             if "estilo" in dados:
-                proprio = {k: v for k, v in (dados["estilo"] or {}).items() if v}
+                pedido = dados["estilo"] or {}
+                proprio = {k: v for k, v in pedido.items() if v}
                 est.validar(proprio)
-                if proprio != (meta.get("estilo") or {}):
-                    meta["estilo"] = proprio
+                if "camera_dinamica" in proprio:
+                    proprio["camera_dinamica"] = proprio["camera_dinamica"] in (True, "true", "True", 1, "1")
+                # Só muda o que veio da janela; o que a ideia ou o modelo escolheram para o resto continua
+                novo = {**{k: v for k, v in (meta.get("estilo") or {}).items() if k not in pedido}, **proprio}
+                if novo != (meta.get("estilo") or {}):
+                    sugerido = ideias.estilo(meta.get("ideia"))
+                    if any(est.normalizar(novo).get(k) != v for k, v in sugerido.items()):
+                        self.aprendizado.sinal_ideia(meta, "trocados")  # você não gostou do que a ideia fez neste corte
+                    meta["estilo"] = novo
                     refazer = True
             if isinstance(dados.get("camera"), dict):
                 meta["ajuste_camera"] = _validar_camera(dados["camera"])
@@ -369,6 +424,8 @@ class Motor:
             if meta["status"] not in ("pronto", "erro"):
                 raise ValueError("Aguarde o corte terminar de ser editado.")
             del self.cortes[corte_id]
+        if meta["status"] == "pronto" and not meta.get("postado"):
+            self.aprendizado.sinal_ideia(meta, "descartados")
         shutil.rmtree(self.saida / corte_id, ignore_errors=True)
 
     def estado(self) -> dict:
@@ -376,7 +433,7 @@ class Motor:
             canais = [self._resumo_canal(c) for c in self.canais.values()]
             cortes = sorted(self.cortes.values(), key=lambda m: m["criado"], reverse=True)
             resumo = [
-                {k: v for k, v in m.items() if k not in ("grupos", "palavras")} | {"etapa": ETAPAS.get(m["status"], "")}
+                {k: v for k, v in m.items() if k not in ("grupos", "palavras")} | {"etapa": ETAPAS.get(m["status"], ""), "ideia_nome": ideias.nome(m.get("ideia"))}
                 for m in cortes
             ]
             base = {
@@ -747,6 +804,9 @@ class Motor:
         if modelo:
             meta["modelo"] = modelo
             meta["estilo"] = {**self.aprendizado.estilo_do_modelo(modelo), **(meta.get("estilo") or {})}
+        elif ideia := self.aprendizado.escolher_ideia(meta):  # sem modelo de exemplo: testa uma das ideias ligadas
+            meta["ideia"] = ideia
+            meta["estilo"] = {**ideias.estilo(ideia), **(meta.get("estilo") or {})}
         if est.normalizar(self.config["estilo"])["sons_auto"]:
             sons = sugerir_sons(meta["grupos"], duracao, meta["momento_fonte"], meta.get("reacao"))
             if perfil_modelo and perfil_modelo.get("sfx_cortes") is not None and perfil_modelo["sfx_cortes"] < .2:
@@ -785,7 +845,8 @@ class Motor:
         duracao = float(meta["duracao"])
         minimo = max(0.0, duracao - alvo)
         grupos = meta.get("grupos") or []
-        inicio = next((float(g["ini"]) for g in grupos if float(g["ini"]) >= minimo), minimo)
+        inicio = ctx.inicio_com_sentido([p for g in grupos for p in g.get("palavras") or []], minimo, minimo + 8) \
+            or next((float(g["ini"]) for g in grupos if float(g["ini"]) >= minimo), minimo)
         if duracao - inicio < 20:
             inicio = minimo
         try:
@@ -834,6 +895,7 @@ class Motor:
         titulo = meta.get("titulo_live") or ""
         contexto = ctx._encurtar(titulo, 46) if titulo else f"{meta['canal']} ao vivo no {meta['nome_plataforma']}"
         video, grupos, duracao, momento, ajuste = fonte, meta["grupos"], meta["duracao"], meta.get("momento_fonte"), None
+        plano = meta["plano"]
         ed = meta.get("edicao")
         try:
             if ed:
@@ -847,8 +909,10 @@ class Motor:
                 tl.criar_trilha(ed["sons"], ed["cortes"], duracao, self.biblioteca, pasta / "sons.wav")
                 ajuste = {"filtro": ed.get("filtro"), "intensidade": ed.get("intensidade", 100), "volume": ed.get("volume", 100), "trilha": pasta / "sons.wav"}
                 meta["duracao"] = round(duracao, 2)
+                if plano.get("trechos"):  # quem fala muda de lugar junto com os cortes da edição
+                    plano = {**plano, "trechos": cam.mapear_trechos(plano["trechos"], ed["cortes"])}
             edicao.renderizar(
-                video, pasta, meta["plano"], grupos, meta["gancho"], contexto, meta["credito"], duracao,
+                video, pasta, plano, grupos, meta["gancho"], contexto, meta["credito"], duracao,
                 momento, est.normalizar(meta.get("estilo"), self.config["estilo"]), ajuste, focos,
             )
         finally:

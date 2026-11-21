@@ -8,9 +8,12 @@ import tempfile
 from pathlib import Path
 
 import cv2
+import numpy as np
 
+from . import camera as cam
 from . import efeitos, estilos, filtros
 from . import foco
+from . import tomadas as tm
 from .contexto import quebrar_linhas
 from .plataformas import sem_janela
 
@@ -96,13 +99,38 @@ def _sem_chaves(t: str) -> str:
     return re.sub(r"[{}\\]", "", t)
 
 
+def _marca_dagua(arroba: str, duracao: float, layout: str, hc: int) -> list[str]:
+    """O seu @ pequeno, trocando de canto a cada 7 segundos (dificulta quem corta a marca para repostar)."""
+    if layout == "dividido":
+        lugares = [(1044, hc - 64, 3), (36, hc + 330, 7), (1044, 1540, 3), (36, 1250, 7)]
+    else:
+        lugares = [(1044, 260, 9), (36, 1250, 7), (1044, 1520, 3), (36, 430, 7)]
+    saida, t, n = [], 0.0, 0
+    while t < duracao - .05:
+        x, y, a = lugares[n % len(lugares)]
+        fim = min(duracao, t + 7.0)
+        saida.append(f"Dialogue: 1,{_tempo_ass(t)},{_tempo_ass(fim)},Marca,,0,0,0,,{{\\an{a}\\pos({x},{y})\\fad(200,200)}}{arroba}")
+        t, n = fim, n + 1
+    return saida
+
+
+def _encerramento(arroba: str, ini: float, dur: float) -> list[str]:
+    fim = ini + dur
+    return [
+        f"Dialogue: 4,{_tempo_ass(ini + .1)},{_tempo_ass(fim)},Fim,,0,0,0,,{{\\an2\\pos(540,930)\\fs44\\alpha&H30&\\fad(220,0)}}SIGA PARA MAIS",
+        f"Dialogue: 4,{_tempo_ass(ini + .18)},{_tempo_ass(fim)},Fim,,0,0,0,,{{\\an8\\pos(540,950)\\fad(200,0)\\fscx70\\fscy70\\t(0,180,\\fscx106\\fscy106)\\t(180,260,\\fscx100\\fscy100)}}{arroba}",
+    ]
+
+
 def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, duracao: float, layout: str,
-              estilo: dict | None = None, altura_cam: int | None = None) -> str:
+              estilo: dict | None = None, altura_cam: int | None = None, tomadas: list[dict] | None = None, outro: float = 0.0) -> str:
     est = estilos.normalizar(estilo)
     credito_pos = POSICAO_CREDITO.get(layout, POSICAO_CREDITO["dividido"])
     gancho_padrao = POSICAO_GANCHO.get(layout, 800)
     if layout == "dividido" and altura_cam:
         credito_pos, gancho_padrao = f"\\an1\\pos(36,{int(altura_cam) - 16})", int(altura_cam) + 40
+    if layout == "dividido" and est["legenda"] == "react":
+        gancho_padrao = 1420  # a legenda curta fica logo abaixo da divisão; o título desce para o jogo
     x_gancho, y_gancho = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, gancho_padrao)
     x_legenda, y_legenda = estilos.ponto(est, "legenda_x", "legenda_y", 1080, 1920, 540, BASE_LEGENDA)
     saida = [
@@ -112,6 +140,8 @@ def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, dura
         "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
         "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         estilos.estilo_legenda(est, 66), estilos.estilo_gancho(est, 54),
+        "Style: Marca,Roboto Black,30,&H50FFFFFF,&H00FFFFFF,&H90000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,40,40,0,1",
+        "Style: Fim,Roboto Black,90,&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1",
         "Style: Contexto,Poppins,32,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,8,90,90,0,1",
         "Style: Credito,Poppins,28,&H30FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1" if layout != "pip"
         else "Style: Credito,Poppins,34,&H00FFFFFF,&H00FFFFFF,&H30101010,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,2,60,60,0,1",
@@ -137,7 +167,18 @@ def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, dura
                 f"{{\\an8\\pos({x_gancho},{y})\\fad(120,280)}}{_sem_chaves(contexto)}"
             )
 
-    saida += estilos.eventos_legenda(grupos, duracao, est, x_legenda, y_legenda, 66, 18, _tempo_ass)
+    y_em = None
+    if est["legenda"] == "react":
+        hc = int(altura_cam or 760)
+        if est.get("legenda_y") is not None or layout != "dividido":
+            y_em = lambda t: (2, y_legenda)
+        else:  # logo abaixo da divisão; quando o rosto ou o jogo ocupam a tela, um pouco abaixo do meio
+            y_em = lambda t: (8, hc + 30) if tm.tipo_em(tomadas or [], t) == "dividido" else (8, tm.ROSTO_Y_LEGENDA)
+    saida += estilos.eventos_legenda(grupos, duracao, est, x_legenda, y_legenda, 66, 18, _tempo_ass, y_em)
+    if est.get("arroba"):
+        saida += _marca_dagua(est["arroba"], duracao, layout, int(altura_cam or 760))
+        if outro > 0:
+            saida += _encerramento(est["arroba"], duracao, outro)
     return "\n".join(saida) + "\n"
 
 
@@ -149,8 +190,22 @@ def gerar_srt(grupos: list[dict]) -> str:
     return "\n".join(blocos)
 
 
-def _filtro_video(plano: dict) -> str:
+def _filtro_video(plano: dict, tomadas: list[dict] | None = None) -> str:
     layout = plano["layout"]
+    if layout == "dividido" and tomadas and plano.get("rosto_cheio"):
+        c, j, hc = plano["camera"], plano["jogo"], int(plano.get("altura_cam", 760))
+        r, g = plano["rosto_cheio"], plano["jogo_cheio"]
+        cadeia = (
+            "[0:v]split=4[c][j][r][g];"
+            f"[c]crop={c['w']}:{c['h']}:{c['x']}:{c['y']},scale=1080:{hc}:flags=lanczos,unsharp=5:5:0.55:5:5:0,setsar=1[cam];"
+            f"[j]crop={j['w']}:{j['h']}:{j['x']}:{j['y']},scale=1080:{1920 - hc}:flags=lanczos,setsar=1[jogo];"
+            f"[cam][jogo]vstack=inputs=2,drawbox=x=0:y={hc - 3}:w=1080:h=6:color=black:t=fill[div];"
+            f"[r]crop={r['w']}:{r['h']}:{r['x']}:{r['y']},scale=1080:1920:flags=lanczos,unsharp=5:5:0.8:5:5:0,setsar=1[rosto];"
+            f"[g]crop={g['w']}:{g['h']}:{g['x']}:{g['y']},scale=1080:1920:flags=lanczos,unsharp=5:5:0.4:5:5:0,setsar=1[jcheio];"
+        )
+        er, ej = tm.enable(tomadas, "rosto"), tm.enable(tomadas, "jogo")
+        cadeia += f"[div][rosto]overlay=0:0:enable='{er or '0'}'[d2];[d2][jcheio]overlay=0:0:enable='{ej or '0'}'"
+        return cadeia
     if layout == "pip":
         c, j, p = plano["camera"], plano["jogo"], plano["pip"]
         return (
@@ -169,7 +224,9 @@ def _filtro_video(plano: dict) -> str:
         )
     if layout == "tela_cheia":
         r = plano["recorte"]
-        return f"[0:v]crop={r['w']}:{r['h']}:{r['x']}:{r['y']},scale=1080:1920:flags=lanczos,setsar=1"
+        trechos = plano.get("trechos") or []
+        x = cam.expressao_x(trechos, r["x"]) if len(trechos) > 1 else trechos[0]["x"] if trechos else r["x"]  # segue quem está falando
+        return f"[0:v]crop={r['w']}:{r['h']}:{x}:{r['y']},scale=1080:1920:flags=lanczos,setsar=1"
     return (
         "[0:v]split=2[a][b];"
         "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
@@ -262,8 +319,22 @@ def _colar_foco(quadro: np.ndarray, f: dict, t: float) -> None:
     quadro[y:y + nh, x:x + nw] = cv2.addWeighted(peq, min(1.0, p * 1.8), area, 1 - min(1.0, p * 1.8), 0)
 
 
-def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movimento], total: int, cor: tuple[int, int, int], pip: dict | None = None, momento: float = 0.0, focos: list[dict] | None = None):
+def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movimento], total: int, cor: tuple[int, int, int], pip: dict | None = None, momento: float = 0.0, focos: list[dict] | None = None,
+                   tomadas: list[dict] | None = None):
     for i, quadro in enumerate(origem):
+        agora = i / efeitos.FPS
+        tomada = next((e for e in tomadas or [] if e["ini"] <= agora < e["fim"]), None)
+        if tomada:  # rosto ou jogo na tela toda: aproxima devagar, com um tranco quando o rosto reage
+            p = (agora - tomada["ini"]) / max(.1, tomada["fim"] - tomada["ini"])
+            z = (1.0 + .06 * p) if tomada["tipo"] == "jogo" else (1.04 + .05 * p)
+            tremor = float(movimentos[0].tremor[i]) if tomada["tipo"] == "rosto" else 0.0
+            dx, dy = (tremor * np.sin(i * 2.4), tremor * np.cos(i * 3.1)) if tremor > .3 else (0.0, 0.0)
+            cy = 880 if tomada["tipo"] == "rosto" else 960
+            m = np.array([[z, 0, 540 - z * 540 + dx], [0, z, cy - z * cy + dy]], dtype=np.float64)
+            quadro = efeitos.aplicar(quadro, m)
+            cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
+            yield quadro
+            continue
         if pip:  # o jogo aproxima na tela inteira e a webcam continua por cima
             x, y, w, h = pip["x"], pip["y"], pip["w"], pip["h"]
             camera = efeitos.aplicar(quadro[y:y + h, x:x + w].copy(), movimentos[0].matriz(i, w, h))
@@ -273,7 +344,6 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
             for (x, y, w, h), mov in zip(regioes, movimentos):
                 parte = efeitos.aplicar(quadro[y:y + h, x:x + w], mov.matriz(i, w, h))
                 quadro[y:y + h, x:x + w] = efeitos.clarear(parte, float(mov.clarao[i]))
-        agora = i / efeitos.FPS
         for f in focos or []:
             if f["t"] <= agora < f["t"] + f["dur"]:
                 webcam = quadro[pip["y"]:pip["y"] + pip["h"], pip["x"]:pip["x"] + pip["w"]].copy() if pip else None
@@ -286,6 +356,28 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
                 _reacao_grande(quadro, pip, min(1.0, (t + .05) / .18, (1.9 - t) / .22))
         cv2.rectangle(quadro, (0, 0), (int(1080 * (i + 1) / total), 9), cor, -1)
         yield quadro
+
+
+def _com_encerramento(quadros, extra: int):
+    """Depois do último quadro, o fim do vídeo desfocado e escuro, aproximando devagar, para o seu @ aparecer."""
+    ultimo = None
+    for q in quadros:
+        ultimo = q
+        yield q
+    if ultimo is None or extra <= 0:
+        return
+    base = ultimo.copy()
+    base[:12] = base[12:13]  # tira a barra de progresso
+    fundo = cv2.resize(cv2.GaussianBlur(cv2.resize(base, (270, 480), interpolation=cv2.INTER_AREA), (0, 0), 3.5), (1080, 1920), interpolation=cv2.INTER_CUBIC)
+    for k in range(extra):
+        p = k / max(1, extra - 1)
+        escuro = min(1.0, k / 8)
+        z = 1.0 + .07 * p
+        m = np.array([[z, 0, 540 - z * 540], [0, z, 960 - z * 960]], dtype=np.float64)
+        atual = efeitos.aplicar(fundo, m)
+        nitido = efeitos.aplicar(base, m) if escuro < 1 else atual
+        mistura = cv2.addWeighted(nitido, 1 - escuro, atual, escuro, 0)
+        yield cv2.convertScaleAbs(mistura, alpha=1 - .55 * escuro)
 
 
 def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: list[dict], gancho: str, contexto: str,
@@ -306,14 +398,21 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     movimentos = _agenda_short(layout, total, duracao, momento, picos)
     for mov in movimentos:
         mov.z = 1 + (mov.z - 1) * est["zoom_forca"] / 100
-    filtro = f"{_filtro_video(plano)},fps={efeitos.FPS},format=bgr24[v]"
+    tomadas = planejar_tomadas(plano, grupos, duracao, momento, picos, fonte, est)
+    if tomadas:
+        plano = {**plano, **_recortes_cheios(plano, fonte)}
+    outro = duracao_encerramento(duracao, est) if not ajuste.get("trilha") else 0.0
+    extra = round(outro * efeitos.FPS)
+    filtro = f"{_filtro_video(plano, tomadas)},fps={efeitos.FPS},format=bgr24[v]"
     destino = pasta / "corte_novo.mp4"
+    fim_total = duracao + extra / efeitos.FPS
     try:
+        quadros = _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento, focos, tomadas)
         efeitos.gravar(
-        destino, _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]), pip, momento, focos),
-        total, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam")), fonte,
-        whoosh=[0.0, *[f["t"] for f in focos]], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
-        filtro_extra=_cor_do_video(est, ajuste) + f"fade=t=out:st={max(0.0, duracao - 0.25):.2f}:d=0.25",
+        destino, _com_encerramento(quadros, extra),
+        total + extra, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam"), tomadas, extra / efeitos.FPS), fonte,
+        whoosh=[0.0, *[f["t"] for f in focos], *([duracao] if extra else []), *[e["ini"] for e in tomadas if e["tipo"] == "jogo"]], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
+        filtro_extra=_cor_do_video(est, ajuste) + f"fade=t=out:st={max(0.0, fim_total - 0.25):.2f}:d=0.25",
         )
     finally:
         for f in focos:
@@ -321,6 +420,25 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
                 f["video"].release()
             Path(f["arquivo"]).unlink(missing_ok=True)
     destino.replace(pasta / "corte.mp4")
+
+
+def planejar_tomadas(plano: dict, grupos: list[dict], duracao: float, momento: float | None, picos: list, fonte: Path, est: dict) -> list[dict]:
+    if plano.get("layout") != "dividido" or not est.get("camera_dinamica", True) or not plano.get("moldura") or not plano.get("jogo"):
+        return []
+    return tm.planejar(grupos, duracao, momento, picos)
+
+
+def _recortes_cheios(plano: dict, fonte: Path) -> dict:
+    largura, altura, _ = cam.dimensoes(fonte)
+    return {"rosto_cheio": tm.enquadrar_rosto(plano, largura, altura), "jogo_cheio": tm.enquadrar_jogo(plano, largura, altura)}
+
+
+def duracao_encerramento(duracao: float, est: dict) -> float:
+    """Final com o seu @: 2,2 s, sem passar de 59,5 s (Shorts com mais de 1 minuto podem ser bloqueados)."""
+    if not (est.get("arroba") and est.get("encerramento", True)):
+        return 0.0
+    sobra = min(2.2, 59.5 - duracao) if duracao < 59.5 else 0.0
+    return round(sobra, 2) if sobra >= 1.2 else 0.0
 
 
 def renderizar(fonte: Path, pasta: Path, plano: dict, grupos: list[dict], gancho: str, contexto: str,

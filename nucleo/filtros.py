@@ -1,6 +1,8 @@
 """Filtros de cor aplicados aos vídeos."""
 from __future__ import annotations
 
+import re
+
 FILTROS = {
     "nenhum": ("Original", "", "none"),
     "cinema": ("Cinema", "colorbalance=rs=-0.07:gs=-0.02:bs=0.08:rh=0.09:gh=0.02:bh=-0.08,eq=contrast=1.1:saturation=1.08", "contrast(1.1) saturate(1.08) sepia(.1)"),
@@ -27,7 +29,7 @@ def validar(nome) -> str | None:
 
 
 def lista() -> list[dict]:
-    return [{"id": k, "nome": v[0], "css": v[2]} for k, v in FILTROS.items()]
+    return [{"id": k, "nome": v[0], "css": v[2]} for k, v in FILTROS.items()] + [{**l, "css": "none", "lut": True} for l in lista_luts()]
 
 
 def cadeia(nome: str | None, intensidade: float = 100) -> str:
@@ -80,6 +82,8 @@ def saturar(q: np.ndarray, s: float) -> np.ndarray:
 
 
 def aplicar(q: np.ndarray, nome: str | None, forca: float = 100) -> np.ndarray:
+    if nome and nome.startswith("lut:"):
+        return aplicar_lut(q, nome[4:], forca)
     p = PARAMETROS.get(nome or "")
     if not p or forca <= 0 or q.size == 0:
         return q
@@ -121,4 +125,112 @@ def ajustar(q: np.ndarray, a: dict | None) -> np.ndarray:
         q = cv2.LUT(q, np.stack(tab, axis=1).astype(np.uint8)[:, None, :])
     if a.get("saturacao"):
         q = saturar(q, max(0, 1 + a["saturacao"] / 100))
+    if a.get("matiz"):
+        hsv = cv2.cvtColor(q, cv2.COLOR_BGR2HSV)
+        hsv[..., 0] = ((hsv[..., 0].astype(np.int16) + int(round(a["matiz"] / 2))) % 180).astype(np.uint8)
+        q = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    if a.get("nitidez", 0) > 0:
+        borrado = cv2.GaussianBlur(q, (0, 0), max(1.0, q.shape[1] / 900))
+        q = cv2.addWeighted(q, 1 + a["nitidez"] / 60, borrado, -a["nitidez"] / 60, 0)
+    if a.get("vinheta", 0) > 0:
+        q = vinheta(q, min(1.0, a["vinheta"] / 100) * .8)
     return q
+
+
+# ------------------------------------------------------------ LUTs .cube (gradação de cor, como no Drift)
+
+from pathlib import Path  # noqa: E402
+
+_pasta_luts: Path | None = None
+_luts: dict[str, tuple[float, np.ndarray]] = {}
+TAMANHO_LUT = 64
+
+
+def usar_pasta_luts(pasta: Path) -> None:
+    global _pasta_luts
+    _pasta_luts = Path(pasta)
+    _pasta_luts.mkdir(parents=True, exist_ok=True)
+
+
+def lista_luts() -> list[dict]:
+    if not _pasta_luts:
+        return []
+    return [{"id": f"lut:{a.stem}", "nome": a.stem.replace("_", " ")} for a in sorted(_pasta_luts.glob("*.cube"))]
+
+
+def ler_cube(texto: str) -> np.ndarray:
+    """Lê um arquivo .cube 3D e devolve a tabela (N, N, N, 3) indexada por [b, g, r] em RGB de 0 a 1."""
+    n, valores, dmin, dmax = 0, [], np.zeros(3, np.float32), np.ones(3, np.float32)
+    for linha in texto.splitlines():
+        linha = linha.strip()
+        if not linha or linha.startswith("#"):
+            continue
+        partes = linha.split()
+        chave = partes[0].upper()
+        if chave == "LUT_3D_SIZE":
+            n = int(partes[1])
+        elif chave == "DOMAIN_MIN":
+            dmin = np.array([float(v) for v in partes[1:4]], np.float32)
+        elif chave == "DOMAIN_MAX":
+            dmax = np.array([float(v) for v in partes[1:4]], np.float32)
+        elif chave in ("TITLE", "LUT_1D_SIZE", "LUT_1D_INPUT_RANGE", "LUT_3D_INPUT_RANGE"):
+            if chave == "LUT_1D_SIZE":
+                raise ValueError("Use uma LUT 3D (.cube com LUT_3D_SIZE).")
+        else:
+            try:
+                valores.append([float(v) for v in partes[:3]])
+            except ValueError:
+                continue
+    if not 2 <= n <= 128 or len(valores) < n ** 3:
+        raise ValueError("Este arquivo .cube não é uma LUT 3D válida.")
+    tab = np.array(valores[: n ** 3], np.float32).reshape(n, n, n, 3)  # o vermelho varia mais rápido
+    return np.clip((tab - dmin) / np.maximum(dmax - dmin, 1e-6), 0, 1)
+
+
+def _redimensionar_lut(tab: np.ndarray, m: int) -> np.ndarray:
+    """Interpolação trilinear da tabela para M pontos por canal, feita uma vez só."""
+    n = tab.shape[0]
+    pos = np.linspace(0, n - 1, m, dtype=np.float32)
+    i0 = np.floor(pos).astype(int); i1 = np.minimum(i0 + 1, n - 1); f = (pos - i0)[:, None, None, None]
+    t = tab[i0] * (1 - f) + tab[i1] * f  # eixo azul
+    f = (pos - i0)[None, :, None, None]
+    t = t[:, i0] * (1 - f) + t[:, i1] * f  # eixo verde
+    f = (pos - i0)[None, None, :, None]
+    return t[:, :, i0] * (1 - f) + t[:, :, i1] * f  # eixo vermelho
+
+
+def _tabela_lut(nome: str) -> np.ndarray | None:
+    if not _pasta_luts or not re.fullmatch(r"[\w .-]+", nome or ""):
+        return None
+    arq = _pasta_luts / f"{nome}.cube"
+    if not arq.exists():
+        return None
+    marca = arq.stat().st_mtime
+    if nome not in _luts or _luts[nome][0] != marca:
+        tab = _redimensionar_lut(ler_cube(arq.read_text(encoding="utf-8", errors="replace")), TAMANHO_LUT)
+        bgr = (tab[..., ::-1] * 255 + .5).astype(np.uint8).reshape(-1, 3)
+        _luts[nome] = (marca, bgr)
+    return _luts[nome][1]
+
+
+def aplicar_lut(q: np.ndarray, nome: str, forca: float = 100) -> np.ndarray:
+    tab = _tabela_lut(nome)
+    if tab is None or forca <= 0 or q.size == 0:
+        return q
+    k = 256 // TAMANHO_LUT
+    b, g, r = (q[..., 0] // k).astype(np.int32), (q[..., 1] // k).astype(np.int32), (q[..., 2] // k).astype(np.int32)
+    saida = tab[(b * TAMANHO_LUT + g) * TAMANHO_LUT + r]
+    return saida if forca >= 100 else cv2.addWeighted(q, 1 - forca / 100, saida, forca / 100, 0)
+
+
+def salvar_lut(nome: str, conteudo: bytes) -> list[dict]:
+    if not _pasta_luts:
+        raise ValueError("Pasta de LUTs indisponível.")
+    limpo = re.sub(r"[^\w -]", "", Path(nome).stem)[:50].strip().replace(" ", "_") or "minha_lut"
+    if Path(nome).suffix.lower() != ".cube":
+        raise ValueError("Use um arquivo .cube (LUT 3D).")
+    texto = conteudo.decode("utf-8", errors="replace")
+    ler_cube(texto)
+    (_pasta_luts / f"{limpo}.cube").write_text(texto, encoding="utf-8")
+    _luts.pop(limpo, None)
+    return lista_luts()

@@ -7,7 +7,7 @@ from . import filtros
 from .contexto import FORTES, quebrar_linhas
 
 CORES = {"amarelo": "FFC933", "verde": "39FF88", "vermelho": "FF4B5C", "azul": "38BDF8", "rosa": "FF5FCF", "laranja": "FF8A1F", "branco": "FFFFFF"}
-LEGENDAS = ("destaque", "caixa", "impacto", "palavra", "neon", "faixa", "classica")
+LEGENDAS = ("react", "destaque", "caixa", "impacto", "palavra", "neon", "faixa", "classica", "karaoke", "hormozi")
 GANCHOS = ("faixa", "preto", "alerta", "branco", "contorno", "neon", "impacto", "quadrinho", "manchete", "gamer", "desenho", "minimal", "sombra3d", "marcador", "nenhum")
 # Modelos de título com outra fonte: fonte, texto, contorno, tipo de borda (1 letra, 3 caixa), contorno, sombra, cor da sombra, tamanho, giro
 TITULOS_EXTRA = {
@@ -24,7 +24,8 @@ TAMANHOS = {"pequeno": 0.86, "medio": 1.0, "grande": 1.18}
 TEMPOS_GANCHO = (3, 5, 8)
 POSICOES = ("legenda_x", "legenda_y", "gancho_x", "gancho_y", "legenda_hx", "legenda_hy", "gancho_hx", "gancho_hy")
 PADRAO = {"legenda": "destaque", "gancho": "faixa", "cor": "amarelo", "tamanho": "medio", "tempo_gancho": 5, "filtro": "nenhum", "filtro_forca": 100,
-          "sons_auto": True, "zoom_forca": 100, "ritmo": 5.0, **{p: None for p in POSICOES}}
+          "sons_auto": True, "zoom_forca": 100, "ritmo": 5.0, "camera_dinamica": False, "arroba": "", "encerramento": True, **{p: None for p in POSICOES}}
+ARROBA = re.compile(r"^@?([A-Za-z0-9_.]{2,30})$")
 
 
 def _posicao(valor) -> float | None:
@@ -55,8 +56,11 @@ def normalizar(estilo: dict | None, base: dict | None = None) -> dict:
                 final[chave] = int(min(200, max(0, float(valor))))
             elif chave == "ritmo":
                 final[chave] = float(min(8.0, max(2.0, float(valor))))
-            elif chave == "sons_auto":
+            elif chave in ("sons_auto", "camera_dinamica", "encerramento"):
                 final[chave] = valor in (True, "true", "True", 1, "1")
+            elif chave == "arroba":
+                m = ARROBA.match(str(valor or "").strip())
+                final[chave] = f"@{m[1]}" if m else ""
             elif chave in POSICOES:
                 try:
                     final[chave] = _posicao(valor)
@@ -73,8 +77,11 @@ def validar(estilo: dict) -> dict:
                 _posicao(valor)
             except (TypeError, ValueError):
                 raise ValueError("Posição inválida.") from None
-        elif chave in ("sons_auto", "zoom_forca", "ritmo"):
+        elif chave in ("sons_auto", "zoom_forca", "ritmo", "camera_dinamica", "encerramento"):
             continue
+        elif chave == "arroba":
+            if str(valor or "").strip() and not final["arroba"]:
+                raise ValueError("Escreva o @ só com letras, números, ponto ou sublinhado.")
         elif chave in PADRAO and str(final[chave]) != str(valor):
             raise ValueError("Escolha um estilo válido.")
     return final
@@ -109,8 +116,8 @@ def _natural(t: str) -> str:
     return re.sub(r"[{}\\]", "", t)
 
 
-def _estilo(nome: str, tamanho: float, frente: str, contorno: str, fundo: str, borda: int, largura: float, sombra: float) -> str:
-    return (f"Style: {nome},Poppins,{round(tamanho)},{frente},&H00FFFFFF,{contorno},{fundo},-1,0,0,0,100,100,0,0,"
+def _estilo(nome: str, tamanho: float, frente: str, contorno: str, fundo: str, borda: int, largura: float, sombra: float, fonte: str = "Poppins") -> str:
+    return (f"Style: {nome},{fonte},{round(tamanho)},{frente},&H00FFFFFF,{contorno},{fundo},-1,0,0,0,100,100,0,0,"
             f"{borda},{round(largura, 1)},{round(sombra, 1)},2,60,60,0,1")
 
 
@@ -125,14 +132,53 @@ def estilo_legenda(est: dict, base: float) -> str:
         "neon": (_alfa(destaque), _alfa(destaque, "50"), "&H00000000", 1, t * 0.07, 0),
         "faixa": ("&H00FFFFFF", "&H28000000", "&H00000000", 3, t * 0.2, 0),
         "classica": ("&H00FFFFFF", "&H00000000", "&H70000000", 1, t * 0.05, t * 0.05),
+        "karaoke": ("&H00FFFFFF", "&H00000000", "&H80000000", 1, t * 0.1, 2),
+        "hormozi": ("&H00FFFFFF", "&H00000000", "&H90000000", 1, t * 0.12, 3),
+        "react": (_alfa(destaque), "&H00000000", "&H00000000", 1, t * 0.12, 0),
     }
     frente, contorno, fundo, borda, largura, sombra = modelos[est["legenda"]]
-    return _estilo("Legenda", t * {"impacto": 1.45, "palavra": 1.25}.get(est["legenda"], 1), frente, contorno, fundo, borda, largura, sombra)
+    fonte = {"hormozi": "Anton", "react": "Roboto Black"}.get(est["legenda"], "Poppins")
+    return _estilo("Legenda", t * {"impacto": 1.45, "palavra": 1.25, "hormozi": 1.3, "react": 1.35}.get(est["legenda"], 1), frente, contorno, fundo, borda, largura, sombra, fonte)
 
 
-def _palavra(texto: str, ativa: bool, est: dict, base: float) -> str:
+SOLTAS = {"o", "a", "os", "as", "um", "uma", "de", "do", "da", "dos", "das", "no", "na", "nos", "nas", "em", "e", "que", "pra", "pro", "com", "por", "pelo", "pela", "meu", "minha", "seu", "sua", "se", "me", "te", "lhe", "não", "nao", "muito", "mais", "ao"}
+
+
+def picar(grupos: list[dict], palavras_max: int = 3, letras_max: int = 16) -> list[dict]:
+    """Quebra a legenda em pedaços de 1 a 3 palavras, como nos cortes de react.
+
+    Corta antes nas pausas e depois de pontuação, para cada pedaço ser uma ideia curta."""
+    saida = []
+    for g in grupos:
+        atual: list[dict] = []
+        for p in g.get("palavras") or []:
+            if atual:
+                letras = sum(len(x["p"]) + 1 for x in atual) + len(p["p"])
+                pausa = float(p["ini"]) - float(atual[-1]["fim"]) >= .35
+                if len(atual) >= palavras_max or letras > letras_max or pausa or atual[-1]["p"][-1:] in ".!?,;:":
+                    leva = []
+                    while not pausa and len(atual) > 1 and len(leva) < 2 and atual[-1]["p"][-1:].isalnum() and re.sub(r"\W", "", atual[-1]["p"]).casefold() in SOLTAS:
+                        leva.insert(0, atual.pop())  # "Ele pegou o | carro" vira "Ele pegou | o carro"
+                    saida.append({"ini": atual[0]["ini"], "fim": atual[-1]["fim"], "palavras": atual})
+                    atual = leva
+            atual.append(p)
+        if atual:
+            saida.append({"ini": atual[0]["ini"], "fim": atual[-1]["fim"], "palavras": atual})
+    return saida
+
+
+def _palavra(texto: str, ativa: bool, est: dict, base: float, ja_falada: bool = False, primeira: bool = False) -> str:
     destaque = cor_ass(est["cor"])
     modelo = est["legenda"]
+    if modelo == "karaoke":  # as palavras já faladas ficam na cor de destaque, como num karaokê
+        if ativa:
+            return f"{{\\c{destaque}\\fscx112\\fscy112}}{texto}{{\\c&HFFFFFF&\\fscx100\\fscy100}}"
+        return f"{{\\c{destaque}}}{texto}{{\\c&HFFFFFF&}}" if ja_falada else texto
+    if modelo == "hormozi":  # primeira palavra em vermelho e a falada um pouco maior
+        cor_p = "&H2D2DFF&" if primeira else "&HFFFFFF&"
+        if ativa:
+            return f"{{\\c{cor_p}\\fscx110\\fscy110}}{texto}{{\\c&HFFFFFF&\\fscx100\\fscy100}}"
+        return f"{{\\c{cor_p}}}{texto}{{\\c&HFFFFFF&}}" if primeira else texto
     if not ativa or modelo == "classica":
         return texto
     if modelo == "caixa":
@@ -147,9 +193,21 @@ def _palavra(texto: str, ativa: bool, est: dict, base: float) -> str:
     return f"{{\\c{destaque}}}{texto}{{\\c&HFFFFFF&}}"
 
 
-def eventos_legenda(grupos: list[dict], duracao: float, est: dict, cx: int, y: int, base: float, por_linha: int, tempo) -> list[str]:
+def eventos_legenda(grupos: list[dict], duracao: float, est: dict, cx: int, y: int, base: float, por_linha: int, tempo, y_em=None) -> list[str]:
     """Cria a legenda no modelo escolhido; `tempo` converte segundos para o formato do arquivo."""
     modelo = est["legenda"]
+    if modelo == "react":  # pedaços curtos, amarelos, presos logo abaixo da divisão da tela
+        linhas = []
+        pedacos = picar(grupos)
+        for n, g in enumerate(pedacos):
+            ini = float(g["palavras"][0]["ini"])
+            proximo = float(pedacos[n + 1]["ini"]) if n + 1 < len(pedacos) else duracao
+            fim = max(ini + .25, min(proximo, float(g["palavras"][-1]["fim"]) + .3, duracao))
+            texto = " ".join(_natural(p["p"]) for p in g["palavras"]).rstrip(",;:.")
+            texto = texto[:1].upper() + texto[1:]
+            ancora, py = y_em(ini) if y_em else (2, y)
+            linhas.append(f"Dialogue: 2,{tempo(ini)},{tempo(fim)},Legenda,,0,0,0,,{{\\an{ancora}\\pos({cx},{py})\\fscx78\\fscy78\\t(0,90,\\fscx104\\fscy104)\\t(90,150,\\fscx100\\fscy100)}}{texto}")
+        return linhas
     limpar = _natural if modelo in ("classica", "palavra") else _maiusculas
     efeito_extra = "\\blur5" if modelo == "neon" else ""
     linhas: list[str] = []
@@ -177,7 +235,7 @@ def eventos_legenda(grupos: list[dict], duracao: float, est: dict, cx: int, y: i
             partes = []
             for j, texto in enumerate(textos):
                 partes.append("\\N" if j == quebra else " " if j else "")
-                partes.append(_palavra(texto, j == i, est, base))
+                partes.append(_palavra(texto, j == i, est, base, j < i, j == 0))
             entrada = "\\fscx92\\fscy92\\t(0,90,\\fscx100\\fscy100)" if i == 0 else ""
             linhas.append(f"Dialogue: 2,{tempo(p['ini'])},{tempo(fim)},Legenda,,0,0,0,,{{\\an2\\pos({cx},{y}){efeito_extra}{entrada}}}{''.join(partes)}")
     return linhas

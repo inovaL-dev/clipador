@@ -201,6 +201,35 @@ def publicar_site(git: str, gh: str, conta: dict) -> str:
     return f"https://{dono.lower()}.github.io"
 
 
+def _salvar_versao(git: str, versao: str) -> None:
+    rodar(git, "add", "-A")
+    conferir_arquivos(git)
+    if rodar(git, "status", "--porcelain").stdout.strip():
+        rodar(git, "commit", "-q", "-m", f"Clipador {versao}")
+
+
+def enviar(git: str, versao: str) -> None:
+    """Envia a pasta para o ramo main do GitHub, seja qual for o nome do ramo no computador
+    (pastas antigas podem estar em "master") e mesmo que o GitHub já tenha um histórico diferente."""
+    _salvar_versao(git, versao)
+    if rodar(git, "rev-parse", "--verify", "HEAD", ok=False).returncode:
+        raise Parar("Não encontrei nenhum arquivo para enviar nesta pasta.")
+    rodar(git, "branch", "-M", "main")
+    envio = rodar(git, "push", "-u", "origin", "HEAD:main", ok=False)
+    if not envio.returncode:
+        return
+    erro = (envio.stderr or "") + (envio.stdout or "")
+    if not re.search(r"rejected|non-fast-forward|fetch first|stale info", erro, re.I):
+        raise Parar(f"O comando git push falhou.\n{erro.strip()[-500:]}")
+    # O GitHub tem um histórico que esta pasta não conhece (pasta nova, outro computador).
+    # Os arquivos desta pasta continuam valendo: a nova versão entra por cima do que já está lá.
+    print("O GitHub já tinha uma versão anterior. Juntando com esta pasta.")
+    rodar(git, "fetch", "-q", "origin", "main")
+    rodar(git, "reset", "-q", "--soft", "FETCH_HEAD")
+    _salvar_versao(git, versao)
+    rodar(git, "push", "-u", "origin", "HEAD:main")
+
+
 def main() -> int:
     versao = re.search(r'VERSAO = "([^"]+)"', (RAIZ / "nucleo" / "versao.py").read_text(encoding="utf-8"))[1]
     if "--lancar" in sys.argv:
@@ -238,12 +267,8 @@ def main() -> int:
     # Uma pasta extraída de novo continua a partir do que já está no GitHub.
     if rodar(git, "rev-parse", "--verify", "HEAD", ok=False).returncode and not rodar(git, "fetch", "-q", "origin", "main", ok=False).returncode:
         rodar(git, "reset", "-q", "--mixed", "FETCH_HEAD")
-    rodar(git, "add", "-A")
-    conferir_arquivos(git)
-    if rodar(git, "status", "--porcelain").stdout.strip():
-        rodar(git, "commit", "-m", f"Clipador {versao}")
     print("Enviando os arquivos")
-    rodar(git, "push", "-u", "origin", "main")
+    enviar(git, versao)
 
     topicos = [x for t in TOPICOS for x in ("--add-topic", t)]
     rodar(gh, "repo", "edit", alvo, "--description", DESCRICAO, "--enable-issues", "--enable-wiki=false", "--enable-projects=false", "--delete-branch-on-merge", *topicos)

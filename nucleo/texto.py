@@ -21,9 +21,16 @@ ESTILO_PADRAO = {
     "fundo": False, "fundo_cor": "#000000", "fundo_opac": 75, "fundo_raio": 14, "fundo_pad": 18, "borda": 0, "borda_cor": "#FFFFFF",
     "destaque": "nenhum", "cor_destaque": "#FFC933", "destaque_caixa": False, "palavra_a_palavra": False,
     "entrada": "nenhuma", "saida": "nenhuma", "tempo_anim": 0.15, "efeito_texto": "nenhum", "efeito_forca": 100,
+    "destaque_escala": 100, "sublinhado": False, "sublinhado_cor": "#FF3B30", "sublinhado_esp": 8,
+    "relevo": 0, "relevo_cor": "#1E1E1E", "sem_pontuacao": False,
 }
-EFEITOS_PIXEL = ("neon", "brilho", "reflexo", "ouro", "fogo", "gelo", "arcoiris", "glitch", "rgb", "onda")
-ANIMACOES = ("nenhuma", "fade", "pop", "zoom", "subir", "descer", "esquerda", "direita", "quique", "digitando")
+EFEITOS_PIXEL = ("neon", "brilho", "reflexo", "ouro", "fogo", "gelo", "arcoiris", "glitch", "rgb", "onda",
+                 "cromado", "por_do_sol", "doce", "holografico")
+ANIMACOES = ("nenhuma", "fade", "pop", "zoom", "subir", "descer", "esquerda", "direita", "quique", "digitando",
+             "desfocar", "carimbo", "cair", "girar", "piscar", "glitch", "esticar", "encolher")
+# Regras de destaque por palavra (como os packs do Drift): quais palavras ganham a cor de destaque.
+REGRAS_DESTAQUE = ("nenhum", "palavra", "importantes", "ambos", "falado", "primeira", "ultima", "alternadas")
+PONTUACAO = re.compile(r"[.,;:!?…\"“”()¿¡]+")
 _extras: list[Path] = []
 _fontes: dict[tuple, ImageFont.FreeTypeFont] = {}
 _sprites: OrderedDict = OrderedDict()
@@ -76,85 +83,140 @@ def _largura(f, texto: str, esp: float) -> float:
     return f.getlength(texto) + esp * max(0, len(texto) - 1)
 
 
+def acento(est: dict, k: int, q: str, total: int, ativa: int | None, original: str = "") -> bool:
+    """A palavra `k` recebe a cor de destaque? `ativa` é a palavra sendo falada."""
+    modo = est.get("destaque", "nenhum")
+    if modo in ("palavra", "ambos") and k == ativa:
+        return True
+    if modo in ("importantes", "ambos") and importante(original or q):
+        return True
+    if modo == "falado":
+        return ativa is not None and k <= ativa
+    if modo == "primeira":
+        return k == 0
+    if modo == "ultima":
+        return k == total - 1
+    if modo == "alternadas":
+        return k % 2 == 1
+    return False
+
+
 def desenhar(texto: str, est: dict, escala: float = 1.0, ativa: int | None = None) -> np.ndarray:
     """Devolve o texto em RGBA, sem fundo. `ativa` é a palavra sendo falada."""
+    est = {**ESTILO_PADRAO, **est}
     chave = (texto, escala, ativa, tuple(sorted((k, str(v)) for k, v in est.items() if k not in ("x", "y", "entrada", "saida", "tempo_anim"))))
     if chave in _sprites:
         _sprites.move_to_end(chave)
         return _sprites[chave]
     s = est["tamanho"] * escala
     f = _fonte(est["fonte"], max(4, round(s)))
+    k_esc = max(.5, min(2.0, float(est.get("destaque_escala", 100)) / 100))
+    f_acento = _fonte(est["fonte"], max(4, round(s * k_esc))) if abs(k_esc - 1) > .01 else f
     esp = est["espacamento"] * escala
     limite = est["largura"] * escala
     vazio = _largura(f, " ", esp)
-    linhas: list[list[tuple[str, int]]] = []
-    n = 0
+    blocos = []
     for bloco in str(texto).split("\n"):
-        atual: list[tuple[str, int]] = []
-        usado = 0.0
+        itens = []
         for p in bloco.split():
             q = p.upper() if est["maiusculas"] else p
-            w = _largura(f, q, esp)
+            if est.get("sem_pontuacao"):
+                q = PONTUACAO.sub("", q) or q
+            itens.append((q, p))
+        blocos.append(itens)
+    total = sum(len(b) for b in blocos)
+    linhas: list[list[tuple[str, int, bool]]] = []
+    n = 0
+    for itens in blocos:
+        atual: list[tuple[str, int, bool]] = []
+        usado = 0.0
+        for q, original in itens:
+            ac = acento(est, n, q, total, ativa, original)
+            w = _largura(f_acento if ac else f, q, esp)
             if atual and usado + vazio + w > limite:
                 linhas.append(atual); atual, usado = [], 0.0
             usado += (vazio if atual else 0) + w
-            atual.append((q, n)); n += 1
+            atual.append((q, n, ac)); n += 1
         linhas.append(atual)
     subida, descida = f.getmetrics()
-    passo = s * est["entrelinha"] / 100
-    alt_texto = (subida + descida) + passo * max(0, len(linhas) - 1)
-    larguras = [sum(_largura(f, q, esp) for q, _ in l) + vazio * max(0, len(l) - 1) for l in linhas]
+    sobe_a = f_acento.getmetrics()[0] - subida if f_acento is not f else 0
+    passo = s * est["entrelinha"] / 100 + max(0, sobe_a)
+    alt_texto = (subida + descida) + passo * max(0, len(linhas) - 1) + max(0, sobe_a)
+    larg = lambda q, ac: _largura(f_acento if ac else f, q, esp)
+    larguras = [sum(larg(q, ac) for q, _, ac in l) + vazio * max(0, len(l) - 1) for l in linhas]
     lar_texto = max(larguras, default=1)
     pad = est["fundo_pad"] * escala if est["fundo"] else 0
     cont = est["contorno"] * escala
-    folga = int(pad + cont + est["borda"] * escala + (abs(est["sombra_x"]) + abs(est["sombra_y"]) + est["sombra_blur"] * 2.5) * escala * bool(est["sombra"])) + 6
+    relevo = max(0.0, float(est.get("relevo", 0))) * escala
+    sub_esp = float(est.get("sublinhado_esp", 8)) * escala if est.get("sublinhado") else 0
+    folga = int(pad + cont + est["borda"] * escala + relevo + sub_esp * 2 + (abs(est["sombra_x"]) + abs(est["sombra_y"]) + est["sombra_blur"] * 2.5) * escala * bool(est["sombra"])) + 6
     W, H = int(lar_texto + 2 * folga) + 2, int(alt_texto + 2 * folga) + 2
     base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     mascara = Image.new("L", (W, H), 0)
     tinta = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dm, dt = ImageDraw.Draw(mascara), ImageDraw.Draw(tinta)
 
-    def escrever(x: float, y: float, q: str, preenchimento, traco: int) -> None:
+    def escrever(x: float, y: float, q: str, preenchimento, traco: int, fonte) -> None:
         for alvo, c in ((dm, 255), (dt, preenchimento)):
             if esp == 0:
-                alvo.text((x, y), q, font=f, fill=c, stroke_width=traco, stroke_fill=(c if alvo is dm else cor(est["contorno_cor"])))
+                alvo.text((x, y), q, font=fonte, fill=c, stroke_width=traco, stroke_fill=(c if alvo is dm else cor(est["contorno_cor"])))
             else:
                 px = x
                 for ch in q:
-                    alvo.text((px, y), ch, font=f, fill=c, stroke_width=traco, stroke_fill=(c if alvo is dm else cor(est["contorno_cor"])))
-                    px += f.getlength(ch) + esp
+                    alvo.text((px, y), ch, font=fonte, fill=c, stroke_width=traco, stroke_fill=(c if alvo is dm else cor(est["contorno_cor"])))
+                    px += fonte.getlength(ch) + esp
 
     posicoes = []
     for i, l in enumerate(linhas):
         x = folga + {"esquerda": 0, "direita": lar_texto - larguras[i]}.get(est["alinhamento"], (lar_texto - larguras[i]) / 2)
-        y = folga + passo * i
-        for q, k in l:
-            posicoes.append((x, y, q, k))
-            x += _largura(f, q, esp) + vazio
+        y = folga + passo * i + max(0, sobe_a)
+        for q, k, ac in l:
+            posicoes.append((x, y, q, k, ac))
+            x += larg(q, ac) + vazio
     if est["destaque_caixa"] and ativa is not None:
-        for x, y, q, k in posicoes:
+        for x, y, q, k, ac in posicoes:
             if k == ativa:
                 folga_c = s * 0.14
-                dt.rounded_rectangle((x - folga_c, y + s * .08, x + _largura(f, q, esp) + folga_c, y + subida + descida - s * .02), radius=s * .16, fill=cor(est["cor_destaque"]))
-    for x, y, q, k in posicoes:
-        modo, c = est["destaque"], cor(est["cor"])
-        if modo in ("palavra", "ambos") and k == ativa:
-            c = (20, 20, 20, 255) if est["destaque_caixa"] else cor(est["cor_destaque"])
-        elif modo in ("importantes", "ambos") and importante(q):
-            c = cor(est["cor_destaque"])
-        escrever(x, y, q, c, 0 if (est["destaque_caixa"] and k == ativa) else round(cont))
+                dt.rounded_rectangle((x - folga_c, y + s * .08, x + larg(q, ac) + folga_c, y + subida + descida - s * .02), radius=s * .16, fill=cor(est["cor_destaque"]))
+    for x, y, q, k, ac in posicoes:
+        c = cor(est["cor"])
+        if ac:
+            c = (20, 20, 20, 255) if (est["destaque_caixa"] and k == ativa) else cor(est["cor_destaque"])
+        fonte = f_acento if ac else f
+        dy = -(fonte.getmetrics()[0] - subida) if fonte is not f else 0
+        escrever(x, y + dy, q, c, 0 if (est["destaque_caixa"] and k == ativa) else round(cont), fonte)
+    if sub_esp:
+        for i, l in enumerate(linhas):
+            itens_l = [pz for pz in posicoes if pz[3] in {k for _, k, _ in l}]
+            if not itens_l:
+                continue
+            x0 = itens_l[0][0]; x1 = itens_l[-1][0] + larg(itens_l[-1][2], itens_l[-1][4])
+            y0 = itens_l[0][1] + subida + sub_esp * .6
+            for alvo, c in ((dm, 255), (dt, cor(est.get("sublinhado_cor", "#FF3B30")))):
+                alvo.rounded_rectangle((x0, y0, x1, y0 + sub_esp), radius=sub_esp / 2, fill=c)
     if est["fundo"]:
         caixa = (folga - pad, folga - pad, folga + lar_texto + pad, folga + alt_texto + pad)
         ImageDraw.Draw(base).rounded_rectangle(caixa, radius=est["fundo_raio"] * escala, fill=cor(est["fundo_cor"], est["fundo_opac"] * 2.55),
                                                outline=cor(est["borda_cor"]) if est["borda"] else None, width=round(est["borda"] * escala))
     if est["sombra"]:
         origem = Image.new("L", (W, H), 0)
-        origem.paste(mascara, (round(est["sombra_x"] * escala), round(est["sombra_y"] * escala)))
+        origem.paste(mascara, (round(est["sombra_x"] * escala + relevo * .7), round(est["sombra_y"] * escala + relevo * .7)))
         if est["sombra_blur"]:
             origem = origem.filter(ImageFilter.GaussianBlur(est["sombra_blur"] * escala))
         sombra = Image.new("RGBA", (W, H), cor(est["sombra_cor"]))
         sombra.putalpha(origem.point(lambda v: int(v * est["sombra_opac"] / 100)))
         base = Image.alpha_composite(base, sombra)
+    if relevo >= 1:  # letras em 3D: camadas da cor do relevo empurradas na diagonal, escurecendo
+        passos = int(min(24, max(2, relevo)))
+        r0, g0, b0, _ = cor(est.get("relevo_cor", "#1E1E1E"))
+        for n_p in range(passos, 0, -1):
+            d = relevo * n_p / passos
+            escurece = 1 - .45 * n_p / passos
+            camada = Image.new("RGBA", (W, H), (int(r0 * escurece), int(g0 * escurece), int(b0 * escurece), 255))
+            sombra_m = Image.new("L", (W, H), 0)
+            sombra_m.paste(mascara, (round(d * .7), round(d * .7)))
+            camada.putalpha(sombra_m)
+            base = Image.alpha_composite(base, camada)
     saida = np.array(Image.alpha_composite(base, tinta))
     saida.setflags(write=False)
     _sprites[chave] = saida
@@ -182,6 +244,9 @@ def efeito_movimento(est: dict, u: float, escala: float = 1.0) -> dict:
         r["dy"] = t * .14 * f * math.sin(u * math.tau * .7)
     elif tipo == "piscar":
         r["alfa"] = 1 - min(1.0, f) * .75 * (math.sin(u * math.tau * 3) < -.2)
+    elif tipo == "respirar":
+        r["escala"] = 1 + .04 * f * math.sin(u * math.tau * .45)
+        r["alfa"] = 1 - .12 * min(1.0, f) * (.5 - .5 * math.cos(u * math.tau * .45))
     return r
 
 
@@ -247,6 +312,18 @@ def efeito_pixels(spr: np.ndarray, est: dict, u: float, escala: float = 1.0) -> 
     if tipo == "fogo":
         tinta = _degrade(h, w, [(.25, (255, 60, 20)), (.55, (255, 150, 25)), (.8, (255, 235, 120))])
         return _halo(_pintar(spr, tinta), (255, 90, 15), t * (.15 + .03 * math.sin(u * 17)), (1 + .25 * math.sin(u * 23)) * f)
+    if tipo == "cromado":
+        tinta = _degrade(h, w, [(.0, (250, 252, 255)), (.42, (205, 215, 230)), (.5, (70, 80, 100)), (.62, (150, 160, 180)), (1.0, (245, 248, 255))])
+        return _halo(_pintar(spr, tinta), (180, 200, 230), t * .06, .35 * f)
+    if tipo == "por_do_sol":
+        return _halo(_pintar(spr, _degrade(h, w, [(.2, (255, 214, 90)), (.55, (255, 110, 80)), (.85, (180, 50, 140))])), (255, 120, 80), t * .1, .4 * f)
+    if tipo == "doce":
+        return _pintar(spr, _degrade(h, w, [(.2, (255, 150, 220)), (.55, (255, 110, 199)), (.85, (120, 200, 255))]))
+    if tipo == "holografico":
+        x = np.arange(w, dtype=np.float32)[None, :]; y = np.arange(h, dtype=np.float32)[:, None]
+        matiz = (((x + y * .6) / max(1, w) * .8 + u * .15) % 1 * 179).astype(np.uint8)
+        hsv = np.dstack([matiz, np.full_like(matiz, 95), np.full_like(matiz, 255)])
+        return _halo(_pintar(spr, cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB).astype(np.float32)), (255, 255, 255), t * .12, .6 * f)
     if tipo == "arcoiris":
         matiz = ((np.arange(w) / max(1, w) * 1.2 + u * .45) % 1 * 179).astype(np.uint8)
         hsv = np.stack([matiz, np.full(w, 225, np.uint8), np.full(w, 255, np.uint8)], axis=1)[None, ...]
@@ -271,11 +348,13 @@ def efeito_pixels(spr: np.ndarray, est: dict, u: float, escala: float = 1.0) -> 
 
 def animar(est: dict, u: float, dur: float) -> dict:
     """Quanto da animação de entrada e de saída vale neste instante."""
-    r = {"alfa": 1.0, "dx": 0.0, "dy": 0.0, "escala": 1.0, "mostrar": 1.0}
+    r = {"alfa": 1.0, "dx": 0.0, "dy": 0.0, "escala": 1.0, "mostrar": 1.0, "rot": 0.0, "sx": 1.0, "sy": 1.0, "desfoque": 0.0, "glitch": 0.0}
     tempo = max(0.01, float(est["tempo_anim"]))
-    for tipo, p in ((est["entrada"], min(1.0, u / tempo)), (est["saida"], min(1.0, (dur - u) / tempo))):
+    t = float(est.get("tamanho", 66))
+    for lado, tipo, p in ((1, est["entrada"], min(1.0, u / tempo)), (-1, est["saida"], min(1.0, (dur - u) / tempo))):
         if p >= 1 or tipo == "nenhuma":
             continue
+        p = max(0.0, p)
         e = 1 - (1 - p) ** 3
         if tipo == "fade":
             r["alfa"] *= p
@@ -295,4 +374,48 @@ def animar(est: dict, u: float, dur: float) -> dict:
             r["escala"] *= 1 + np.sin(p * np.pi * 2.5) * (1 - p) * .35; r["alfa"] *= min(1, p * 3)
         elif tipo == "digitando":
             r["mostrar"] = min(r["mostrar"], p)
+        elif tipo == "desfocar":
+            r["desfoque"] = max(r["desfoque"], (1 - e) * t * .35); r["alfa"] *= min(1, p * 1.6); r["escala"] *= 1.08 - .08 * e
+        elif tipo == "carimbo":  # cai de grande e bate na tela
+            q = p * p
+            r["escala"] *= 2.2 - 1.2 * q + (.06 * np.sin(min(1.0, (p - .8) / .2) * np.pi) if p > .8 else 0); r["alfa"] *= min(1, p * 2.5)
+        elif tipo == "cair":
+            quica = abs(np.cos(p * np.pi * 1.5)) * (1 - p) ** 1.6
+            r["dy"] -= quica * t * 2.4 * lado; r["alfa"] *= min(1, p * 4)
+        elif tipo == "girar":
+            r["rot"] += (1 - e) * -200 * lado; r["escala"] *= .3 + .7 * e; r["alfa"] *= min(1, p * 2)
+        elif tipo == "piscar":
+            r["alfa"] *= 0.0 if (p < .85 and int(p * 14) % 2 == 0) else min(1.0, .4 + p)
+        elif tipo == "glitch":
+            r["glitch"] = max(r["glitch"], 1 - p); r["dx"] += np.sin(p * 91) * t * .25 * (1 - p); r["alfa"] *= min(1, .3 + p)
+        elif tipo == "esticar":
+            r["sx"] *= .6 + .4 * e + np.sin(p * np.pi) * .15; r["sy"] *= 1.5 - .5 * e - np.sin(p * np.pi) * .1; r["alfa"] *= min(1, p * 2)
+        elif tipo == "encolher":
+            r["escala"] *= e; r["alfa"] *= min(1, p * 1.5)
     return r
+
+
+def desfocar_rgba(spr: np.ndarray, raio: float) -> np.ndarray:
+    """Desfoque com alfa pré-multiplicado, para não escurecer as bordas das letras."""
+    if raio < .5:
+        return spr
+    m = int(raio * 2) + 2
+    spr = cv2.copyMakeBorder(spr, m, m, m, m, cv2.BORDER_CONSTANT, value=(0, 0, 0, 0))
+    a = spr[..., 3:4].astype(np.float32) / 255
+    cor_p = spr[..., :3].astype(np.float32) * a
+    cor_p = cv2.GaussianBlur(cor_p, (0, 0), raio)
+    a2 = cv2.GaussianBlur(a[..., 0], (0, 0), raio)[..., None]
+    rgb = cor_p / np.maximum(a2, 1e-4)
+    return np.dstack([np.clip(rgb, 0, 255), np.clip(a2 * 255, 0, 255)]).astype(np.uint8)
+
+
+def glitch_rgba(spr: np.ndarray, forca: float, semente: int, tamanho: float) -> np.ndarray:
+    if forca <= .02:
+        return spr
+    saida = _separar(spr, int(tamanho * .08 * forca))
+    rng = np.random.default_rng(semente)
+    h = saida.shape[0]
+    for _ in range(4):
+        y0 = int(rng.integers(0, max(1, h - 2))); alt = int(rng.integers(2, max(3, int(tamanho * .3))))
+        saida[y0:y0 + alt] = np.roll(saida[y0:y0 + alt], int(rng.integers(-int(tamanho * .35 * forca) - 1, int(tamanho * .35 * forca) + 2)), axis=1)
+    return saida

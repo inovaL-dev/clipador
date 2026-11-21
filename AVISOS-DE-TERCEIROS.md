@@ -21,7 +21,14 @@ O Clipador usa os componentes abaixo. Cada um continua sob a sua própria licen�
 | [Inno Setup](https://jrsoftware.org/isinfo.php) | Instalador | Licença Inno Setup |
 | Fontes do Google Fonts (`fontes/`) | Legendas e títulos | SIL OFL 1.1 ou Apache-2.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) | Interface | SIL OFL 1.1 |
+| [Inter](https://github.com/rsms/inter) | Interface do editor (`web/fontes/inter-*.woff`) | SIL OFL 1.1 |
+| [Drift](https://github.com/CutWire-Studios/Drift), da CutWire Studios | Referência para o layout do editor, os packs de texto, as transições, os efeitos e os efeitos de áudio. Nada foi copiado: as ideias foram refeitas em Python e JavaScript. | GPL-3.0 |
+| [TopClip](https://github.com/realfelipetop/topclip) | Referência para os posts de frase e para seguir quem está falando. Refeito do zero em Python. | MIT |
+| [DM Sans, Montserrat, Fraunces e Playfair Display](https://fonts.google.com) | Fontes dos posts de frase (`fontes/posts/`) | SIL OFL 1.1 |
+| [ViralCutter](https://github.com/RafaelGodoyEbert/ViralCutter) | Referência para o XML do Premiere, a tradução das legendas, a tela dividida para duas pessoas e a opção de tirar a pontuação. | GPL-3.0 |
 
 O código-fonte do FFmpeg está disponível em <https://ffmpeg.org/download.html>.
+
+A tradução das legendas usa o serviço público de tradução do Google e só funciona com internet. Nenhum outro dado do projeto sai do computador.
 
 Kick, Twitch, YouTube e X são marcas de seus respectivos donos. O Clipador não tem ligação com essas empresas.

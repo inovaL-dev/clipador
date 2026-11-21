@@ -214,6 +214,7 @@ function cartao(c) {
     poster.append(el("img", { src: `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}`, alt: "", loading: "lazy" }),
       el("span", { class: "poster-reacao" }, c.postado ? "Postado" : c.reacao_rotulo),
       el("span", { class: "poster-dur" }, relogio(c.duracao)));
+    if (c.potencial) poster.append(seloPotencial(c.potencial));
   } else if (c.status === "erro") {
     poster.append(el("div", { class: "falhou" }, c.erro || "Não foi possível editar este corte."));
   } else {
@@ -226,6 +227,28 @@ function cartao(c) {
   return el("button", { class: "corte", type: "button", dados: { postado: String(!!c.postado) }, disabled: c.status === "pronto" ? null : undefined,
     onclick: () => { if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); } },
     poster, el("h3", {}, titulo), el("p", {}, `${c.canal}, ${haQuanto(c.criado)}`));
+}
+
+const NOMES_IDEIA = { padrao: "Seu estilo", react: "React com câmera dinâmica" };
+const NIVEL_POTENCIAL = { alto: "Alto", medio: "Médio", baixo: "Baixo" };
+function seloPotencial(p) {
+  return el("span", { class: "poster-potencial", dados: { nivel: p.nivel }, title: `Potencial de viralizar: ${p.nota}% (${NIVEL_POTENCIAL[p.nivel] || ""})` },
+    `${p.nota}%`);
+}
+function mostrarPotencial(c) {
+  const caixa = $("#ed-potencial"), p = c.potencial;
+  caixa.hidden = !p;
+  if (!p) return;
+  caixa.dataset.nivel = p.nivel;
+  $("#ed-pot-nota").textContent = `${p.nota}%`;
+  $("#ed-pot-anel").style.setProperty("--pct", p.nota);
+  $("#ed-pot-nivel").textContent = `${NIVEL_POTENCIAL[p.nivel]}${p.dicas?.length ? ` · ${p.dicas.length} ${p.dicas.length === 1 ? "dica" : "dicas"} para melhorar` : ""}`;
+  $("#ed-pot-partes").replaceChildren(...p.partes.map((x) => el("li", {},
+    el("span", { class: "pp-nome" }, x.nome),
+    el("span", { class: "pp-barra", style: `--v:${Math.max(0, x.pontos) / x.maximo}`, dados: { negativo: String(x.pontos < 0) } }),
+    el("b", {}, x.nome === "No seu canal" ? `${x.pontos > 0 ? "+" : ""}${x.pontos}` : `${x.pontos}/${x.maximo}`),
+    el("small", {}, x.texto))));
+  $("#ed-pot-dicas").replaceChildren(...(p.dicas || []).map((d) => el("li", {}, d)));
 }
 
 let falhoMarcado = null;
@@ -259,7 +282,8 @@ function renderCortes() {
   $("#n-postar").textContent = postar.length; $("#n-postados").textContent = postados.length; $("#n-todos").textContent = prontos.length;
   const montagens = prontos.filter((c) => c.montagem);
   $("#n-montagens").textContent = montagens.length;
-  const todos = filtro === "postar" ? postar : filtro === "postados" ? postados : filtro === "montagens" ? montagens : prontos;
+  let todos = filtro === "postar" ? postar : filtro === "postados" ? postados : filtro === "montagens" ? montagens : prontos;
+  if ($("#ordem-cortes").value === "potencial") todos = [...todos].sort((a, b) => (b.potencial?.nota ?? -1) - (a.potencial?.nota ?? -1));
   const porPagina = +$("#cortes-por-pagina").value, paginas = Math.max(1, Math.ceil(todos.length / porPagina));
   paginaCortes = Math.min(paginaCortes, paginas);
   const inicioPagina = (paginaCortes - 1) * porPagina, lista = todos.slice(inicioPagina, inicioPagina + porPagina);
@@ -273,7 +297,7 @@ function renderCortes() {
   for (const [id, item] of cartoes) if (!vivos.has(id)) { item.n.remove(); cartoes.delete(id); }
   const minuto = Math.floor(estado.agora / 60);
   lista.forEach((c, i) => {
-    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, minuto].join("|");
+    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, c.potencial?.nota, minuto].join("|");
     let item = cartoes.get(c.id);
     if (!item || item.sinal !== sinal) {
       const novo = cartao(c);
@@ -309,6 +333,8 @@ $("#form-montagem").addEventListener("submit", async (ev) => {
 });
 
 $("#cortes-por-pagina").addEventListener("change", () => { paginaCortes = 1; renderCortes(); });
+try { $("#ordem-cortes").value = localStorage.getItem("clipador.ordem") || "recentes"; } catch {}
+$("#ordem-cortes").addEventListener("change", (e) => { try { localStorage.setItem("clipador.ordem", e.target.value); } catch {} paginaCortes = 1; renderCortes(); });
 $("#filtro-pasta").addEventListener("change", () => { paginaCortes = 1; });
 $$("#aba-cortes .filtros button").forEach((b) => b.addEventListener("click", () => {
   filtro = b.dataset.filtro; paginaCortes = 1;
@@ -418,11 +444,14 @@ function preencherEditor(c) {
   $("#ed-salvar").hidden = !!c.projeto_exportado;
   corteAberto = c;
   $("#ed-titulo").textContent = c.canal;
-  $("#ed-meta").textContent = `${c.nome_plataforma}, ${relogio(c.duracao)} de vídeo. ${c.motivo}.`;
+  $("#ed-meta").textContent = `${c.nome_plataforma}, ${relogio(c.duracao)} de vídeo. ${c.motivo}.${c.ideia ? ` Ideia em teste: ${c.ideia_nome || NOMES_IDEIA[c.ideia] || c.ideia}.` : ""}`;
+  $("#ed-camera-bloco").hidden = c.plano?.layout !== "dividido";
+  $("#ed-camera-dinamica").value = c.estilo?.camera_dinamica === undefined ? "" : String(c.estilo.camera_dinamica === true || c.estilo.camera_dinamica === "true");
   $("#ed-gancho").value = c.gancho || "";
   $("#ed-post").value = c.post || "";
   $("#ed-estilo-legenda").value = c.estilo?.legenda || ""; $("#ed-estilo-gancho").value = c.estilo?.gancho || "";
   $("#ed-layout").textContent = LAYOUTS[c.layout] || "Automático";
+  mostrarPotencial(c);
   $("#ed-baixar").href = `/cortes/${c.id}/corte.mp4?baixar=1`;
   $("#ed-postado").textContent = c.postado ? "Voltar para postar" : "Marcar como postado";
   const video = $("#ed-video");
@@ -488,7 +517,7 @@ $("#ed-postado").addEventListener("click", async () => {
 $("#ed-salvar").addEventListener("click", async () => {
   const grupos = $$("#ed-linhas li[data-ini] input").map((i) => ({ texto: i.value }));
   try {
-    await api("PATCH", `/api/cortes/${corteAberto.id}`, { gancho: $("#ed-gancho").value, post: $("#ed-post").value, grupos, refazer: true, estilo: { legenda: $("#ed-estilo-legenda").value, gancho: $("#ed-estilo-gancho").value } });
+    await api("PATCH", `/api/cortes/${corteAberto.id}`, { gancho: $("#ed-gancho").value, post: $("#ed-post").value, grupos, refazer: true, estilo: { legenda: $("#ed-estilo-legenda").value, gancho: $("#ed-estilo-gancho").value, ...($("#ed-camera-bloco").hidden || !$("#ed-camera-dinamica").value ? {} : { camera_dinamica: $("#ed-camera-dinamica").value }) } });
     acompanharRefazer(corteAberto.id);
   } catch (e) { avisar(e.message); }
 });
@@ -606,7 +635,7 @@ $("#abrir-ajustes").addEventListener("click", () => {
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
   f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.corte_garantido.value = String(c.corte_garantido);
-  f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 4); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados !== false;
+  f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 3); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados === true;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
 });
@@ -636,6 +665,8 @@ function abrirAba(aba, rolar = true) {
   $("#aba-postagem").hidden = aba !== "postagem";
   $("#aba-longos").hidden = aba !== "longos";
   $("#aba-editor").hidden = aba !== "editor";
+  $("#aba-posts").hidden = aba !== "posts";
+  if (aba === "posts" && typeof abrirPosts === "function") abrirPosts();
   document.body.dataset.aba = aba;
   if (aba !== "editor" && typeof pausarEditor === "function") pausarEditor();
   if (aba === "editor" && estado && typeof renderEditor === "function") renderEditor();
@@ -650,7 +681,7 @@ function abrirSub(nome) {
 $$(".subabas button").forEach((b) => b.addEventListener("click", () => abrirSub(b.dataset.sub)));
 (function abaInicial() {
   const pedida = new URLSearchParams(location.search).get("aba") || location.hash.slice(1);
-  if (["cortes", "postagem", "longos", "editor"].includes(pedida)) abrirAba(pedida, false);
+  if (["cortes", "postagem", "longos", "editor", "posts"].includes(pedida)) abrirAba(pedida, false);
   if (new URLSearchParams(location.search).get("aba")) abrirSub("canal");
 })();
 
@@ -1103,7 +1134,7 @@ $("#auto-longo-ativo").addEventListener("change", salvarAutoLongo);
 $("#auto-longo-minutos").addEventListener("change", salvarAutoLongo);
 
 /* ---------- Estilo do vídeo ---------- */
-const MODELOS_LEGENDA = [["destaque", "Destaque", "Palavra falada colorida"], ["caixa", "Caixa", "Palavra dentro de um bloco"], ["palavra", "Palavra", "Uma palavra por vez, sem maiúsculas"], ["impacto", "Impacto", "Uma palavra grande por vez"], ["neon", "Neon", "Texto com brilho"], ["faixa", "Faixa", "Fundo escuro atrás do texto"], ["classica", "Clássica", "Frase limpa, sem efeito"]];
+const MODELOS_LEGENDA = [["react", "React", "1 a 3 palavras, amarelas, na divisão da tela"], ["destaque", "Destaque", "Palavra falada colorida"], ["caixa", "Caixa", "Palavra dentro de um bloco"], ["palavra", "Palavra", "Uma palavra por vez, sem maiúsculas"], ["impacto", "Impacto", "Uma palavra grande por vez"], ["neon", "Neon", "Texto com brilho"], ["faixa", "Faixa", "Fundo escuro atrás do texto"], ["classica", "Clássica", "Frase limpa, sem efeito"], ["karaoke", "Karaokê", "As palavras já faladas mudam de cor"], ["hormozi", "Hormozi", "Anton grande, primeira palavra em vermelho"]];
 const MODELOS_GANCHO = [["faixa", "Faixa colorida", "Bloco na cor de destaque"], ["preto", "Faixa preta", "Fundo preto e texto colorido"], ["alerta", "Alerta", "Vermelho com texto branco"], ["branco", "Etiqueta branca", "Bloco branco inclinado"], ["contorno", "Contorno", "Letras grandes sem fundo"], ["neon", "Neon", "Letras com brilho"], ["impacto", "Impacto", "Anton com contorno grosso"], ["quadrinho", "Quadrinho", "Bangers inclinado, estilo HQ"], ["manchete", "Manchete", "Bebas Neue em faixa vermelha"], ["gamer", "Gamer", "Russo One com moldura"], ["desenho", "Desenho", "Luckiest Guy com contorno colorido"], ["minimal", "Minimalista", "Limpo, sem fundo"], ["sombra3d", "Sombra 3D", "Sombra dura na cor de destaque"], ["marcador", "Caneta", "Escrito à mão em etiqueta"], ["nenhum", "Sem título", "Não mostra título no vídeo"]];
 const CORES_ESTILO = [["amarelo", "#ffc933", "Amarelo"], ["verde", "#39ff88", "Verde"], ["vermelho", "#ff4b5c", "Vermelho"], ["azul", "#38bdf8", "Azul"], ["rosa", "#ff5fcf", "Rosa"], ["laranja", "#ff8a1f", "Laranja"], ["branco", "#ffffff", "Branco"]];
 let tempoPrevia = null;
@@ -1113,7 +1144,8 @@ const fontesAmostra = new Set();
 function fonteAmostra(id) { if (!fontesAmostra.has(id)) { fontesAmostra.add(id); new FontFace(`am-${id}`, `url("/fontes/${id}.ttf")`).load().then((f) => document.fonts.add(f)).catch(() => {}); } return `"am-${id}", "Instrument Sans", sans-serif`; }
 function pintarAmostra(n, e, palavras) {
   const d = (txt, cor) => el("em", { style: `color:${cor}` }, txt), cx = e.destaque_caixa;
-  n.replaceChildren(...palavras.map((p, k) => k === palavras.length - 1 && e.destaque && e.destaque !== "nenhum" ? (cx ? el("em", { style: `background:${e.cor_destaque};color:#141414;padding:0 .2em;border-radius:.15em` }, p) : d(p, e.cor_destaque || e.cor)) : document.createTextNode(`${p} `)));
+  const marcada = (k) => { const m = e.destaque, u = palavras.length - 1; if (!m || m === "nenhum") return false; if (m === "primeira") return k === 0; if (m === "falado") return k < u; if (m === "alternadas") return k % 2 === 1; return k === u; };
+  n.replaceChildren(...palavras.map((p, k) => marcada(k) ? (cx ? el("em", { style: `background:${e.cor_destaque};color:#141414;padding:0 .2em;border-radius:.15em` }, p) : d(k < palavras.length - 1 ? `${p} ` : p, e.cor_destaque || e.cor)) : document.createTextNode(`${p} `)));
   Object.assign(n.style, { fontFamily: fonteAmostra(e.fonte || "Poppins-Bold"), color: e.cor, textTransform: e.maiusculas === false ? "none" : "uppercase", background: e.fundo ? e.fundo_cor : "", padding: e.fundo ? ".1em .4em" : "",
     WebkitTextStroke: e.contorno ? `${Math.min(3, e.contorno / 4)}px ${e.contorno_cor || "#000"}` : "", textShadow: e.sombra ? `${e.sombra_x ? 2 : 0}px ${Math.min(3, e.sombra_y ?? 2)}px ${e.sombra_blur ? Math.min(8, e.sombra_blur / 2) : 0}px ${e.sombra_cor || "#000"}` : "",
     outline: e.borda ? `2px solid ${e.borda_cor}` : "", transform: e.rot ? `rotate(${e.rot}deg)` : "" });
@@ -1134,7 +1166,8 @@ $("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...
 
 function estiloEscolhido() {
   const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
-  return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked, ...posicoesEstilo };
+  return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked,
+    arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
 }
 function atualizarPrevia() {
   clearTimeout(tempoPrevia);
@@ -1149,6 +1182,7 @@ $("#abrir-estilo").addEventListener("click", () => {
   if (!e) return;
   [["es-legenda", e.legenda], ["es-gancho", e.gancho], ["es-cor", e.cor]].forEach(([n, v]) => { const r = $(`#form-estilo input[name="${n}"][value="${v}"]`); if (r) r.checked = true; });
   $("#es-filtro").value = e.filtro || "nenhum"; $("#es-sons").checked = e.sons_auto !== false;
+  $("#es-arroba").value = e.arroba || ""; $("#es-encerramento").checked = e.encerramento !== false;
   $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();
   atualizarPrevia(); $("#janela-estilo").showModal();
 });
@@ -1405,7 +1439,21 @@ async function desenharAprendizado() {
       el("details", {}, el("summary", {}, "Ver exemplos"), el("ul", { class: "ap-lista" }, ...m.exemplos.map((r) => el("li", {}, el("span", {}, r.nome), el("button", { class: "botao fantasma", type: "button", onclick: async () => { await api("DELETE", `/api/aprendizado/referencias/${r.id}`); desenharAprendizado(); } }, "Remover")))), apagar));
   };
   const prefs = [...Object.entries(d.preferencias.legenda), ...Object.entries(d.preferencias.global)].map(([k, v]) => `${NOMES_PREF[k] || k}: ${v === true ? "sim" : v === false ? "não" : v}`), des = d.desempenho, tipos = Object.entries(des.tipos || {}).sort((a, b) => b[1].media - a[1].media);
+  const cartaoIdeia = (i) => {
+    const liga = el("input", { type: "checkbox" }); liga.checked = i.ligada;
+    liga.addEventListener("change", async () => { try { await api("POST", "/api/config", { ideias: { [i.id]: liga.checked } }); await atualizar(); desenharAprendizado(); } catch (e) { avisar(e.message); } });
+    const n = (v, um, varios) => `${v} ${v === 1 ? um : varios}`;
+    const numeros = i.usos ? `Usada em ${n(i.usos, "corte", "cortes")}: você postou ${i.postados}, apagou ${i.descartados} sem postar e trocou ${i.trocados}.` : "Ainda não foi usada.";
+    return el("li", { class: "ap-modelo", dados: { ativo: String(i.ligada) } },
+      el("div", { class: "ap-modelo-topo" }, el("b", {}, i.nome), el("label", { class: "marcar" }, liga, el("span", {}, "Testar"))),
+      el("p", { class: "dica" }, i.descricao), el("p", { class: "ap-traits" }, numeros),
+      i.resultado ? el("p", { class: "dica" }, `${i.resultado.media.toLocaleString("pt-BR")} visualizações em média (${n(i.resultado.n, "Short", "Shorts")})`) : null,
+      i.ligada && d.ideias.filter((x) => x.ligada).length > 1 ? el("p", { class: "ap-chance" }, `Aparece em cerca de ${Math.round(i.chance * 100)}% dos próximos cortes`) : null);
+  };
   c.replaceChildren(
+    el("section", {}, el("h3", {}, "Ideias em teste"),
+      el("p", { class: "dica" }, d.modelos.some((m) => m.ativo) ? "Enquanto houver modelos aprendidos com vídeos de referência, eles decidem o estilo. As ideias voltam a ser testadas se você desligar os modelos." : "Cada corte novo recebe uma destas ideias. O que você posta conta a favor; o que você apaga sem postar ou troca no corte conta contra. Com o YouTube conectado, as visualizações contam ainda mais. A ideia que vai melhor aparece mais, e as outras continuam aparecendo de vez em quando."),
+      el("ul", { class: "ap-modelos" }, ...d.ideias.map(cartaoIdeia))),
     el("section", {}, el("h3", {}, "Vídeos de referência"), chave("referencias", "Aprender com estes vídeos", "Envie vídeos que deram certo. O Clipador desmonta o gancho, o ritmo, as cores e os cortes, e salva o estilo. Os vídeos são apagados depois da análise."),
       envio, el("button", { class: "botao destaque", type: "button", onclick: () => envio.click(), }, ["fila", "analisando"].includes(t.estado) ? `Analisando ${t.restantes > 1 ? `${t.restantes} vídeos` : "o vídeo"}…` : "Ensinar com vídeos"), t.erro ? el("p", { class: "erro-campo" }, t.erro) : null,
       d.modelos.length ? el("ul", { class: "ap-modelos" }, ...d.modelos.map(cartaoModelo)) : el("p", { class: "dica" }, "Envie vídeos de estilos diferentes. Cada estilo vira um modelo, e os próximos cortes usam todos eles.")),

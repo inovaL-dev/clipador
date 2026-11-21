@@ -518,3 +518,27 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* Potencial de viralizar */
+.poster-potencial { position: absolute; top: .5rem; right: .5rem; z-index: 2; display: inline-flex; align-items: center; gap: .3rem; padding: .125rem .5rem; border-radius: 999px; background: rgb(8 15 18 / .86); font-size: .75rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--giz); }
+.poster-potencial::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--c, var(--giz-medio)); }
+.poster-potencial[data-nivel="alto"] { --c: var(--pronto); }
+.poster-potencial[data-nivel="medio"] { --c: var(--corte); }
+.poster-potencial[data-nivel="baixo"] { --c: var(--erro); }
+.potencial { --c: var(--giz-medio); border: 1px solid var(--fio-suave); border-radius: var(--raio); padding: .75rem .875rem; background: var(--mesa); }
+.potencial[data-nivel="alto"] { --c: var(--pronto); } .potencial[data-nivel="medio"] { --c: var(--corte); } .potencial[data-nivel="baixo"] { --c: var(--erro); }
+.potencial summary { display: flex; align-items: center; gap: .75rem; cursor: pointer; list-style: none; }
+.potencial summary::-webkit-details-marker { display: none; }
+.potencial summary > span:last-child { display: grid; } .potencial summary small { color: var(--giz-medio); }
+.potencial-anel { --pct: 0; flex: none; display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%; background: radial-gradient(closest-side, var(--mesa) 76%, transparent 78%), conic-gradient(var(--c) calc(var(--pct) * 1%), var(--fio-suave) 0); }
+.potencial-anel b { font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.potencial-partes, .potencial-dicas { margin: .75rem 0 0; padding: 0; list-style: none; display: grid; gap: .5rem; }
+.potencial-partes li { display: grid; grid-template-columns: 5.5rem 1fr 2.75rem; align-items: center; gap: .125rem .5rem; font-size: .8125rem; }
+.potencial-partes li small { grid-column: 1 / -1; color: var(--giz-medio); }
+.potencial-partes b { text-align: right; font-variant-numeric: tabular-nums; }
+.pp-barra { height: .375rem; border-radius: 99px; background: linear-gradient(90deg, var(--c) calc(var(--v) * 100%), var(--fio-suave) 0); }
+.pp-barra[data-negativo="true"] { background: var(--fio-suave); }
+.potencial-dicas li { position: relative; padding-left: 1rem; font-size: .8125rem; }
+.potencial-dicas li::before { content: "→"; position: absolute; left: 0; color: var(--c); }
+.potencial-dicas:empty { display: none; }
+.potencial > .dica { margin: .75rem 0 0; }

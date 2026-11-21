@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import filtros, texto, transicoes
+from . import audio_fx, filtros, texto, transicoes
 from .plataformas import sem_janela
 
 TAXA = 48000
@@ -288,6 +288,14 @@ class Compositor:
             return
         p = suave(max(0.0, u / max(.01, dur)))
         a = self._anterior(itens, item)
+        if tipo in transicoes.MISTURAS:  # as duas cenas existem ao mesmo tempo e se misturam
+            x0, y0, x1, y1 = self._regiao(item, u)
+            cena_nova = buf.copy()
+            if a:
+                self._visual(buf, a, t - a["ini"])
+            self._visual(cena_nova, item, u)
+            buf[y0:y1, x0:x1] = transicoes.misturar(buf[y0:y1, x0:x1], cena_nova[y0:y1, x0:x1], tipo, p, round(item["ini"] * 10))
+            return
         if tipo in transicoes.TIPOS:  # metade na cena que sai, metade na cena que entra
             meio = max(.01, dur / 2)
             x0, y0, x1, y1 = self._regiao(item, u)  # cada parte da tela faz a transição no seu próprio quadro
@@ -335,6 +343,10 @@ class Compositor:
         mov = texto.efeito_movimento(est, u)
         ancora = {"topo": h / 2, "base": -h / 2}.get(est["ancora"], 0.0)
         spr = texto.efeito_pixels(spr, est, u, self.s)
+        if anim["desfoque"] > .3:
+            spr = texto.desfocar_rgba(spr, anim["desfoque"] * self.s)
+        if anim["glitch"] > .02:
+            spr = texto.glitch_rgba(spr, anim["glitch"], round(u * 30), est["tamanho"] * self.s)
         h, w = spr.shape[:2]
         if item["tipo"] == "legenda":
             x, y, esc, rot, opac = est.get("x", self.p["largura"] / 2), est.get("y", self.p["altura"] * .86), 1.0, 0.0, 100.0
@@ -342,7 +354,7 @@ class Compositor:
             x, y, esc, rot, opac = valor(item, "x", u), valor(item, "y", u), valor(item, "escala", u), valor(item, "rot", u), valor(item, "opac", u)
         cx, cy = (x + anim["dx"] + mov["dx"]) * self.s, (y + anim["dy"] + mov["dy"]) * self.s + ancora
         e = esc * anim["escala"] * mov["escala"]
-        m = self._matriz(0, 0, w, h, cx, cy, w * e, h * e, rot + mov["rot"])
+        m = self._matriz(0, 0, w, h, cx, cy, w * e * anim["sx"], h * e * anim["sy"], rot + mov["rot"] + anim["rot"])
         rgba = spr[..., [2, 1, 0, 3]]
         self._colar(buf, rgba, m, opac * anim["alfa"] * mov["alfa"] * est["opacidade"] / 100)
 
@@ -380,6 +392,9 @@ class Compositor:
             roi[:] = filtros.aplicar(roi, item.get("filtro"), f * 100)
         elif tipo == "desfoque":
             roi[:] = filtros.ajustar(roi, {"desfoque": f * 20})
+        elif tipo in transicoes.EFEITOS_EXTRA:
+            if roi.size:
+                roi[:] = transicoes.efeito_extra(roi, tipo, f, u, n)
         else:
             saida = transicoes.efeito_continuo(roi, tipo, min(1.0, f), u, n)
             if saida is not None:
@@ -408,7 +423,7 @@ def duracao_projeto(proj: dict) -> float:
     return max((i["ini"] + i["dur"] for f in proj["faixas"] for i in f["itens"]), default=0.0)
 
 
-def _ler_audio(caminho: Path, ini: float, dur: float, vel: float) -> np.ndarray:
+def _ler_audio(caminho: Path, ini: float, dur: float, vel: float, efeito: str | None = None) -> np.ndarray:
     filtros_a = []
     resto = vel
     while resto > 2.0:
@@ -417,9 +432,14 @@ def _ler_audio(caminho: Path, ini: float, dur: float, vel: float) -> np.ndarray:
         filtros_a.append("atempo=0.5"); resto *= 2
     if abs(resto - 1) > 1e-3:
         filtros_a.append(f"atempo={resto:.4f}")
+    if audio_fx.cadeia(efeito):
+        filtros_a.append(audio_fx.cadeia(efeito))
     cmd = ["ffmpeg", "-v", "error", "-ss", f"{ini:.3f}", "-t", f"{dur * vel:.3f}", "-i", str(caminho), "-vn", "-ac", "2", "-ar", str(TAXA)]
     r = subprocess.run(cmd + (["-af", ",".join(filtros_a)] if filtros_a else []) + ["-f", "f32le", "-"], capture_output=True, **sem_janela())
-    return np.frombuffer(r.stdout[:len(r.stdout) // 8 * 8], np.float32).reshape(-1, 2)
+    dados = np.frombuffer(r.stdout[:len(r.stdout) // 8 * 8], np.float32).reshape(-1, 2)
+    if efeito and not np.isfinite(dados).all():  # alguns filtros soltam valores inválidos no começo
+        dados = np.nan_to_num(dados, nan=0.0, posinf=0.0, neginf=0.0)
+    return dados
 
 
 def mixar(proj: dict, midias: Midias, pasta: Path, total: float, cancelado=lambda: False) -> tuple[Path, Path]:
@@ -427,6 +447,8 @@ def mixar(proj: dict, midias: Midias, pasta: Path, total: float, cancelado=lambd
     n = int(total * TAXA) + 1
     fala, outros = (np.memmap(pasta / nome, dtype=np.float32, mode="w+", shape=(n, 2)) for nome in ("fala.raw", "outros.raw"))
     g = proj["global"]
+    abaixar = bool(g.get("abaixar_musica"))
+    musica = np.memmap(pasta / "musica.raw", dtype=np.float32, mode="w+", shape=(n, 2)) if abaixar else outros
     for faixa in proj["faixas"]:
         if faixa.get("muda"):
             continue
@@ -440,7 +462,7 @@ def mixar(proj: dict, midias: Midias, pasta: Path, total: float, cancelado=lambd
                 caminho = midias.caminho(mid)
                 if not caminho.exists():
                     continue
-                dados = _ler_audio(caminho, item.get("entrada", 0.0), item["dur"], item.get("velocidade", 1.0))
+                dados = _ler_audio(caminho, item.get("entrada", 0.0), item["dur"], item.get("velocidade", 1.0), item.get("efeito_audio"))
             except (ValueError, KeyError):
                 continue
             if not len(dados):
@@ -459,7 +481,12 @@ def mixar(proj: dict, midias: Midias, pasta: Path, total: float, cancelado=lambd
             ini = int(item["ini"] * TAXA)
             q = min(len(dados), n - ini)
             if q > 0:
-                (fala if categoria == "voz" else outros)[ini:ini + q] += dados[:q] * (env[:q] * ganho)[..., None]
+                alvo = fala if categoria == "voz" else musica if categoria == "musica" else outros
+                alvo[ini:ini + q] += dados[:q] * (env[:q] * ganho)[..., None]
+    if abaixar:  # a música desce enquanto alguém fala e volta suave nas pausas
+        musica.flush()
+        audio_fx.aplicar_ganho(musica, audio_fx.ganho_ducking(fala, g.get("abaixar_forca", 65) / 100), outros)
+        del musica
     arquivos = []
     for nome, dados in (("fala", fala), ("outros", outros)):
         dados.flush()

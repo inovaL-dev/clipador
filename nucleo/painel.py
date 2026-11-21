@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
-from . import capas, estilos, filtros, texto
+from . import audio_fx, capas, estilos, ferramentas, filtros, texto
 from .versao import VERSAO
 from .biblioteca import CATEGORIAS, LIMITE_ENVIO
 from .longo import posicoes_padrao, previa_estilo
@@ -23,6 +23,7 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 ARQUIVOS_CORTE = {"corte.mp4", "capa.jpg", "quadro.jpg", "legenda.srt", "post.txt"}
 ID_VALIDO = re.compile(r"^[\w-]+$")
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
 mimetypes.add_type("text/javascript", ".js")
 
 
@@ -193,6 +194,24 @@ class Painel(BaseHTTPRequestHandler):
             return self._pedido_get(lambda: self._json(self.motor.estudio.onda(c.get("raiz", [""])[0], c.get("rel", [""])[0])))
         if caminho == "/api/estudio/fontes":
             return self._json(texto.catalogo())
+        if caminho == "/api/posts":
+            return self._json(self.motor.posts.listar(parse_qs(partes.query).get("pasta", [""])[0]))
+        if m := re.fullmatch(r"/api/posts/([\w-]+)/([\w-]+)", caminho):
+            n = parse_qs(partes.query).get("n", ["2"])[0]
+            return self._pedido_get(lambda: self._json(self.motor.posts.detalhes(m[1], m[2], int(n) if n.isdigit() else 2)))
+        if m := re.fullmatch(r"/posts/([\w-]+)/(p[0-9a-f]{10}(?:_mini)?)\.jpg", caminho):
+            alvo = self.motor.posts.imagem(m[1], m[2])
+            return self._arquivo(alvo, cache="max-age=86400") if alvo else self._erro("Imagem não encontrada.", 404)
+        if caminho == "/api/estudio/efeitos-audio":
+            return self._json(audio_fx.lista())
+        if caminho == "/api/estudio/idiomas":
+            return self._json([{"id": k, "nome": v} for k, v in ferramentas.IDIOMAS.items()])
+        if caminho == "/api/estudio/tira":
+            c = parse_qs(partes.query)
+            return self._pedido_get(lambda: self._json(self.motor.estudio.tira(c.get("raiz", [""])[0], c.get("rel", [""])[0])))
+        if caminho == "/api/estudio/tira.jpg":
+            alvo = self.motor.estudio.arquivo_tira(parse_qs(partes.query).get("k", [""])[0])
+            return self._arquivo(alvo, cache="max-age=86400") if alvo else self._erro("Miniaturas não encontradas.", 404)
         if caminho == "/api/estudio/presets":
             return self._json(self.motor.estudio.presets())
         if caminho == "/api/estudio/modelos-capa":
@@ -262,6 +281,51 @@ class Painel(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(dados)
+
+    def _baixar(self, funcao, tipo: str):
+        """Responde com um arquivo gerado na hora (zip, wav)."""
+        if not self._origem_local():
+            return self._erro("Acesso permitido apenas neste computador.", 403)
+        try:
+            resultado = funcao(self._corpo())
+        except KeyError:
+            return self._erro("Item não encontrado.", 404)
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
+            return self._erro(str(e)[:240] or "Pedido inválido.")
+        dados, nome = resultado if isinstance(resultado, tuple) else (resultado, None)
+        self.send_response(200)
+        self.send_header("Content-Type", tipo)
+        self.send_header("Content-Length", str(len(dados)))
+        self.send_header("Cache-Control", "no-store")
+        if nome:
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(nome)}")
+        self.end_headers()
+        self.wfile.write(dados)
+
+    def _arte_post(self, d: dict):
+        import io as _io
+        img = self.motor.posts.arte(str(d.get("corte", "")), str(d.get("frase", "")), d)
+        buf = _io.BytesIO()
+        if d.get("previa"):  # prévia rápida enquanto a pessoa edita
+            img.thumbnail((540, 960))
+            img.save(buf, "JPEG", quality=86)
+            return buf.getvalue()
+        img.save(buf, "PNG", optimize=True)
+        nome = re.sub(r"[^\w -]", "", str(d.get("nome") or "post")).strip()[:50] or "post"
+        return buf.getvalue(), f"{nome}.png"
+
+    def _receber_lut(self):
+        if not self._origem_local():
+            return self._erro("Acesso permitido apenas neste computador.", 403)
+        tamanho = int(self.headers.get("Content-Length") or 0)
+        if tamanho > 40_000_000:
+            self.close_connection = True
+            return self._erro("A LUT precisa ter no máximo 40 MB.", 413)
+        nome = parse_qs(urlsplit(self.path).query).get("nome", ["lut.cube"])[0]
+        try:
+            return self._json(self.motor.estudio.enviar_lut(nome, self.rfile.read(tamanho)))
+        except ValueError as e:
+            return self._erro(str(e))
 
     def _receber_estudio(self, caminho: str):
         if not self._origem_local():
@@ -423,7 +487,29 @@ class Painel(BaseHTTPRequestHandler):
             return self._acao(lambda d: self.motor.gravadas.conferir_envio(d.get("nome", ""), d.get("tamanho", 0)))
         if caminho in ("/api/estudio/midia", "/api/estudio/fontes"):
             return self._receber_estudio(caminho)
+        if caminho == "/api/estudio/luts":
+            return self._receber_lut()
+        if caminho == "/api/posts/gerar":
+            return self._acao(lambda d: self.motor.posts.gerar(str(d.get("corte", "")), bool(d.get("refazer"))) and self.motor.posts.listar(str(d.get("pasta") or "")))
+        if caminho == "/api/posts/minha":
+            return self._acao(lambda d: self.motor.posts.minha_frase(str(d.get("corte", "")), str(d.get("texto", ""))))
+        if caminho == "/api/posts/salvar":
+            return self._acao(lambda d: self.motor.posts.salvar(str(d.get("corte", "")), str(d.get("frase", "")), d))
+        if caminho == "/api/posts/previa":
+            return self._baixar(lambda d: self._arte_post({**d, "previa": True}), "image/jpeg")
+        if caminho == "/api/posts/arte":
+            return self._baixar(lambda d: self._arte_post(d), "image/png")
+        if caminho == "/api/posts/pacote":
+            return self._baixar(lambda d: self.motor.posts.pacote(d.get("itens") or []), "application/zip")
         e = self.motor.estudio
+        if caminho == "/api/estudio/congelar":
+            return self._acao(lambda d: e.congelar(d["raiz"], d["rel"], float(d.get("t", 0))))
+        if caminho == "/api/estudio/batidas":
+            return self._acao(lambda d: e.batidas(d))
+        if caminho == "/api/estudio/ouvir":
+            return self._baixar(lambda d: e.ouvir(d), "audio/wav")
+        if m := re.fullmatch(r"/api/estudio/(corte|longo)/([\w-]+)/xml", caminho):
+            return self._baixar(lambda d: e.exportar_xml(m[1], m[2], d["projeto"]), "application/zip")
         if caminho == "/api/estudio/presets":
             return self._acao(lambda d: e.salvar_preset(d.get("nome", ""), d.get("global") or {}))
         if caminho == "/api/estudio/modelos-capa":
@@ -442,7 +528,9 @@ class Painel(BaseHTTPRequestHandler):
                      "exportar/cancelar": lambda d: e.cancelar_exportacao(t, i), "analisar": lambda d: {"sugestoes": e.analisar(d["projeto"])}, "aplicar": lambda d: e.aplicar_sugestoes(d["projeto"], d.get("sugestoes") or []),
                      "sugerir-sons": lambda d: {"sons": e.sugerir_sons(d["projeto"])}, "legendas": lambda d: e.pedir_trabalho(t, i, "legendas", {"projeto": d["projeto"]}),
                      "cena": lambda d: e.pedir_trabalho(t, i, "cena", {"projeto": d["projeto"], "cena": d.get("cena")}), "capa": lambda d: e.salvar_capa(t, i, d["capa"]),
-                     "capa/exportar": lambda d: e.exportar_capa(t, i, d["capa"], d.get("largura", 1280))}
+                     "capa/exportar": lambda d: e.exportar_capa(t, i, d["capa"], d.get("largura", 1280)),
+                     "traduzir": lambda d: e.traduzir(d["projeto"], d.get("idioma", "en")),
+                     "rostos": lambda d: e.rostos(d["projeto"], d.get("item", ""), d.get("t", 0), d.get("modo", "um"))}
             if m[3] in acoes:
                 return self._acao(acoes[m[3]])
         if caminho == "/api/canais":

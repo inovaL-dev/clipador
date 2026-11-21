@@ -13,6 +13,7 @@ import numpy as np
 from . import camera as cam
 from . import edicao, efeitos, estilos
 from . import foco as foco_tela
+from . import tomadas as tomadas_mod
 from . import longo as lg
 from .compositor import duracao_projeto, valor
 
@@ -94,6 +95,10 @@ def estilo_legenda(est: dict, largura: int, altura: int) -> dict:
         "neon": {"cor": destaque, "cor_destaque": "#FFFFFF", "contorno": 0, "sombra_cor": destaque, "sombra_y": 0, "sombra_blur": 16, "sombra_opac": 100},
         "faixa": {"fundo": True, "fundo_cor": "#000000", "fundo_opac": 84, "fundo_pad": round(t * .2), "contorno": 0, "sombra": False},
         "classica": {"maiusculas": False, "destaque": "nenhum", "contorno": round(t * .05), "entrada": "fade", "saida": "fade", "sombra_y": 3},
+        "karaoke": {"fonte": "Montserrat-Black", "destaque": "falado", "destaque_escala": 108, "contorno": round(t * .1)},
+        "hormozi": {"fonte": "Anton", "tamanho": round(t * 1.3 * ASS), "destaque": "primeira", "cor_destaque": "#FF2D2D", "contorno": round(t * .12), "sombra_y": 5, "entrada": "carimbo", "tempo_anim": .12},
+        "react": {"fonte": "Roboto-Black", "tamanho": round(t * 1.35 * ASS), "cor": destaque, "maiusculas": False, "destaque": "nenhum", "contorno": round(t * .12), "sombra": False, "entrada": "pop", "tempo_anim": .1,
+                  **({"ancora": "topo", "y": 800} if vertical and est.get("legenda_y") is None else {})},
     }[est["legenda"]]}
 
 
@@ -180,6 +185,7 @@ def importar_corte(meta: dict, motor) -> dict:
     cena = novo_id("c")
     p["cenas"] = [{"id": cena, "nome": "Cena 1"}]
     efx = _faixa("efeito", "Efeitos")
+    trocas: list[dict] = []
     if layout == "pip":
         jogo = _faixa("video", "Jogo"); camera = _faixa("video", "Câmera")
         v = plano["pip"]; cx, cy = v["x"] + v["w"] / 2, v["y"] + v["h"] / 2
@@ -197,12 +203,29 @@ def importar_corte(meta: dict, motor) -> dict:
         camera["itens"].append(_item_video(mid, 0, total, 0, "Câmera", {"x": 540, "y": (hc - 3) / 2, "w": 1080, "h": hc - 3, **_cortar_lados(plano["camera"], vw, vh), **_base(movs[0])}, _chaves(movs[0]), cena=cena))
         jogo["itens"].append(_item_video(mid, 0, total, 0, "Jogo", {"x": 540, "y": hc + 3 + (1917 - hc) / 2, "w": 1080, "h": 1917 - hc, **_cortar_lados(plano["jogo"], vw, vh), **_base(movs[1])}, _chaves(movs[1]), mudo=True, cena=cena))
         p["faixas"] += [jogo, camera]
+        trocas = edicao.planejar_tomadas(plano, meta.get("grupos") or [], total, momento, picos, fonte, est)
+        if trocas:  # câmera dinâmica: rosto ou jogo na tela inteira, cada troca é um elemento que dá para mover ou apagar
+            rects = edicao._recortes_cheios(plano, fonte)
+            faixa_t = _faixa("video", "Câmera dinâmica")
+            for e in trocas:
+                r = rects["rosto_cheio" if e["tipo"] == "rosto" else "jogo_cheio"]
+                d = e["fim"] - e["ini"]
+                z0, z1 = (1.04, 1.09) if e["tipo"] == "rosto" else (1.0, 1.06)
+                faixa_t["itens"].append(_item_video(mid, e["ini"], d, e["ini"], "Rosto em tela cheia" if e["tipo"] == "rosto" else "Jogo em tela cheia",
+                                                    {"x": 540, "y": 960, "w": 1080, "h": 1920, "zoom": z0, **_cortar_lados(r, vw, vh)},
+                                                    {"zoom": [{"t": 0.0, "v": z0, "e": "linear"}, {"t": round(d, 3), "v": z1, "e": "linear"}]}, mudo=True, cena=cena))
+            p["faixas"].append(faixa_t)
         efx["itens"].append(_efeito(momento, min(1.2, total - momento), "clarao", "Clarão na reação", .55, area=[0, 0, 1080, hc - 3], cena=cena))
         efx["itens"].append(_efeito(momento, min(1.2, total - momento), "tremor", "Tremor na reação", 6.0, area=[0, 0, 1080, hc - 3], cena=cena))
     else:
         principal = _faixa("video", "Vídeo")
         if layout == "tela_cheia" and plano.get("recorte"):
-            principal["itens"].append(_item_video(mid, 0, total, 0, "Vídeo", {"x": 540, "y": 960, "w": 1080, "h": 1920, **_cortar_lados(plano["recorte"], vw, vh), **_base(movs[0])}, _chaves(movs[0]), cena=cena))
+            kf = _chaves(movs[0])
+            if len(plano.get("trechos") or []) > 1:  # quem está falando: o recorte pula de uma pessoa para a outra
+                r = plano["recorte"]
+                kf["cl"] = [{"t": round(t["ini"], 3), "v": round(t["x"] / vw, 4), "e": "degrau"} for t in plano["trechos"]]
+                kf["cr"] = [{"t": round(t["ini"], 3), "v": round(1 - (t["x"] + r["w"]) / vw, 4), "e": "degrau"} for t in plano["trechos"]]
+            principal["itens"].append(_item_video(mid, 0, total, 0, "Vídeo", {"x": 540, "y": 960, "w": 1080, "h": 1920, **_cortar_lados(plano["recorte"], vw, vh), **_base(movs[0])}, kf, cena=cena))
         else:
             fundo = _faixa("video", "Fundo")
             lado = (1 - (vh * 9 / 16) / vw) / 2 if vw / vh > 9 / 16 else 0
@@ -232,12 +255,26 @@ def importar_corte(meta: dict, motor) -> dict:
         else:
             textos["itens"].append(_item_texto("texto", 0, total, meta["credito"], cred[0] + 170, cred[1], {"fonte": "Poppins-Bold", "tamanho": 28, "opacidade": 80, "contorno": 3, "alinhamento": "esquerda", "largura": 340}, "Crédito"))
     if meta.get("gancho") and est["gancho"] != "nenhum":
-        gx, gy = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, int(plano.get("altura_cam", 760)) + 40 if layout == "dividido" else edicao.POSICAO_GANCHO.get(layout, 800))
+        gx, gy = estilos.ponto(est, "gancho_x", "gancho_y", 1080, 1920, 540, (1420 if est["legenda"] == "react" else int(plano.get("altura_cam", 760)) + 40) if layout == "dividido" else edicao.POSICAO_GANCHO.get(layout, 800))
         textos["itens"].append(_item_texto("texto", 0, min(est["tempo_gancho"] + .5, total), meta["gancho"], gx, gy, estilo_titulo(est, 54), "Título", papel="gancho"))
         giro = estilos.TITULOS_EXTRA.get(est["gancho"], (0,) * 9)[8] or (-2 if est["gancho"] == "branco" else 0)
         textos["itens"][-1]["t"]["rot"] = float(giro)
     leg = _faixa("legenda", "Legendas")
-    leg["itens"] = legendas_de(meta.get("grupos") or [], 0, total, cena)
+    grupos_leg = estilos.picar(meta.get("grupos") or []) if est["legenda"] == "react" else (meta.get("grupos") or [])
+    leg["itens"] = legendas_de(grupos_leg, 0, total, cena)
+    if est["legenda"] == "react" and layout == "dividido" and est.get("legenda_y") is None:
+        hc = int(plano.get("altura_cam", 760))
+        for it in leg["itens"]:
+            it["estilo"] = {"ancora": "topo", "y": tomadas_mod.ROSTO_Y_LEGENDA if tomadas_mod.tipo_em(trocas, it["ini"]) != "dividido" else hc + 30}
+    if est.get("arroba"):
+        lugares = [(1044, hc_m := int(plano.get("altura_cam", 760)) - 64, "direita"), (36, hc_m + 394, "esquerda"), (1044, 1540, "direita"), (36, 1250, "esquerda")] if layout == "dividido" \
+            else [(1044, 260, "direita"), (36, 1250, "esquerda"), (1044, 1520, "direita"), (36, 430, "esquerda")]
+        t_m, n_m = 0.0, 0
+        while t_m < total - .05:
+            x_m, y_m, al = lugares[n_m % 4]
+            textos["itens"].append(_item_texto("texto", t_m, min(7.0, total - t_m), est["arroba"], x_m + (-150 if al == "direita" else 150), y_m,
+                                               {"fonte": "Roboto-Black", "tamanho": 30, "opacidade": 70, "contorno": 2, "alinhamento": al, "largura": 300, "maiusculas": False}, "Seu @"))
+            t_m, n_m = t_m + 7.0, n_m + 1
     audio = _faixa("audio", "Efeitos sonoros")
     sons = ed.get("sons") if ed else [{"som": "whoosh_rapido", "t": 0.0, "volume": .3}, {"som": "boom_grave", "t": momento, "volume": .42}, *[{"som": "zoom_in", "t": f["t"], "volume": .36} for f in meta.get("focos") or []]]
     for s in sons or []:
@@ -281,7 +318,8 @@ def _plano_trecho(p: dict, parte: dict, trecho: dict, saida: float, cena: str, m
             faixas["efx"]["itens"].append(_efeito(saida + max(0, a), b - max(0, a), "vinheta", "Foco na webcam", 1.0, cena=cena))
     faixas["efx"]["itens"].append(_efeito(saida + agenda["momento"], min(1.2, dur - agenda["momento"]), "clarao", "Clarão na reação", .7, cena=cena))
     faixas["efx"]["itens"].append(_efeito(saida + agenda["momento"], min(1.2, dur - agenda["momento"]), "tremor", "Tremor na reação", 10.0, cena=cena))
-    faixas["leg"]["itens"] += legendas_de(lg._na_janela(parte.get("grupos") or trecho["grupos"], ini, fim), saida, dur, cena)
+    grupos_p = lg._na_janela(parte.get("grupos") or trecho["grupos"], ini, fim)
+    faixas["leg"]["itens"] += legendas_de(estilos.picar(grupos_p) if est["legenda"] == "react" else grupos_p, saida, dur, cena)
     tx = faixas["txt"]["itens"]
     cor_d = "#" + estilos.CORES[est["cor"]]
     if trecho["meta"].get("credito"):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import random
 import shutil
 import statistics
 import subprocess
@@ -15,7 +16,7 @@ import cv2
 import numpy as np
 
 from . import camera as cam
-from . import edicao, estilos
+from . import edicao, estilos, ideias
 from .medir_referencia import RAIZ, TEMPO_MAXIMO, comando, opcoes
 from .plataformas import sem_janela
 
@@ -27,6 +28,7 @@ IDADE_MINIMA = 48 * 3600
 INTERVALO_CANAL = 6 * 3600
 LIMITE_EXEMPLOS = 200
 PARECIDO = 1.0      # abaixo dessa distância, dois exemplos pertencem ao mesmo modelo
+EXPLORAR = 0.12     # parte dos cortes que testa uma ideia qualquer, mesmo que outra esteja indo melhor
 ANALISE_MAX = 120  # segundos analisados de cada vídeo de exemplo
 
 
@@ -108,7 +110,7 @@ def _achar_legenda(quadros: list[np.ndarray]) -> dict | None:
     H, W = quadros[0].shape[:2]
     centros, larguras, alturas, amarelas = [], [], [], 0
     for q in quadros:
-        faixa = q[int(H * .45):int(H * .86)]
+        faixa = q[int(H * .33):int(H * .86)]
         branco = cv2.inRange(faixa, (225, 225, 225), (255, 255, 255))
         amarelo = cv2.inRange(faixa, (0, 175, 200), (110, 255, 255))
         escuro = cv2.dilate(cv2.inRange(faixa, (0, 0, 0), (45, 45, 45)), np.ones((3, 3), np.uint8))
@@ -119,7 +121,7 @@ def _achar_legenda(quadros: list[np.ndarray]) -> dict | None:
             blocos = [s for s in st[1:] if 12 <= s[3] <= 70 and s[2] >= 24 and abs(s[0] + s[2] / 2 - W / 2) < W * .16 and s[4] > 90]
             if blocos:
                 s = max(blocos, key=lambda x: x[4])
-                centros.append((s[1] + s[3] / 2 + H * .45) / H); larguras.append(s[2] / W); alturas.append(s[3] / H); amarelas += int(cor)
+                centros.append((s[1] + s[3] / 2 + H * .33) / H); larguras.append(s[2] / W); alturas.append(s[3] / H); amarelas += int(cor)
                 break
     if len(centros) < len(quadros) * .25:
         return None
@@ -236,14 +238,45 @@ def medir_edicao(video: Path) -> dict:
             "marcas": [{"t": round(c * dt, 2), "tipo": rotulos[c], "som": any(abs(p - c * dt) <= .2 for p in picos)} for c in cortes[:150]]}
 
 
+def medir_trocas_de_tela(video: Path, altura_cam: float) -> dict:
+    """Num vídeo com câmera em cima e jogo embaixo, mede quanto tempo a tela fica dividida
+    e quantas vezes por minuto ela troca para o rosto ou o jogo em tela cheia (câmera dinâmica)."""
+    v = cv2.VideoCapture(str(video))
+    fps = v.get(cv2.CAP_PROP_FPS) or 30
+    passo, n, linhas = max(1, round(fps / 4)), 0, []
+    while v.grab() and n / fps < ANALISE_MAX:
+        if n % passo == 0:
+            ok, q = v.retrieve()
+            if not ok:
+                break
+            g = cv2.resize(cv2.cvtColor(q, cv2.COLOR_BGR2GRAY), (90, 320), interpolation=cv2.INTER_AREA).astype(np.float32)
+            linhas.append(np.abs(g[2:] - g[:-2]).mean(axis=1))  # borda horizontal de cada linha
+        n += 1
+    v.release()
+    if len(linhas) < 12:
+        return {}
+    L = np.stack(linhas)
+    base = np.median(L, axis=1, keepdims=True) + 1.0
+    a, b = int(320 * max(.2, altura_cam - .1)), int(320 * min(.6, altura_cam + .1))
+    forca = L[:, a:b] / base
+    linha = int(np.bincount(np.argmax(forca, axis=1)).argmax())  # a divisão fica sempre na mesma altura
+    dividido = forca[:, max(0, linha - 1):linha + 2].max(axis=1) > 3.5
+    dividido = np.array([sorted(dividido[max(0, i - 1):i + 2])[len(dividido[max(0, i - 1):i + 2]) // 2] for i in range(len(dividido))])
+    trocas = int(np.count_nonzero(dividido[1:] != dividido[:-1]))
+    dur = len(L) / 4
+    return {"tela_dividida": round(float(dividido.mean()), 2), "trocas_tela_min": round(trocas / max(1.0, dur) * 60, 1)}
+
+
 def medir_video(video: Path, palavras: list[dict] | None = None) -> dict:
     quadros, dur = _amostras(video)
     if len(quadros) < 8:
         raise ValueError("Não consegui ler este vídeo.")
     leg = _achar_legenda(quadros)
+    webcam = _achar_webcam(quadros)
     edicao_medida = medir_edicao(video)
-    return {"duracao": round(dur, 1), "vertical": True, "cortes_min": round(60 / edicao_medida["cena_s"], 1) if edicao_medida.get("cena_s") else round(_cortes_por_minuto(video), 1), "webcam": _achar_webcam(quadros), "legenda": leg,
-            "palavra_a_palavra": bool(leg and leg["largura"] < .3), "barra": _achar_barra(quadros), "palavras_s": round(len(palavras) / max(1.0, dur), 2) if palavras is not None else None, **edicao_medida}
+    trocas = medir_trocas_de_tela(video, webcam["h"]) if webcam and webcam.get("faixa") else {}
+    return {"duracao": round(dur, 1), "vertical": True, "cortes_min": round(60 / edicao_medida["cena_s"], 1) if edicao_medida.get("cena_s") else round(_cortes_por_minuto(video), 1), "webcam": webcam, "legenda": leg,
+            "palavra_a_palavra": bool(leg and leg["largura"] < .3), "barra": _achar_barra(quadros), "palavras_s": round(len(palavras) / max(1.0, dur), 2) if palavras is not None else None, **edicao_medida, **trocas}
 
 
 def distancia(a: dict, b: dict) -> float:
@@ -449,6 +482,12 @@ class Aprendizado:
                 novo["filtro"], novo["filtro_forca"] = comum("filtro"), 55
             if sum(bool(x.get("faixa")) for x in raiox) * 2 >= len(raiox):
                 novo["gancho"] = "branco"
+        if p.get("trocas_tela_min") is not None:  # o exemplo troca entre tela dividida, rosto e jogo?
+            novo["camera_dinamica"] = p["trocas_tela_min"] >= 4 and (p.get("tela_dividida") or 1) < .9
+        leg, webcam = p.get("legenda"), p.get("webcam")
+        if leg and webcam and leg.get("amarelo", 0) >= .5 and 0 < leg["y"] - webcam["h"] < .12:
+            novo["legenda"] = "react"  # legenda amarela logo abaixo da divisão da tela
+            novo.pop("legenda_y", None); novo.pop("legenda_x", None)
         pref = self.preferencias()
         if "y" in pref["legenda"]:
             novo.pop("legenda_y", None); novo.pop("legenda_x", None)
@@ -546,7 +585,7 @@ class Aprendizado:
         trocas: Counter = Counter()
         for r in refs:
             trocas.update(r.get("transicoes") or {})
-        return {"webcam": {k: mediana(webcams, k) for k in ("x", "y", "w", "h")} if len(webcams) * 2 >= len(refs) else None,
+        return {"webcam": {k: mediana(webcams, k) for k in ("x", "y", "w", "h")} if len(webcams) * 2 >= len(refs) else None, "tela_dividida": meio("tela_dividida"), "trocas_tela_min": meio("trocas_tela_min"),
                 "legenda": {k: mediana(legendas, k) for k in ("y", "altura", "amarelo")} if legendas else None,
                 "palavra_a_palavra": sum(bool(r.get("palavra_a_palavra")) for r in refs) * 2 >= len(refs), "barra": sum(bool(r.get("barra")) for r in refs) * 2 >= len(refs),
                 "cortes_min": round(statistics.median(r["cortes_min"] for r in refs), 1), "duracao": round(statistics.median(r["duracao"] for r in refs)), "referencias": len(refs),
@@ -662,9 +701,12 @@ class Aprendizado:
         por_tipo: dict[str, list[int]] = {}
         por_tempo: dict[str, list[int]] = {}
         por_modelo: dict[str, list[int]] = {}
+        por_ideia: dict[str, list[int]] = {}
         for meta, v in dados:
             if meta.get("modelo"):
                 por_modelo.setdefault(meta["modelo"], []).append(v)
+            if meta.get("ideia"):
+                por_ideia.setdefault(meta["ideia"], []).append(v)
             por_tipo.setdefault(meta.get("reacao") or "destaque", []).append(v)
             d = float(meta.get("duracao") or 0)
             por_tempo.setdefault("até 30 s" if d <= 30 else "30 a 45 s" if d <= 45 else "mais de 45 s", []).append(v)
@@ -674,8 +716,58 @@ class Aprendizado:
             self.m["pesos"] = {k: round(float(np.clip((sum(l) / len(l)) / media, .7, 1.3)), 2) for k, l in por_tipo.items() if len(l) >= MINIMO_VIDEOS}
             self.m["desempenho"]["modelos"] = {k: {"n": len(l), "media": round(sum(l) / len(l))} for k, l in por_modelo.items()}
             self.m["pesos_modelos"] = {k: round(float(np.clip((sum(l) / len(l)) / media, .5, 1.6)), 2) for k, l in por_modelo.items() if len(l) >= MINIMO_VIDEOS}
+            self.m["desempenho"]["ideias"] = {k: {"n": len(l), "media": round(sum(l) / len(l))} for k, l in por_ideia.items()}
+            self.m["pesos_ideias"] = {k: round(float(np.clip((sum(l) / len(l)) / media, .5, 1.6)), 2) for k, l in por_ideia.items() if len(l) >= MINIMO_VIDEOS}
             self.m["canal_em"] = time.time()
             self._salvar()
+
+    # ------------------------------------------------------------ ideias em teste
+
+    def ideias_ligadas(self) -> list[str]:
+        cfg = self.motor.config.get("ideias") or {}
+        return [i for i in ideias.IDEIAS if cfg.get(i, ideias.PADRAO_LIGADAS.get(i, False))]
+
+    def _nota_ideia(self, ident: str, sorteio: bool = True) -> float:
+        d = self.m.setdefault("ideias", {}).get(ident) or {}
+        a = 1 + d.get("postados", 0)
+        b = 1 + d.get("descartados", 0) + d.get("trocados", 0)
+        base = random.betavariate(a, b) if sorteio else a / (a + b)
+        peso = float(self.m.get("pesos_ideias", {}).get(ident, 1.0)) if self.m["ativo"]["resultados"] else 1.0
+        return base * peso
+
+    def escolher_ideia(self, meta: dict | None = None) -> str | None:
+        """Sorteia a ideia deste corte: a que vai melhor aparece mais, as outras continuam sendo testadas."""
+        lista = self.ideias_ligadas()
+        if not lista:
+            return None
+        with self.trava:
+            if len(lista) == 1:
+                escolhida = lista[0]
+            elif random.random() < EXPLORAR:  # de vez em quando testa qualquer uma, para notar se o gosto mudou
+                escolhida = random.choice(lista)
+            else:
+                escolhida = max(lista, key=self._nota_ideia)
+            d = self.m.setdefault("ideias", {}).setdefault(escolhida, {})
+            d["usos"] = d.get("usos", 0) + 1
+            self._salvar()
+        return escolhida
+
+    def sinal_ideia(self, meta: dict, tipo: str, quanto: int = 1) -> None:
+        """postados: você postou; descartados: apagou sem postar; trocados: mudou a legenda ou a câmera do corte."""
+        ident = meta.get("ideia")
+        if not ident or not self.m["ativo"]["edicoes"]:
+            return
+        with self.trava:
+            d = self.m.setdefault("ideias", {}).setdefault(ident, {})
+            d[tipo] = max(0, d.get(tipo, 0) + quanto)
+            self._salvar()
+
+    def chances_ideias(self) -> dict[str, float]:
+        lista = self.ideias_ligadas()
+        if len(lista) < 2:
+            return {i: 1.0 for i in lista}
+        contagem: Counter = Counter(max(lista, key=self._nota_ideia) for _ in range(400))
+        return {i: round((1 - EXPLORAR) * contagem[i] / 400 + EXPLORAR / len(lista), 2) for i in lista}
 
     def peso(self, reacao: str | None) -> float:
         return float(self.m["pesos"].get(reacao or "", 1.0)) if self.m["ativo"]["resultados"] else 1.0
@@ -708,7 +800,7 @@ class Aprendizado:
     def esquecer(self) -> dict:
         antes = self.m.get("estilo_antes")
         aplicado = self.m.get("estilo_aplicado") or {}
-        self.m.update(modelos={}, uso_modelos={}, pesos_modelos={}, referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
+        self.m.update(modelos={}, uso_modelos={}, pesos_modelos={}, ideias={}, pesos_ideias={}, referencias=[], edicoes={}, videos_editados=0, ids_editados=[], desempenho={}, pesos={}, estilo_antes=None, estilo_aplicado={})
         self._salvar()
         atual = dict(self.motor.config["estilo"])
         volta = {k: (antes or {}).get(k) for k, v in aplicado.items() if atual.get(k) == v}
@@ -725,5 +817,8 @@ class Aprendizado:
         dados_modelos = (self.m["desempenho"] or {}).get("modelos") or {}
         modelos = [{"id": i, "nome": m.get("nome") or "Modelo", "ativo": m.get("ativo", True), "uso": self.m["uso_modelos"].get(i, 0), "perfil": self.perfil(i, sem_filtro=True), "raiox": self.raiox_do_modelo(i), "resultado": dados_modelos.get(i),
                     "exemplos": [{"id": r["id"], "nome": r["nome"]} for r in self._exemplos(i)]} for i, m in self.m["modelos"].items() if self._exemplos(i)]
-        return {"modelos": modelos, "marca": self.m.get("marca") or {"nome": "", "chamada": ""}, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
+        chances, dados_ideias = self.chances_ideias(), (self.m["desempenho"] or {}).get("ideias") or {}
+        lista_ideias = [{"id": i, "nome": x["nome"], "descricao": x["descricao"], "ligada": i in chances, "chance": chances.get(i, 0.0), "resultado": dados_ideias.get(i),
+                         **{k: (self.m.get("ideias", {}).get(i) or {}).get(k, 0) for k in ("usos", "postados", "descartados", "trocados")}} for i, x in ideias.IDEIAS.items()]
+        return {"ideias": lista_ideias, "modelos": modelos, "marca": self.m.get("marca") or {"nome": "", "chamada": ""}, "ativo": self.m["ativo"], "trabalho": {k: v for k, v in self.trabalho.items() if k != "arquivo"}, "perfil": self.perfil(), "preferencias": pref, "videos_editados": self.m["videos_editados"],
                 "referencias": [{"id": r["id"], "nome": r["nome"], "medidas": {k: v for k, v in r["medidas"].items() if k not in ("raiox", "marcas")}} for r in self.m["referencias"]], "desempenho": self.m["desempenho"], "pesos": self.m["pesos"], "minimo": MINIMO_VIDEOS}

@@ -166,8 +166,8 @@ class Montagens:
         if meta.get("montagem"):
             return
         with self.trava:
-            cenas = int(self.motor.config.get("montagem_cenas", 4))
-            if self.motor.config.get("shorts_emendados", True) and meta.get("curto"):
+            cenas = int(self.motor.config.get("montagem_cenas", 3))
+            if self.motor.config.get("shorts_emendados", False) and meta.get("curto"):
                 curtos = sorted((m for m in self.candidatos(meta.get("pasta"), novos=True) if m.get("curto") and m.get("nucleo")),
                                 key=lambda m: float(m.get("pos_live") if m.get("pos_live") is not None else m["criado"]))
                 if len(curtos) >= cenas:
@@ -255,11 +255,10 @@ class Montagens:
                 final["global"] = copy.deepcopy(p["global"])
             titulo = titulo or next((copy.deepcopy(i) for f in p["faixas"] for i in f["itens"] if i.get("papel") == "gancho"), None)
             total = comp.duracao_projeto(p)
-            if meta.get("emendado"):
-                nucleo = origem.get("nucleo") or ctx.nucleo_da_acao(origem.get("grupos") or [], float(origem["momento_fonte"]) if origem.get("momento_fonte") is not None else total * .62, total)  # cortes antigos: calcula agora
-                ini, fim = max(0.0, nucleo[0] - .4), min(total, nucleo[1] + .7)  # só o que aconteceu, sem enchimento
-            else:
-                ini, fim = janela(origem, alvo)
+            # Cada cena conta a sua história: a preparação, o acontecimento e o desfecho, sem frase pela metade.
+            momento_cena = float(origem["momento_fonte"]) if origem.get("momento_fonte") is not None else total * .62
+            teto_cena = max(10.0, min(22.0, (LIMITE - pos) / max(1, len(origens) - k)))
+            ini, fim = ctx.trecho_de_cena(origem.get("grupos") or [], momento_cena, total, min(9.0, teto_cena - 1), teto_cena) if origem.get("grupos") else janela(origem, alvo)
             fim = min(fim, total, ini + max(2.5, LIMITE - pos))
             pj.remover_intervalos(p, [(fim, max(total, fim) + 1), (0, ini)] if ini > 0 else [(fim, max(total, fim) + 1)])
             dur = round(fim - ini, 3)

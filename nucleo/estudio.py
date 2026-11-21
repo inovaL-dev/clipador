@@ -15,7 +15,7 @@ from pathlib import Path
 
 import cv2
 
-from . import assistente, capas, compositor as comp
+from . import assistente, capas, compositor as comp, ferramentas, filtros
 from . import camera as cam
 from . import contexto as ctx
 from . import edicao, efeitos
@@ -42,6 +42,7 @@ class Estudio:
         self.pasta_midia = motor.dados / "midia"; self.pasta_midia.mkdir(parents=True, exist_ok=True)
         self.pasta_fontes = motor.dados / "fontes"; self.pasta_fontes.mkdir(parents=True, exist_ok=True)
         texto.usar_pasta_extra(self.pasta_fontes)
+        filtros.usar_pasta_luts(motor.dados / "luts")
         self.modelos = capas.Modelos(motor.dados)
         self.arq_presets = motor.dados / "presets_estudio.json"
         self.trabalhos: dict[str, dict] = {}
@@ -184,6 +185,47 @@ class Estudio:
             if alvo.parent == pasta.resolve() and alvo.exists():
                 return alvo
         return None
+
+    # ------------------------------------------------------------ ferramentas extras (ViralCutter e Drift)
+
+    def _nome_projeto(self, tipo: str, ident: str) -> str:
+        if tipo == "corte":
+            meta = self.motor.cortes.get(ident) or {}
+            return meta.get("gancho") or f"Corte {ident}"
+        item = self.motor.longos.itens.get(ident) or {}
+        return item.get("titulo") or f"Video {ident}"
+
+    def exportar_xml(self, tipo: str, ident: str, proj: dict) -> tuple[bytes, str]:
+        self.pasta(tipo, ident)
+        return ferramentas.exportar_xml(pj.validar(proj), self.midias, self._nome_projeto(tipo, ident))
+
+    def traduzir(self, proj: dict, idioma: str) -> dict:
+        return {"projeto": ferramentas.traduzir_legendas(pj.validar(proj), str(idioma))}
+
+    def rostos(self, proj: dict, item: str, t: float, modo: str) -> dict:
+        return {"projeto": ferramentas.enquadrar_rostos(pj.validar(proj), self.midias, str(item), float(t), modo if modo in ("dois", "fala") else "um")}
+
+    def tira(self, raiz: str, rel: str) -> dict:
+        return ferramentas.tira(self.arquivo_midia(raiz, rel), self.motor.tmp)
+
+    def arquivo_tira(self, chave: str) -> Path | None:
+        if not re.fullmatch(r"[0-9a-f]{20}", chave or ""):
+            return None
+        alvo = self.motor.tmp / f"tira_{chave}.jpg"
+        return alvo if alvo.exists() else None
+
+    def congelar(self, raiz: str, rel: str, t: float) -> dict:
+        return ferramentas.congelar(self.arquivo_midia(raiz, rel), float(t), self.pasta_midia)
+
+    def batidas(self, d: dict) -> dict:
+        return ferramentas.batidas(self.arquivo_midia(d["raiz"], d["rel"]), float(d.get("entrada", 0)), float(d.get("dur", 30)), float(d.get("vel", 1) or 1))
+
+    def ouvir(self, d: dict) -> bytes:
+        return ferramentas.ouvir_efeito(self.arquivo_midia(d["raiz"], d["rel"]), float(d.get("entrada", 0)), float(d.get("dur", 6)), float(d.get("vel", 1) or 1), d.get("efeito"))
+
+    def enviar_lut(self, nome: str, conteudo: bytes) -> list[dict]:
+        filtros.salvar_lut(nome, conteudo)
+        return filtros.lista()
 
     # ------------------------------------------------------------ presets do projeto
 

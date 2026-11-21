@@ -244,7 +244,7 @@ def gravar(destino: Path, quadros: Iterable[np.ndarray], total: int, largura: in
         video = f"{filtro_extra}," if filtro_extra else ""
         filtro = (
             f"[0:v]{video}ass=legenda.ass:fontsdir=fontes,format=yuv420p[v];"
-            f"[1:a]{fala},volume={volume_fala:.3f},aresample={TAXA_AUDIO},aformat=channel_layouts=stereo,atrim=0:{duracao:.3f},asetpts=PTS-STARTPTS,"
+            f"[1:a]{fala},volume={volume_fala:.3f},aresample={TAXA_AUDIO},aformat=channel_layouts=stereo,apad,atrim=0:{duracao:.3f},asetpts=PTS-STARTPTS,"
             f"afade=t=in:d=0.05,afade=t=out:st={fim:.3f}:d=0.2[fala];"
             f"[fala][2:a]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
         )

@@ -124,22 +124,86 @@ def _nota_fim(lista: list[dict], i: int, disponivel: float) -> float:
     return nota - 1.5 * _coesao(lista, i + 1)
 
 
-def escolher_janela(palavras: list[dict], momento: float, disponivel: float,
-                    minimo: float = 25, maximo: float = 60) -> tuple[float, float]:
-    """Procura o melhor par de começo e fim: o assunto abre, a reação acontece e a ideia termina."""
+MUDA_ASSUNTO = re.compile(r"^(enfim|bom|beleza|bora|pessoal|galera|chat|voltando|mudando|ok|tá bom|ta bom|então tá|entao ta|agora vamos|agora bora|outra coisa|deixa eu|vamos lá|vamos la)\b", re.I)
+FECHA_ASSUNTO = re.compile(r"\b(mudando de assunto|voltando (pro|para o|ao) jogo|enfim|bora jogar|vamos jogar|bora lá|bora la)\b", re.I)
+
+
+def _fronteira(lista: list[dict], m: int) -> float:
+    """Quanto entre a frase `m - 1` e a `m` existe uma troca de assunto (0 = mesma conversa, 1 ou mais = assunto novo)."""
+    if m <= 0 or m >= len(lista):
+        return 2.0
+    f, ant = lista[m], lista[m - 1]
+    texto = f["texto"].strip()
+    palavras = [_nucleo(p) for p in texto.split()]
+    nota = max(0.0, min(1.0, (f["pausa"] - .6) / 1.6))  # uma pausa longa costuma separar assuntos
+    if MUDA_ASSUNTO.search(texto):
+        nota += .8
+    if FECHA_ASSUNTO.search(ant["texto"]):
+        nota += 1.0  # a frase de antes anunciou a troca ("mudando de assunto", "enfim")
+    if palavras and palavras[0] in CONECTIVOS:
+        nota -= .5  # "e", "mas", "aí", "porque": continua a frase de antes
+    if any(p in ANAFORAS for p in palavras[:3]):
+        nota -= .35  # "isso", "ele", "lá": aponta para algo dito antes
+    if ant["texto"].rstrip()[-1:] == "?":
+        nota -= .6  # é a resposta da pergunta anterior
+    if not ant["terminal"] and f["pausa"] < 1.0:
+        nota -= .4
+    return nota - .8 * _coesao(lista, m)
+
+
+def _raciocinio(lista: list[dict], k: int, limite: float) -> tuple[int, int]:
+    """Começo e fim do assunto que contém a frase `k`: a história inteira em volta do momento."""
+    ini = k
+    while ini > 0 and _fronteira(lista, ini) < .9 and lista[k]["fim"] - lista[ini - 1]["ini"] <= limite:
+        ini -= 1
+    fim = k
+    while fim + 1 < len(lista) and _fronteira(lista, fim + 1) < .9 and lista[fim + 1]["fim"] - lista[ini]["ini"] <= limite:
+        fim += 1
+    return ini, fim
+
+
+def escolher_janela(palavras: list[dict], momento: float, disponivel: float, minimo: float = 25, maximo: float = 60,
+                    atraso: float = 6.0, preparo: float = 3.0, desfecho: float = 3.0, teto_depois: float = 28.0) -> tuple[float, float]:
+    """Procura o começo e o fim que contam uma história inteira.
+
+    O corte precisa ter a preparação (quem assiste entende o que está acontecendo), o momento em si e o desfecho
+    (a reação termina e a ideia fecha). Nunca começa no meio de um raciocínio nem termina no meio da explicação.
+    `momento` é quando o chat reagiu; o acontecimento vem `atraso` segundos antes."""
     lista = frases(palavras)
-    evento = momento - 6  # o chat reage alguns segundos depois do acontecimento
+    evento = momento - atraso
     alvo = minimo + (maximo - minimo) * 0.45
-    teto = min(momento + 28, disponivel)
-    fins = [(j, f) for j, f in enumerate(lista) if momento + 3 <= f["fim"] <= teto]
-    inicios = [(i, f, _nota_inicio(lista, i)) for i, f in enumerate(lista) if f["ini"] <= evento - 3]
+    teto = min(momento + teto_depois, disponivel)
+    fins = [(j, f) for j, f in enumerate(lista) if evento + max(desfecho, 4.0) <= f["fim"] <= teto]  # o desfecho vem depois do acontecimento
+    inicios = [(i, f, _nota_inicio(lista, i)) for i, f in enumerate(lista) if f["ini"] <= evento - preparo]
     melhor, nota_melhor = None, -1e9
-    for j, b in fins:
-        nota_b = _nota_fim(lista, j, disponivel) - max(0.0, b["fim"] - momento - 12) / 10
-        for i, a, nota_a in inicios:
-            duracao = b["fim"] - a["ini"]
-            if minimo <= duracao <= maximo and i <= j:
-                nota = nota_a + nota_b - abs(duracao - alvo) / 14
+    if lista and fins and inicios:
+        k = max((n for n, f in enumerate(lista) if f["ini"] <= max(evento, lista[0]["ini"])), default=0)
+        comeco, final = _raciocinio(lista, k, maximo - 2)
+        corte = [min(1.0, max(0.0, _fronteira(lista, n))) for n in range(len(lista) + 1)]
+        notas_fim = {j: _nota_fim(lista, j, disponivel) for j, _ in fins}
+        piso = max(15.0, minimo * .6)  # uma história completa vale mais que segundos a mais de outro assunto
+        for j, b in fins:
+            nota_b = notas_fim[j] - max(0.0, momento - b["fim"]) * .1
+            if j < final:
+                nota_b -= 2.0 + 1.5 * (1 - corte[j + 1])  # cortaria antes da ideia terminar
+            elif j == final:
+                nota_b += 2.0
+            else:
+                nota_b -= 1.5 + (b["fim"] - lista[final]["fim"]) / 6  # já entrou em outro assunto
+            for i, a, nota_a in inicios:
+                duracao = b["fim"] - a["ini"]
+                if not (piso <= duracao <= maximo and i <= j):
+                    continue
+                nota = nota_a + nota_b - abs(duracao - alvo) / 22 - max(0.0, minimo - duracao) * .12
+                if i > comeco:
+                    nota -= 1.5 + 1.5 * (1 - corte[i])  # começaria no meio do raciocínio
+                elif i == comeco:
+                    nota += 2.5
+                else:
+                    nota -= 1.0 + (lista[comeco]["ini"] - a["ini"]) / 10  # sobra de outro assunto no começo
+                prep = evento - a["ini"]
+                if prep < 8:
+                    nota -= (8 - prep) * .45  # pouca preparação: quem chega agora não entende
                 if nota > nota_melhor:
                     melhor, nota_melhor = (i, j), nota
     if melhor:
@@ -158,6 +222,28 @@ def escolher_janela(palavras: list[dict], momento: float, disponivel: float,
     ini = lista[i]["ini"] - 0.2 if i == 0 else max(lista[i - 1]["fim"] + 0.02, lista[i]["ini"] - 0.2)
     fim = lista[j]["fim"] + 0.5 if j + 1 == len(lista) else min(lista[j]["fim"] + 0.5, lista[j + 1]["ini"] - 0.03)
     return max(0.0, ini), min(disponivel, fim)
+
+
+def inicio_com_sentido(palavras: list[dict], de: float, ate: float) -> float | None:
+    """O melhor começo de frase entre `de` e `ate`: de preferência onde um assunto novo abre."""
+    lista = frases(palavras)
+    opcoes = [(n, f) for n, f in enumerate(lista) if de <= f["ini"] <= ate]
+    if not opcoes:
+        return None
+    n, f = max(opcoes, key=lambda x: min(1.5, _fronteira(lista, x[0])) + _nota_inicio(lista, x[0]) * .3 - (x[1]["ini"] - de) / 20)
+    return max(de, f["ini"] - .15)
+
+
+def trecho_de_cena(grupos: list[dict], momento: float, total: float, minimo: float = 9.0, maximo: float = 18.0) -> tuple[float, float]:
+    """O trecho de um corte que entra numa montagem: curto, mas com começo, meio e fim.
+
+    `momento` já é o instante do acontecimento dentro do corte."""
+    palavras = [p for g in grupos for p in g.get("palavras") or []]
+    if not palavras:
+        ini = max(0.0, momento - minimo * .55)
+        return round(ini, 3), round(min(total, ini + minimo), 3)
+    ini, fim = escolher_janela(palavras, momento, total, minimo, maximo, atraso=0.0, preparo=2.0, desfecho=1.5, teto_depois=min(10.0, maximo * .6))
+    return round(ini, 3), round(fim, 3)
 
 
 def ajustar_a_frases(palavras: list[dict], ini: float, fim: float, limite_ini: float, limite_fim: float) -> tuple[float, float]:

@@ -155,6 +155,11 @@ def analisar(video: Path) -> dict:
     grupos = _agrupar_rostos(por_quadro)
     presenca = len(quadros) * 0.4
 
+    # Duas ou mais pessoas paradas e grandes (podcast, conversa, IRL): o vertical vai seguir quem está falando.
+    pessoas = [g for g in grupos if len(g["quadros"]) >= presenca and np.median([i[3] for i in g["itens"]]) >= .1]
+    if len(pessoas) >= 2 and max(g["cx"] for g in pessoas) - min(g["cx"] for g in pessoas) >= .2:
+        return {"layout": "tela_cheia", "centro_x": float(np.median([g["cx"] for g in pessoas])), "centro_y": float(np.median([g["cy"] for g in pessoas])), "conversa": True}
+
     grandes = [r for rostos in por_quadro for r in rostos if r[3] >= 0.2]
     com_grande = sum(1 for rostos in por_quadro if any(r[3] >= 0.2 for r in rostos))
     if com_grande >= len(quadros) * 0.5:
@@ -263,5 +268,44 @@ def planejar(video: Path, ajuste: dict | None = None) -> dict:
             centro = analise.get("centro_x", 0.5)
         w = altura * ASPECTO_VERTICAL / largura
         x = float(np.clip(centro - w / 2, 0, max(0.0, 1 - w)))
-        return {"layout": "tela_cheia", "recorte": _recorte(x, 0, min(w, 1), 1, largura, altura), "origem": modo}
+        plano = {"layout": "tela_cheia", "recorte": _recorte(x, 0, min(w, 1), 1, largura, altura), "origem": modo}
+        if analise.get("conversa") and not ajuste.get("rect"):
+            try:
+                from .locutor import seguir_quem_fala
+                fala = seguir_quem_fala(video)
+            except Exception:
+                fala = None
+            if fala and len({p for _, _, p in fala["trechos"]}) >= 2:
+                trechos = []
+                for a, b, quem in fala["trechos"]:
+                    px = float(np.clip(fala["pessoas"][quem]["cx"] - w / 2, 0, max(0.0, 1 - w)))
+                    trechos.append({"ini": a, "fim": b, "x": _recorte(px, 0, min(w, 1), 1, largura, altura)["x"]})
+                plano.update(trechos=trechos, recorte={**plano["recorte"], "x": trechos[0]["x"]}, quem_fala=True)
+        return plano
     return {"layout": "inteiro", "origem": modo}
+
+
+def mapear_trechos(trechos: list[dict], cortes: list[list[float]]) -> list[dict]:
+    """Leva os trechos de quem fala para o tempo do vídeo já editado (sem as partes cortadas)."""
+    saida, corrido = [], 0.0
+    for a, b in cortes:
+        for t in trechos:
+            ini, fim = max(a, t["ini"]), min(b, t["fim"])
+            if fim > ini:
+                novo = {"ini": round(corrido + ini - a, 3), "fim": round(corrido + fim - a, 3), "x": t["x"]}
+                if saida and saida[-1]["x"] == novo["x"] and abs(saida[-1]["fim"] - novo["ini"]) < .05:
+                    saida[-1]["fim"] = novo["fim"]
+                else:
+                    saida.append(novo)
+        corrido += b - a
+    return saida
+
+
+def expressao_x(trechos: list[dict], padrao: int) -> str:
+    """Expressão do FFmpeg para o recorte trocar de pessoa no tempo certo (vírgulas já escapadas)."""
+    if not trechos:
+        return str(padrao)
+    expr = str(trechos[-1]["x"])
+    for t in reversed(trechos[:-1]):
+        expr = f"if(lt(t\\,{t['fim']:.3f})\\,{t['x']}\\,{expr})"
+    return expr
