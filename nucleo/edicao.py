@@ -13,7 +13,7 @@ import numpy as np
 from . import camera as cam
 from . import efeitos, estilos, filtros
 from . import foco
-from . import fala
+from . import bastidores, fala
 from . import tomadas as tm
 from .contexto import quebrar_linhas
 from .plataformas import sem_janela
@@ -45,6 +45,7 @@ def transcrever(modelo, video: Path, idioma: str, esperadas: str = "", correcoes
         return []
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
     trechos, _ = modelo.transcribe(audio, word_timestamps=True, **fala.opcoes(modelo, idioma, esperadas))
+    trechos = bastidores.acompanhar_fala(trechos)
     return fala.aplicar_correcoes(fala.limpar_trechos(trechos), correcoes or {})
 
 
@@ -401,10 +402,12 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     filtro = f"{_filtro_video(plano, tomadas)},fps={efeitos.FPS},format=bgr24[v]"
     destino = pasta / "corte_novo.mp4"
     fim_total = duracao + extra / efeitos.FPS
+    if bastidores.ligado():
+        bastidores.contar(trilhas=_trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, extra / efeitos.FPS, layout))
     try:
         quadros = _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]) if est.get("barra_progresso") else None, pip, momento, focos, tomadas)
         efeitos.gravar(
-        destino, _com_encerramento(quadros, extra),
+        destino, bastidores.acompanhar_quadros(_com_encerramento(quadros, extra), total + extra),
         total + extra, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam"), tomadas, extra / efeitos.FPS), fonte,
         whoosh=[0.0, *[f["t"] for f in focos], *([duracao] if extra else []), *[e["ini"] for e in tomadas if e["tipo"] == "jogo"]], impacto=[momento], volume_efeitos=0.22, trilha=ajuste.get("trilha"), volume_fala=ajuste.get("volume", 100) / 100,
         filtro_extra=_cor_do_video(est, ajuste) + f"fade=t=out:st={max(0.0, fim_total - 0.25):.2f}:d=0.25",
@@ -415,6 +418,29 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
                 f["video"].release()
             Path(f["arquivo"]).unlink(missing_ok=True)
     destino.replace(pasta / "corte.mp4")
+
+
+def _trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, outro, layout) -> dict:
+    """O que vai em cada faixa da timeline, para a tela que mostra a edição acontecendo."""
+    if est["legenda"] == "react":
+        pedacos = estilos.picar(grupos)
+    elif est["legenda"] in ("palavra", "impacto") or (estilos.modelo_editor(est) or {}).get("palavra_a_palavra"):
+        pedacos = [{"palavras": [p]} for g in grupos for p in g.get("palavras") or []]
+    else:
+        pedacos = grupos
+    legendas = [{"ini": round(float(g["palavras"][0]["ini"]), 2), "fim": round(float(g["palavras"][-1]["fim"]) + .25, 2), "texto": " ".join(p["p"] for p in g["palavras"])}
+                for g in pedacos if g.get("palavras")]
+    fortes = sorted(picos, key=lambda p: -p[1])[:8]
+    return {
+        "duracao": round(duracao, 2), "layout": layout, "momento": round(momento, 2), "outro": round(outro, 2),
+        "titulo": {"texto": gancho, "fim": est["tempo_gancho"]} if gancho and est["gancho"] != "nenhum" else None,
+        "legendas": legendas, "zooms": sorted(round(t, 2) for t, _ in fortes),
+        "cameras": [{"ini": e["ini"], "fim": e["fim"], "tipo": e["tipo"]} for e in tomadas],
+        "focos": [{"t": round(f["t"], 2), "dur": round(f["dur"], 2)} for f in focos],
+        "sons": [{"t": 0.0, "nome": "Whoosh de abertura"}, {"t": round(momento, 2), "nome": "Impacto na reação"},
+                 *[{"t": round(e["ini"], 2), "nome": "Whoosh da troca de câmera"} for e in tomadas if e["tipo"] == "jogo"]],
+        "legenda_modelo": est["legenda"], "cor": "#" + estilos.CORES[est["cor"]],
+    }
 
 
 def planejar_tomadas(plano: dict, grupos: list[dict], duracao: float, momento: float | None, picos: list, fonte: Path, est: dict) -> list[dict]:

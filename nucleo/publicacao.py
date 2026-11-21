@@ -19,6 +19,7 @@ MAXIMO_HORARIOS = 48
 MAXIMO_POR_HORARIO = 20
 MARGEM_TUDO = 10 * 60
 MODOS_AGENDA = ("horarios", "dia", "agora")
+POTENCIAIS = (0, 50, 60, 70, 75, 80, 85, 90, 95)  # 0: posta todos
 ESTADOS_PENDENTES = ("fila", "erro")
 DURACAO_MAXIMA_SHORT = 59.5
 ESPERA_LIMITE_CANAL = 3600
@@ -151,7 +152,8 @@ class Postagem:
         self.conta = ContaYouTube(Path(motor.dados))
         dados = motor._ler(self.arquivo, {})
         self.config = {"horarios": HORARIOS_PADRAO, "automatico": False, "auditoria": False, "modo": "horarios", "por_horario": 1, "pastas": None,
-                       "dia_unico": "", "janela_inicio": "06:00", "janela_fim": "23:30", **dados.get("config", {})}
+                       "dia_unico": "", "janela_inicio": "06:00", "janela_fim": "23:30",
+                       "potencial_minimo": 85, "melhores_primeiro": True, **dados.get("config", {})}
         if self.config["pastas"] is None:
             # Na primeira vez, continua só com a live mais recente; as outras ficam guardadas.
             recentes = motor.pastas()
@@ -194,6 +196,18 @@ class Postagem:
             self._salvar()
         self.sincronizar()
 
+    def _passa(self, meta: dict) -> bool:
+        """O corte tem potencial suficiente para entrar na agenda? Você pode liberar um corte à mão."""
+        minimo = int(self.config.get("potencial_minimo") or 0)
+        if not minimo or meta.get("forcar_postagem"):
+            return True
+        nota = (meta.get("potencial") or {}).get("nota")
+        return nota is not None and nota >= minimo
+
+    @staticmethod
+    def _nota(meta: dict | None) -> int:
+        return int(((meta or {}).get("potencial") or {}).get("nota") or 0)
+
     def sincronizar(self) -> None:
         with self.trava:
             mudou = False
@@ -211,19 +225,24 @@ class Postagem:
                     self.ordem.remove(corte_id)
                     mudou = True
                     continue
-                if meta and item["estado"] in ESTADOS_PENDENTES and not ativas.get(meta.get("pasta")):
+                if meta and item["estado"] in ESTADOS_PENDENTES and (not ativas.get(meta.get("pasta")) or not self._passa(meta)):
                     # Sai da agenda sem perder os textos: volta igual se a pasta for marcada de novo.
                     self.guardados[corte_id] = {"titulo": item["titulo"], "descricao": item["descricao"], "tags": item["tags"]}
                     del self.itens[corte_id]
                     self.ordem.remove(corte_id)
                     mudou = True
             for meta in cortes:
-                if meta["status"] == "pronto" and meta["id"] not in self.itens and not meta.get("postado") and ativas.get(meta.get("pasta")):
+                if meta["status"] == "pronto" and meta["id"] not in self.itens and not meta.get("postado") and ativas.get(meta.get("pasta")) and self._passa(meta):
                     textos = self.guardados.pop(meta["id"], None) or gerar_textos(meta, recentes)
                     recentes.add(textos["titulo"])
                     self.itens[meta["id"]] = {"id": meta["id"], **textos, "estado": "fila", "quando": 0, "video_id": None,
                                               "erro": None, "progresso": 0}
-                    self.ordem.append(meta["id"])
+                    posicao = len(self.ordem)
+                    if self.config.get("melhores_primeiro", True):  # entra antes dos que ainda esperam e têm potencial menor
+                        nota = self._nota(meta)
+                        posicao = next((n for n, i in enumerate(self.ordem) if self.itens[i]["estado"] in ESTADOS_PENDENTES
+                                        and not self.itens[i].get("movido") and self._nota(self.motor.cortes.get(i)) < nota), posicao)
+                    self.ordem.insert(posicao, meta["id"])
                     mudou = True
             for corte_id in [i for i in self.ordem if i not in self.motor.cortes]:
                 if self.itens[corte_id]["estado"] in ESTADOS_PENDENTES:
@@ -327,6 +346,7 @@ class Postagem:
             dia += timedelta(days=1)
 
     def salvar_config(self, dados: dict) -> None:
+        refiltrar = False
         with self.trava:
             if "horarios" in dados:
                 horarios = sorted(set(dados["horarios"]))
@@ -357,6 +377,17 @@ class Postagem:
                 if not all(re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", h) for h in (inicio, fim)) or inicio >= fim:
                     raise ValueError("O horário final precisa ser depois do inicial.")
                 self.config["janela_inicio"], self.config["janela_fim"] = inicio, fim
+            if "potencial_minimo" in dados:
+                try:
+                    minimo = int(dados["potencial_minimo"])
+                except (TypeError, ValueError):
+                    minimo = -1
+                if minimo not in POTENCIAIS:
+                    raise ValueError("Escolha um potencial mínimo da lista.")
+                self.config["potencial_minimo"] = minimo
+            if "melhores_primeiro" in dados:
+                self.config["melhores_primeiro"] = bool(dados["melhores_primeiro"])
+            refiltrar = "potencial_minimo" in dados
             if "auditoria" in dados:
                 self.config["auditoria"] = bool(dados["auditoria"])
                 if not self.config["auditoria"]:
@@ -371,6 +402,8 @@ class Postagem:
                 self.pausa_ate = 0.0
             self._reagendar(time.time())
             self._salvar()
+        if refiltrar:
+            self.sincronizar()
 
     def editar(self, corte_id: str, dados: dict) -> dict:
         with self.trava:
@@ -396,6 +429,7 @@ class Postagem:
                 return
             a, b = self.ordem.index(pendentes[pos]), self.ordem.index(pendentes[alvo])
             self.ordem[a], self.ordem[b] = self.ordem[b], self.ordem[a]
+            self.itens[pendentes[pos]]["movido"] = self.itens[pendentes[alvo]]["movido"] = True  # a sua ordem vale mais que o potencial
             self._reagendar(time.time())
             self._salvar()
 
@@ -593,7 +627,8 @@ class Postagem:
             ativos = [{k: v for k, v in i.items() if k not in ("descricao", "tags")} for i in lista if i["estado"] != "publicado"]
             for item in ativos:
                 meta = self.motor.cortes.get(item["id"]) or {}
-                item.update({"canal": meta.get("canal", ""), "duracao": meta.get("duracao", 0), "versao": meta.get("versao", 0), "pasta": meta.get("pasta")})
+                item.update({"canal": meta.get("canal", ""), "duracao": meta.get("duracao", 0), "versao": meta.get("versao", 0), "pasta": meta.get("pasta"),
+                             "potencial": (meta.get("potencial") or {}).get("nota")})
             return {
                 "config": self.config, "itens": ativos, "por_dia": len(self.config["horarios"]) * int(self.config.get("por_horario", 1)),
                 "total_fila": sum(1 for i in lista if i["estado"] in ESTADOS_PENDENTES),
@@ -605,6 +640,8 @@ class Postagem:
                 "repetidos": sum(1 for i in lista if self._repetido(i)),
                 "devolviveis": sum(1 for i in lista if self._devolvivel(i)) if self.conferido_canal and self.conferido_canal == self._canal_atual() else 0,
                 "conferencia": self.conferencia,
+                "abaixo_minimo": sum(1 for m in self.motor.cortes.values() if m.get("status") == "pronto" and not m.get("postado")
+                                     and self.config["pastas"].get(m.get("pasta")) and m["id"] not in self.itens and not self._passa(m)),
                 "conta": {"tem_cliente": self.conta.tem_cliente, "conectada": self.conta.conectada, "canal": self.conta.canal},
             }
 

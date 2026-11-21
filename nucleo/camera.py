@@ -1,6 +1,7 @@
 """Encontra a câmera do streamer na tela e decide o enquadramento vertical."""
 from __future__ import annotations
 
+import json
 import subprocess
 import threading
 from pathlib import Path
@@ -50,13 +51,28 @@ def detectar_rostos(quadro: np.ndarray, confianca: float = 0.55) -> list[tuple[f
 
 
 def dimensoes(video: Path) -> tuple[int, int, float]:
+    # Em arquivos .ts das lives o ffprobe repete a largura e a altura na seção "programs";
+    # lido em lista, a duração vinha errada (1920 s no lugar de 27 s). Em JSON cada valor tem seu lugar.
     r = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration",
-         "-of", "default=nw=1:nk=1", str(video)],
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,duration:format=duration",
+         "-of", "json", str(video)],
         capture_output=True, text=True, **sem_janela(),
     )
-    partes = r.stdout.split()
-    return int(partes[0]), int(partes[1]), float(partes[2]) if len(partes) > 2 and partes[2] != "N/A" else 0.0
+    try:
+        dados = json.loads(r.stdout or "{}")
+    except ValueError:
+        dados = {}
+    fluxo = (dados.get("streams") or [{}])[0]
+    duracao = 0.0
+    for valor in ((dados.get("format") or {}).get("duration"), fluxo.get("duration")):
+        try:
+            duracao = float(valor)
+            break
+        except (TypeError, ValueError):
+            continue
+    if "width" not in fluxo:
+        raise ValueError(f"Não consegui ler o vídeo {video.name}.")
+    return int(fluxo["width"]), int(fluxo["height"]), duracao
 
 
 def amostrar(video: Path, quantidade: int = 18) -> list[np.ndarray]:

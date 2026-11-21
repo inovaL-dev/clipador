@@ -159,6 +159,18 @@ class Painel(BaseHTTPRequestHandler):
         if m := re.fullmatch(r"/api/cortes/([\w-]+)", caminho):
             meta = self.motor.cortes.get(m[1])
             return self._json(meta) if meta else self._erro("Corte não encontrado.", 404)
+        if m := re.fullmatch(r"/api/cortes/([\w-]+)/bastidores", caminho):
+            if m[1] not in self.motor.cortes:
+                return self._erro("Corte não encontrado.", 404)
+            return self._json(self.motor.bastidores_de(m[1]))
+        if m := re.fullmatch(r"/cortes/([\w-]+)/bastidores\.jpg", caminho):
+            pasta = self.motor.saida / m[1]
+            if m[1] not in self.motor.cortes:
+                return self._erro("Arquivo não encontrado.", 404)
+            for nome in ("bastidores.jpg", "quadro.jpg", "capa.jpg"):
+                if (pasta / nome).exists():
+                    return self._arquivo(pasta / nome)
+            return self._erro("Ainda sem imagem.", 404)
         if m := re.fullmatch(r"/cortes/([\w-]+)/([\w.]+)", caminho):
             if m[2] not in ARQUIVOS_CORTE or m[1] not in self.motor.cortes:
                 return self._erro("Arquivo não encontrado.", 404)

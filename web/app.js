@@ -221,11 +221,11 @@ function cartao(c) {
     const atual = c.status === "fila" ? -1 : ETAPAS.findIndex(([k]) => k === c.status);
     const passou = c.status === "fila" ? 1 : atual;
     poster.append(el("ol", { class: "etapas" }, ...ETAPAS.map(([, nome], i) =>
-      el("li", { dados: { estado: i < passou ? "feito" : i === atual ? "atual" : "" } }, nome))));
+      el("li", { dados: { estado: i < passou ? "feito" : i === atual ? "atual" : "" } }, nome))), el("span", { class: "bs-assistir" }, "Assistir a edição"));
   }
   const titulo = c.gancho || (c.status === "erro" ? "Corte com problema" : c.motivo);
   return el("button", { class: "corte", type: "button", dados: { postado: String(!!c.postado) }, disabled: c.status === "pronto" ? null : undefined,
-    onclick: () => { if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); } },
+    onclick: () => { if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); else abrirBastidores(c.id); } },
     poster, el("h3", {}, titulo), el("p", {}, `${c.canal}, ${haQuanto(c.criado)}`));
 }
 
@@ -452,6 +452,13 @@ function preencherEditor(c) {
   $("#ed-estilo-legenda").value = c.estilo?.legenda || ""; $("#ed-estilo-gancho").value = c.estilo?.gancho || "";
   $("#ed-layout").textContent = LAYOUTS[c.layout] || "Automático";
   mostrarPotencial(c);
+  const minimo = estado?.postagem?.config?.potencial_minimo || 0, nota = c.potencial?.nota;
+  const abaixo = minimo && nota != null && nota < minimo && !c.postado;
+  $("#ed-abaixo").hidden = !abaixo;
+  if (abaixo) {
+    $("#ed-abaixo-texto").textContent = c.forcar_postagem ? `Liberado para a agenda, mesmo abaixo de ${minimo}%.` : `Fora da agenda: o mínimo da postagem é ${minimo}%.`;
+    $("#ed-forcar").textContent = c.forcar_postagem ? "Tirar da agenda" : "Postar mesmo assim";
+  }
   $("#ed-baixar").href = `/cortes/${c.id}/corte.mp4?baixar=1`;
   $("#ed-postado").textContent = c.postado ? "Voltar para postar" : "Marcar como postado";
   const video = $("#ed-video");
@@ -528,6 +535,13 @@ $("#ed-excluir").addEventListener("click", (ev) => confirmar(ev.currentTarget, "
   atualizar();
 }));
 $("#ed-enquadrar").addEventListener("click", () => abrirCamera({ corte: corteAberto }));
+$("#ed-forcar").addEventListener("click", async () => {
+  const liberar = !corteAberto.forcar_postagem;
+  try { await api("PATCH", `/api/cortes/${corteAberto.id}`, { forcar_postagem: liberar }); corteAberto.forcar_postagem = liberar; const minimo = estado?.postagem?.config?.potencial_minimo || 0;
+    $("#ed-abaixo-texto").textContent = liberar ? `Liberado para a agenda, mesmo abaixo de ${minimo}%.` : `Fora da agenda: o mínimo da postagem é ${minimo}%.`; $("#ed-forcar").textContent = liberar ? "Tirar da agenda" : "Postar mesmo assim"; avisar(liberar ? "Este corte entra na agenda" : "Este corte saiu da agenda"); atualizar(); }
+  catch (e) { avisar(e.message); }
+});
+$("#ed-bastidores").addEventListener("click", () => { const c = corteAberto.id; $("#editor").close(); abrirBastidores(c, true); });
 $("#editor").addEventListener("close", () => { clearInterval(vigia); $("#ed-video").pause(); $("#ed-video").removeAttribute("src"); $("#ed-video").load(); corteAberto = null; });
 
 $$("[data-fechar]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
@@ -721,7 +735,7 @@ function linhaItem(item, pendentes) {
     el("time", { class: "item-hora" }, horaDe(item.quando)),
     el("button", { class: "item-capa", type: "button", "aria-label": `Assistir ${item.titulo}`, onclick: () => abrirItem(item.id) },
       el("img", { src: `/cortes/${item.id}/capa.jpg?v=${item.versao || 0}`, alt: "", loading: "lazy" }), el("i", { "aria-hidden": "true" })),
-    el("button", { class: "item-texto", type: "button", onclick: () => abrirItem(item.id) }, el("b", {}, item.titulo), el("span", {}, detalhe)),
+    el("button", { class: "item-texto", type: "button", onclick: () => abrirItem(item.id) }, el("b", {}, item.titulo), el("span", {}, item.potencial ? `${detalhe} · potencial ${item.potencial}%` : detalhe)),
     el("div", { class: "item-acoes" }, ...acoes));
 }
 
@@ -786,6 +800,9 @@ function renderPostagem() {
   $("#n-postagem").textContent = p.total_fila || "";
   renderConta(p);
   $("#post-auditoria").checked = p.config.auditoria;
+  if (document.activeElement !== $("#post-potencial")) $("#post-potencial").value = String(p.config.potencial_minimo ?? 85);
+  $("#post-melhores").checked = p.config.melhores_primeiro !== false;
+  $("#post-fora").textContent = p.config.potencial_minimo ? (p.abaixo_minimo ? `${p.abaixo_minimo} ${p.abaixo_minimo === 1 ? "corte ficou" : "cortes ficaram"} fora da agenda por estar abaixo de ${p.config.potencial_minimo}%. Eles continuam em Cortes, e dá para liberar um a um.` : `Só entram na agenda cortes com potencial de ${p.config.potencial_minimo}% ou mais.`) : "Todos os cortes prontos entram na agenda.";
   $("#post-automatico").checked = p.config.automatico;
   $("#post-automatico").disabled = !p.config.auditoria || !p.conta.conectada;
   if (!horariosEditando) {
@@ -876,6 +893,8 @@ async function salvarPostagem(dados, aviso) {
   catch (e) { avisar(e.message); }
   atualizar();
 }
+$("#post-potencial").addEventListener("change", (e) => salvarPostagem({ potencial_minimo: +e.target.value }, +e.target.value ? `Agenda só com potencial de ${e.target.value}% ou mais` : "Todos os cortes entram na agenda"));
+$("#post-melhores").addEventListener("change", (e) => salvarPostagem({ melhores_primeiro: e.target.checked }));
 $("#post-auditoria").addEventListener("change", (e) => salvarPostagem({ auditoria: e.target.checked }));
 $("#post-automatico").addEventListener("change", (e) => salvarPostagem({ automatico: e.target.checked }, e.target.checked ? "Envio automático ligado" : "Envio automático desligado"));
 function diaLocal() {

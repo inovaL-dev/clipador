@@ -544,3 +544,6 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 .potencial > .dica { margin: .75rem 0 0; }
 .es-fonte-amostra { margin: .375rem 0 0; font-size: 1.5rem; line-height: 1.2; color: var(--giz); } .es-fonte-amostra[hidden] { display: none; }
 #form-estilo .es-duas { align-items: start; }
+.post-filtro { display: grid; gap: .5rem; margin: 0 0 1rem; padding: .875rem 1rem; border: 1px solid var(--fio-suave); border-radius: var(--raio); background: var(--mesa); }
+.post-filtro select { max-width: 22rem; }
+.ed-abaixo { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .625rem .875rem; border: 1px dashed var(--fio); border-radius: var(--raio); color: var(--giz-medio); font-size: .875rem; }

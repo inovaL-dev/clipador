@@ -26,7 +26,7 @@ from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_mar
 from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
-from . import fala, ideias, potencial
+from . import bastidores, fala, ideias, potencial
 from .gravadas import Gravadas
 from .gravador import Gravador
 from .longo import Longos
@@ -99,6 +99,7 @@ class Motor:
         self.trava = threading.RLock()
         self.canais: dict[str, CanalVivo] = {}
         self.cortes: dict[str, dict] = {}
+        self.bast: dict[str, dict] = {}  # bastidores da edição em andamento
         self.eventos: deque[dict] = deque(maxlen=80)
         self.fila: queue.Queue = queue.Queue()
         self.fim = threading.Event()
@@ -263,7 +264,47 @@ class Motor:
     def _salvar_corte(self, meta: dict) -> None:
         self._gravar(self.saida / meta["id"] / "corte.json", meta)
 
+    def _bast(self, meta: dict, dados: dict) -> None:
+        """Guarda o que está acontecendo na edição deste corte, para a tela "Assistir a edição"."""
+        with self.trava:
+            b = self.bast.setdefault(meta["id"], {"inicio": time.time(), "log": [], "fala": [], "v": 0})
+            for k, v in dados.items():
+                if k == "fala":
+                    b["fala"] = (b["fala"] + v)[-800:]
+                elif k == "log":
+                    tipo, texto = v
+                    if texto:
+                        b["log"] = (b["log"] + [{"t": round(time.time() - b["inicio"], 1), "tipo": tipo, "texto": texto[:160]}])[-120:]
+                else:
+                    b[k] = v
+            b["v"] += 1
+
+    def bastidores_de(self, corte_id: str) -> dict:
+        meta = self.cortes[corte_id]
+        with self.trava:
+            b = dict(self.bast.get(corte_id) or {})
+        if not b:
+            salvo = self.saida / corte_id / "bastidores.json"
+            if salvo.exists():
+                try:
+                    b = {**json.loads(salvo.read_text(encoding="utf-8")), "gravado": True}
+                except (OSError, ValueError):
+                    b = {}
+        return {**b, "status": meta["status"], "etapa_nome": ETAPAS.get(meta["status"], ""), "gancho": meta.get("gancho"), "versao": meta.get("versao", 0),
+                "agora": round(time.time() - b.get("inicio", time.time()), 1), "duracao": meta.get("duracao")}
+
+    def _guardar_bastidores(self, meta: dict) -> None:
+        with self.trava:
+            b = self.bast.pop(meta["id"], None)
+        if b:
+            try:
+                (self.saida / meta["id"] / "bastidores.json").write_text(json.dumps(b, ensure_ascii=False), encoding="utf-8")
+            except OSError:
+                pass
+
     def _etapa(self, meta: dict, status: str, erro: str | None = None) -> None:
+        if status in ETAPAS and status not in ("fila",):
+            self._bast(meta, {"etapa": status, "log": ("etapa", erro if status == "erro" else ETAPAS[status])})
         if status == "pronto":
             self._avaliar(meta)
         with self.trava:
@@ -381,6 +422,8 @@ class Motor:
         if meta.get("projeto_exportado") and (refazer or any(k in dados for k in ("gancho", "grupos", "estilo", "camera"))):
             raise ValueError("Este vídeo foi personalizado no Editor. Abra o Editor para fazer novas mudanças.")
         with self.trava:
+            if "forcar_postagem" in dados:
+                meta["forcar_postagem"] = bool(dados["forcar_postagem"])
             if "postado" in dados:
                 if bool(dados["postado"]) != bool(meta.get("postado")):
                     self.aprendizado.sinal_ideia(meta, "postados", 1 if dados["postado"] else -1)
@@ -676,7 +719,17 @@ class Motor:
     def _capturar(self, cv: CanalVivo, grav: Gravador, meta: dict, momento: float, apos: float) -> None:
         ini, fim = max(0.0, momento - HISTORICO_CORTE), momento + apos
         limite = time.time() + apos + 30
+        self._bast(meta, {"etapa": "capturando", "gravando": [round(max(0.0, grav.gravado() - ini), 1), round(fim - ini, 1)], "momento_bruto": round(momento - ini, 2),
+                          "log": ("etapa", "Guardando o que aconteceu antes e depois do momento")})
+        ultima_foto = 0.0
         while time.time() < limite and grav.vivo() and grav.gravado() < fim:
+            self._bast(meta, {"gravando": [round(max(0.0, grav.gravado() - ini), 1), round(fim - ini, 1)]})
+            if time.time() - ultima_foto > 2:
+                ultima_foto = time.time()
+                try:
+                    grav.quadro(self.saida / meta["id"] / "bastidores.jpg")
+                except Exception:
+                    pass
             time.sleep(0.25)
         base = grav.juntar(ini, fim, self.saida / meta["id"] / "bruto.ts")
         if base is None:
@@ -775,6 +828,10 @@ class Motor:
             meta = self.cortes.get(corte_id)
             if not meta:
                 continue
+            if tipo != "novo":  # refazer: a tela mostra a edição de novo, do começo
+                with self.trava:
+                    self.bast.pop(corte_id, None)
+            bastidores.ligar(lambda d, meta=meta: self._bast(meta, d), self.saida / corte_id)
             try:
                 if tipo == "novo":
                     self._processar(meta)
@@ -789,11 +846,22 @@ class Motor:
             except Exception as e:
                 self._etapa(meta, "erro", str(e)[:300])
                 self.evento(meta["canal"], "erro", "Um corte não pôde ser editado")
+            finally:
+                bastidores.desligar()
+                self._guardar_bastidores(meta)
+                (self.saida / corte_id / "bastidores.jpg").unlink(missing_ok=True)
 
     def _processar(self, meta: dict) -> None:
         pasta = self.saida / meta["id"]
         bruto = pasta / "bruto.ts"
         self._etapa(meta, "transcrevendo")
+        try:
+            dur_bruto = cam.dimensoes(bruto)[2]
+            self._bast(meta, {"bruto": round(dur_bruto or 0, 2), "momento_bruto": round(meta["momento_rel"], 2), "log": ("passo", "Ouvindo tudo o que foi falado no trecho")})
+            edicao.executar(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, min(meta['momento_rel'], (dur_bruto or 1) - .5)):.2f}", "-i", str(bruto),
+                             "-frames:v", "1", "-vf", "scale=-2:480", "-q:v", "5", str(pasta / "bastidores.jpg")])
+        except Exception:
+            pass
         inicio_etapa = time.time()
         modelo = self._modelo_whisper()
         palavras = edicao.transcrever(modelo, bruto, self.config["idioma"], **self.contexto_fala(meta)) if modelo else []
@@ -804,6 +872,7 @@ class Motor:
             palavras, momento, total, self.config["duracao_min"], min(59.0, self.config["duracao_max"]) if self.config["duracao_max"] <= 60 else self.config["duracao_max"],
         )  # Shorts acima de 1 minuto podem ser bloqueados por direitos autorais
         duracao = fim - ini
+        self._bast(meta, {"janela": [round(ini, 2), round(fim, 2)], "log": ("decisao", f"A história vai de {relogio(ini)} até {relogio(fim)}: {round(duracao)} segundos com começo, meio e fim")})
         fonte = pasta / "fonte.mp4"
         edicao.extrair_trecho(bruto, ini, duracao, fonte)
         trecho = [
@@ -819,6 +888,7 @@ class Motor:
             meta["gancho"], meta["canal"], meta["credito"], titulo, meta["plataforma"], meta["ident"],
         )
         meta["grupos"] = ctx.agrupar_legenda(trecho)
+        self._bast(meta, {"log": ("decisao", f"Título: {meta['gancho']}")})
         meta["duracao_fonte"] = round(duracao, 3)
         meta["nucleo"] = ctx.nucleo_da_acao(meta["grupos"], meta["momento_fonte"], duracao)
         meta["curto"] = meta["nucleo"][1] - meta["nucleo"][0] <= 13 and duracao >= (meta["nucleo"][1] - meta["nucleo"][0]) * 1.8  # o resto seria só enchimento
@@ -830,6 +900,7 @@ class Motor:
         elif ideia := self.aprendizado.escolher_ideia(meta):  # sem modelo de exemplo: testa uma das ideias ligadas
             meta["ideia"] = ideia
             meta["estilo"] = {**ideias.estilo(ideia), **(meta.get("estilo") or {})}
+        self._bast(meta, {"log": ("decisao", f"Estilo aprendido: {(self.aprendizado.m.get('modelos', {}).get(modelo) or {}).get('nome', 'modelo de exemplo')}" if modelo else f"Ideia em teste: {ideias.nome(meta.get('ideia'))}" if meta.get("ideia") else "")})
         if est.normalizar(self.config["estilo"])["sons_auto"]:
             sons = sugerir_sons(meta["grupos"], duracao, meta["momento_fonte"], meta.get("reacao"))
             if perfil_modelo and perfil_modelo.get("sfx_cortes") is not None and perfil_modelo["sfx_cortes"] < .2:
@@ -906,6 +977,12 @@ class Motor:
                 meta["plano"] = {"layout": "inteiro", "origem": "auto"}
             meta["layout"] = meta["plano"]["layout"]
             meta["replanejar"] = False
+        p = meta["plano"]
+        self._bast(meta, {"plano": {"layout": p["layout"], "moldura": p.get("moldura"), "rosto": p.get("rosto")},
+                          "log": ("decisao", {"dividido": "Webcam em cima e jogo embaixo", "pip": "Jogo na tela toda com a webcam por cima", "tela_cheia": "A pessoa ocupa a tela toda",
+                                              "inteiro": "O vídeo inteiro, sem webcam separada", "conversa": "Conversa: a câmera segue quem fala"}.get(p["layout"], p["layout"]))})
+        if (pasta / "quadro.jpg").exists() and not (pasta / "bastidores.jpg").exists():
+            shutil.copy(pasta / "quadro.jpg", pasta / "bastidores.jpg")
         self._etapa(meta, "editando")
         if "focos" not in meta:
             try:
@@ -942,6 +1019,10 @@ class Motor:
             for temporario in ("montagem.mp4", "sons.wav"):
                 (pasta / temporario).unlink(missing_ok=True)
         meta["versao"] = int(meta.get("versao", 0)) + 1
+
+
+def relogio(s: float) -> str:
+    return f"{int(s // 60)}:{int(s % 60):02d}"
 
 
 def _descrever(causa: str, msgs: int, textos: list[str]) -> tuple[str, str]:

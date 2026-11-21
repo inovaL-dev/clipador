@@ -1,5 +1,17 @@
 [
   {
+    "versao": "1.13.0",
+    "data": "2026-11-21",
+    "notas": [
+      "Assistir a edição: clique num corte que ainda está sendo feito e veja o Clipador trabalhar. A fala aparece conforme é ouvida, o começo e o fim da história são marcados, o rosto é encontrado na webcam e os zooms, as trocas de câmera, o título, as legendas e os sons entram na timeline um a um, enquanto o vídeo é montado quadro a quadro.",
+      "Quando o corte fica pronto, o vídeo final toca com a timeline andando junto. Em qualquer corte pronto, o botão Ver a edição mostra de novo como ele foi feito.",
+      "Postagem por potencial: a agenda só recebe cortes com potencial de 85% ou mais. Dá para escolher outro mínimo (de 50% a 95%) ou postar todos, em Postagem > Horários.",
+      "Os cortes de maior potencial são postados primeiro. A ordem que você muda à mão continua valendo.",
+      "Um corte abaixo do mínimo pode ser liberado um a um, com o botão Postar mesmo assim, na janela do corte.",
+      "Correção: a duração dos trechos gravados das lives às vezes era lida errada, o que podia atrapalhar a escolha do começo e do fim do corte."
+    ]
+  },
+  {
     "versao": "1.12.0",
     "data": "2026-11-21",
     "notas": [

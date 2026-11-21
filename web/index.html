@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/web/estudio.css">
 <link rel="stylesheet" href="/web/acabamento.css">
 <link rel="stylesheet" href="/web/drift.css">
+<link rel="stylesheet" href="/web/bastidores.css">
 <script>try { if (sessionStorage.getItem("abertura") || location.search.includes("janela=1") || matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("sem-abertura"); sessionStorage.setItem("abertura", "1"); } catch {}</script>
 </head>
 <body data-vazio="true">
@@ -194,6 +195,22 @@
           <label class="marcar"><input type="radio" name="post-modo" value="dia"><span>Todos em um único dia</span></label>
           <label class="marcar"><input type="radio" name="post-modo" value="agora"><span>Todos de uma vez</span></label>
         </fieldset>
+        <div class="post-filtro">
+          <label for="post-potencial"><b>Quais cortes postar</b></label>
+          <select id="post-potencial">
+            <option value="0">Todos os cortes</option>
+            <option value="50">Potencial de 50% ou mais</option>
+            <option value="60">Potencial de 60% ou mais</option>
+            <option value="70">Potencial de 70% ou mais</option>
+            <option value="75">Potencial de 75% ou mais</option>
+            <option value="80">Potencial de 80% ou mais</option>
+            <option value="85">Potencial de 85% ou mais (recomendado)</option>
+            <option value="90">Potencial de 90% ou mais</option>
+            <option value="95">Potencial de 95% ou mais</option>
+          </select>
+          <label class="marcar"><input type="checkbox" id="post-melhores"><span>Postar primeiro os de maior potencial</span></label>
+          <p class="dica" id="post-fora"></p>
+        </div>
         <div class="modo-bloco" id="bloco-horarios">
           <form class="hor-rapido" id="hor-rapido">
             <label>Das <input type="time" id="hor-inicio" value="06:00" required></label>
@@ -526,6 +543,7 @@
           <ul class="potencial-dicas" id="ed-pot-dicas"></ul>
           <p class="dica">Estimativa feita com a reação da live, o começo, a história e o ritmo do corte. Não é garantia de views: serve para escolher o que postar primeiro.</p>
         </details>
+        <div class="ed-abaixo" id="ed-abaixo" hidden><span id="ed-abaixo-texto"></span><button class="botao" type="button" id="ed-forcar">Postar mesmo assim</button></div>
         <div class="bloco">
           <label for="ed-gancho">Título no vídeo</label>
           <input id="ed-gancho" maxlength="90" data-visual>
@@ -565,6 +583,7 @@
       <footer class="editor-acoes">
         <a class="botao principal" id="ed-baixar" download>Baixar vídeo</a>
         <button class="botao" type="button" id="ed-timeline">Abrir no editor</button>
+        <button class="botao" type="button" id="ed-bastidores">Ver a edição</button>
         <button class="botao" type="button" id="ed-postado"></button>
         <button class="botao destaque" type="button" id="ed-salvar">Refazer vídeo</button>
         <button class="botao perigo" type="button" id="ed-excluir">Excluir</button>
@@ -814,5 +833,6 @@
 <script src="/web/estudio.js"></script>
 <script src="/web/acabamento.js"></script>
 <script src="/web/posts.js"></script>
+<script src="/web/bastidores.js"></script>
 </body>
 </html>
