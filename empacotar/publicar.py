@@ -250,6 +250,31 @@ def enviar(git: str, versao: str) -> None:
     rodar(git, "push", "-u", "origin", "HEAD:main")
 
 
+def consertar_git(git: str) -> None:
+    """Desliga o computador no meio da publicação pode estragar arquivos do git. Conserta os mais comuns."""
+    r = rodar(git, "config", "--global", "--list", ok=False)
+    erro = (r.stderr or "") + (r.stdout or "")
+    m = re.search(r"bad config line \d+ in file (.+?\.gitconfig)", erro)
+    if r.returncode and m:
+        quebrado = Path(m[1].strip())
+        reserva = quebrado.with_name(f".gitconfig-quebrado-{time.strftime('%Y%m%d-%H%M%S')}")
+        try:
+            quebrado.replace(reserva)
+            print(f"O arquivo de configuração do git estava estragado (provavelmente o computador desligou no meio).\nGuardei uma cópia em {reserva} e o git vai começar um novo.")
+        except OSError as e:
+            raise Parar(f"O arquivo {quebrado} está estragado e não consegui trocar: {e}. Apague ou renomeie esse arquivo e rode de novo.") from None
+    trava = RAIZ / ".git" / "index.lock"
+    if trava.exists() and time.time() - trava.stat().st_mtime > 60:
+        trava.unlink(missing_ok=True)  # sobrou de uma publicação interrompida
+        print("Tirei uma trava que sobrou da publicação interrompida.")
+    if (RAIZ / ".git").exists() and rodar(git, "status", "--porcelain", ok=False).returncode:
+        detalhe = (rodar(git, "status", ok=False).stderr or "").strip()[-300:]
+        if re.search(r"corrupt|bad object|index file|not a git repository|loose object", detalhe, re.I):
+            reserva = RAIZ / f".git-quebrado-{time.strftime('%Y%m%d-%H%M%S')}"
+            (RAIZ / ".git").replace(reserva)
+            print(f"O histórico local do git estava estragado. Guardei em {reserva.name} e vou continuar a partir do que já está no GitHub.")
+
+
 def main() -> int:
     versao = re.search(r'VERSAO = "([^"]+)"', (RAIZ / "nucleo" / "versao.py").read_text(encoding="utf-8"))[1]
     if "--lancar" in sys.argv:
@@ -257,6 +282,7 @@ def main() -> int:
     print(f"Publicando o Clipador {versao} em um repositório privado.\n")
     git, gh = achar_git(), achar_gh()
     os.environ["PATH"] = str(Path(git).parent) + os.pathsep + os.environ["PATH"]
+    consertar_git(git)
 
     if rodar(gh, "auth", "status", ok=False).returncode:
         print("O navegador vai abrir para você entrar na sua conta do GitHub.")
