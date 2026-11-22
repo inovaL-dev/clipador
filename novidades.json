@@ -1,5 +1,13 @@
 [
   {
+    "versao": "1.17.1",
+    "data": "2026-11-22",
+    "notas": [
+      "O instalador espera o Clipador fechar de verdade antes de trocar os arquivos.",
+      "Se o Clipador foi aberto como administrador, o instalador explica como fechar em vez de mostrar o erro DeleteFile."
+    ]
+  },
+  {
     "versao": "1.17.0",
     "data": "2026-11-22",
     "notas": [
