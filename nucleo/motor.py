@@ -231,6 +231,17 @@ class Motor:
                 self.montagens.fila.put(ident)
             else:
                 self.fila.put((tipo, ident))
+        if self.config.get("previa_v") != 2:
+            # 1.17.1: a prévia do auge ficou bem mais exigente. Os cortes ainda não postados que abriam
+            # com ela são refeitos: os que tinham uma prévia sem sentido passam a começar pela história.
+            refazer = [m["id"] for m in self.cortes.values() if m.get("status") == "pronto" and m.get("previa_usada") and not m.get("postado")
+                       and not m.get("projeto_exportado") and (self.saida / m["id"] / "fonte.mp4").exists()]
+            for corte_id in refazer:
+                self.fila.put(("refazer", corte_id))
+            if refazer:
+                self.evento("Clipador", "info", f"Revendo o começo de {len(refazer)} {'corte' if len(refazer) == 1 else 'cortes'} que abriam com o auge")
+            self.config["previa_v"] = 2
+            self._gravar(self.dados / "config.json", self.config)
         if self._retomar:
             self.evento("Clipador", "info", f"Continuando {len(self._retomar)} {'corte' if len(self._retomar) == 1 else 'cortes'} de onde parou")
         self.longos.retomar()
@@ -496,6 +507,8 @@ class Motor:
             if "postado" in dados:
                 if bool(dados["postado"]) != bool(meta.get("postado")):
                     self.aprendizado.sinal_ideia(meta, "postados", 1 if dados["postado"] else -1)
+                    if meta.get("previa_usada"):
+                        self._sinal_previa("bons", 1 if dados["postado"] else -1)
                 meta["postado"] = bool(dados["postado"])
             if isinstance(dados.get("post"), str):
                 meta["post"] = dados["post"][:4000]
@@ -520,6 +533,8 @@ class Motor:
                 for chave in ("camera_dinamica", "abertura"):
                     if chave in proprio:
                         proprio[chave] = proprio[chave] in (True, "true", "True", 1, "1")
+                if proprio.get("abertura") is False and meta.get("previa_usada"):
+                    self._sinal_previa("ruins", 1)  # a prévia deste corte não ficou boa
                 # Só muda o que veio da janela; o que a ideia ou o modelo escolheram para o resto continua
                 novo = {**{k: v for k, v in (meta.get("estilo") or {}).items() if k not in pedido}, **proprio}
                 if novo != (meta.get("estilo") or {}):
@@ -558,6 +573,8 @@ class Motor:
                         self._salvar_corte(origem)
         if meta["status"] == "pronto" and not meta.get("postado"):
             self.aprendizado.sinal_ideia(meta, "descartados")
+            if meta.get("previa_usada"):
+                self._sinal_previa("ruins", .5)
         shutil.rmtree(self.saida / corte_id, ignore_errors=True)
 
     def apagar_cortes(self, ids: list) -> dict:
@@ -1144,16 +1161,32 @@ class Motor:
             meta["momento_fonte"] = round(max(0.0, float(meta["momento_fonte"]) - inicio), 2)
         self._refazer(meta)
 
+    def _sinal_previa(self, tipo: str, valor: float) -> None:
+        """Guarda se as prévias do auge estão agradando: quanto mais você tira, mais clara ela precisa ser."""
+        with self.trava:
+            conta = self.config.setdefault("previa_aprendida", {"bons": 0.0, "ruins": 0.0})
+            conta[tipo] = max(0.0, float(conta.get(tipo) or 0) + valor)
+        try:
+            self._gravar(self.dados / "config.json", self.config)
+        except OSError:
+            pass
+
+    def _exigencia_previa(self) -> float:
+        conta = self.config.get("previa_aprendida") or {}
+        bons, ruins = float(conta.get("bons") or 0), float(conta.get("ruins") or 0)
+        return 1.0 + .8 * ruins / (bons + ruins + 3)
+
     def _previa_do_auge(self, meta: dict, fonte: Path, total: float, estilo: dict) -> list[float] | None:
         """Escolhe (uma vez) os segundos do auge que abrem o Short. None quando não precisa ou está desligado."""
         if not estilo.get("abertura", True) or meta.get("montagem") or meta.get("formato") == "longo":
             return None
-        if "abertura" not in meta:
+        if "abertura" not in meta or meta.get("abertura_v") != 2:  # 1.17.1: regra nova, bem mais exigente
+            meta["abertura_v"] = 2
             try:
                 picos = efeitos.batidas(fonte, duracao=total)
             except Exception:
                 picos = []
-            meta["abertura"] = abertura_mod.escolher(meta.get("grupos") or [], total, meta.get("momento_fonte"), picos)
+            meta["abertura"] = abertura_mod.escolher(meta.get("grupos") or [], total, meta.get("momento_fonte"), picos, self._exigencia_previa())
         previa = meta.get("abertura")
         if not previa:
             return None
