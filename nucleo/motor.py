@@ -540,6 +540,29 @@ class Motor:
             self.aprendizado.sinal_ideia(meta, "descartados")
         shutil.rmtree(self.saida / corte_id, ignore_errors=True)
 
+    def apagar_cortes(self, ids: list) -> dict:
+        """Apaga vários cortes de uma vez. Os que ainda estão sendo editados ficam."""
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("Escolha os cortes que serão apagados.")
+        apagados, pulados = 0, 0
+        for corte_id in dict.fromkeys(str(i) for i in ids[:2000]):
+            try:
+                self.excluir_corte(corte_id)
+                apagados += 1
+            except (KeyError, ValueError):
+                pulados += 1
+        self.postagem.sincronizar()  # tira da agenda os que ainda não foram enviados
+        return {"apagados": apagados, "pulados": pulados}
+
+    def marcar_postados(self, ids: list, postado: bool = True) -> dict:
+        n = 0
+        for corte_id in dict.fromkeys(str(i) for i in (ids or [])[:2000]):
+            meta = self.cortes.get(corte_id)
+            if meta and meta.get("status") == "pronto" and bool(meta.get("postado")) != postado:
+                self.atualizar_corte(corte_id, {"postado": postado})
+                n += 1
+        return {"total": n}
+
     def estado(self) -> dict:
         with self.trava:
             canais = [self._resumo_canal(c) for c in self.canais.values()]

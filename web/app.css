@@ -553,3 +553,17 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 @media (min-width: 125rem) { .lives.lives-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .link-varios { margin: .5rem 0 0; }
 .potencial-melhorado { margin: .75rem 0 0; padding: .5rem .625rem; border-radius: var(--raio-menor); background: rgb(90 209 179 / .1); color: var(--pronto); font-size: .8125rem; } #ed-melhorar { margin-top: .75rem; }
+
+/* Seleção de vários cortes */
+.barra-selecao { position: sticky; top: .5rem; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1rem; margin: 0 0 1rem; padding: .625rem .875rem; border: 1px solid var(--corte); border-radius: var(--raio); background: var(--cabine); box-shadow: var(--sombra); }
+.barra-selecao .sel-total { color: var(--giz-medio); font-size: .875rem; font-variant-numeric: tabular-nums; }
+.barra-selecao .sel-acoes { display: flex; gap: .5rem; margin-left: auto; }
+.barra-selecao .botao.perigo { margin-left: 0; border-color: var(--erro); }
+.botao-texto { background: none; border: 0; padding: .25rem; color: var(--corte); font: inherit; font-weight: 600; cursor: pointer; }
+.botao-texto:hover { text-decoration: underline; }
+#selecionar-cortes[aria-pressed="true"] { border-color: var(--corte); color: var(--corte); }
+.grade.selecionando .corte { cursor: pointer; }
+.grade.selecionando .corte .poster video { display: none; }
+.sel-caixa { position: absolute; left: .5rem; top: .5rem; z-index: 3; width: 1.4rem; height: 1.4rem; accent-color: var(--corte); cursor: pointer; }
+.corte.marcado .poster { outline: 3px solid var(--corte); outline-offset: -3px; }
+.corte.marcado .poster::after { content: ""; position: absolute; inset: 0; background: rgb(242 181 68 / .14); pointer-events: none; }

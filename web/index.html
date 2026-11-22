@@ -123,6 +123,17 @@
       <button class="botao destaque" type="button" id="abrir-montagem">Criar montagem</button>
       <label class="filtro-pasta"><span class="so-leitor">Pasta</span><select id="filtro-pasta"></select></label>
       <label class="filtro-pasta"><span class="so-leitor">Ordem</span><select id="ordem-cortes"><option value="recentes">Mais recentes</option><option value="potencial">Maior potencial</option></select></label>
+      <button class="botao" type="button" id="selecionar-cortes" aria-pressed="false">Selecionar</button>
+    </div>
+    <div class="barra-selecao" id="barra-selecao" hidden>
+      <label class="marcar"><input type="checkbox" id="sel-pagina"><span>Esta página</span></label>
+      <button class="botao-texto" type="button" id="sel-todos"></button>
+      <span class="sel-total" id="sel-total" aria-live="polite">Nenhum selecionado</span>
+      <span class="sel-acoes">
+        <button class="botao" type="button" id="sel-postado" disabled>Marcar como postado</button>
+        <button class="botao perigo" type="button" id="sel-apagar" disabled>Apagar</button>
+        <button class="botao fantasma" type="button" id="sel-sair">Cancelar</button>
+      </span>
     </div>
     <div class="grade" id="grade"></div>
     <p class="sem-cortes" id="sem-cortes" hidden></p>

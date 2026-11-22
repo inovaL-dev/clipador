@@ -1,5 +1,14 @@
 [
   {
+    "versao": "1.17.0",
+    "data": "2026-11-22",
+    "notas": [
+      "Selecionar vários cortes: em Cortes, o botão Selecionar liga a seleção. Clique nos cortes, marque a página inteira ou selecione todos os cortes do filtro de uma vez.",
+      "Com os cortes selecionados dá para apagar todos de uma vez ou marcar todos como postados. Os cortes que ainda estão sendo editados não são apagados.",
+      "Correção: um corte apagado continuava esperando na agenda de postagem. Agora ele sai da agenda junto."
+    ]
+  },
+  {
     "versao": "1.16.0",
     "data": "2026-11-22",
     "notas": [

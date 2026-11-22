@@ -208,8 +208,62 @@ function renderAgora() {
 }
 
 /* ---------- Cortes ---------- */
+/* ---------- Seleção de vários cortes ---------- */
+let modoSelecao = false, listaFiltrada = [];
+const marcados = new Set();
+const selecionavel = (c) => c.status === "pronto" || c.status === "erro";
+function atualizarBarraSelecao() {
+  const visiveis = [...cartoes.entries()].filter(([id]) => listaFiltrada.some((c) => c.id === id && selecionavel(c)));
+  const n = marcados.size, todos = listaFiltrada.filter(selecionavel).length;
+  $("#sel-total").textContent = n ? `${n} ${n === 1 ? "selecionado" : "selecionados"}` : "Nenhum selecionado";
+  $("#sel-apagar").disabled = $("#sel-postado").disabled = !n;
+  $("#sel-apagar").textContent = n ? `Apagar ${n}` : "Apagar";
+  $("#sel-todos").textContent = n === todos && todos ? "Tirar a seleção" : `Selecionar todos os ${todos}`;
+  $("#sel-todos").hidden = !todos;
+  const pg = $("#sel-pagina");
+  pg.checked = visiveis.length > 0 && visiveis.every(([id]) => marcados.has(id));
+  pg.indeterminate = !pg.checked && visiveis.some(([id]) => marcados.has(id));
+  visiveis.forEach(([id, item]) => { item.n.classList.toggle("marcado", marcados.has(id)); const cx = item.n.querySelector(".sel-caixa"); if (cx) cx.checked = marcados.has(id); });
+}
+function alternarSelecao(ligar) {
+  modoSelecao = ligar; if (!ligar) marcados.clear();
+  $("#barra-selecao").hidden = !ligar; $("#selecionar-cortes").setAttribute("aria-pressed", String(ligar));
+  $("#grade").classList.toggle("selecionando", ligar);
+  cartoes.forEach((item) => { item.sinal = ""; }); renderCortes(); atualizarBarraSelecao();
+}
+function marcar(c, sim) { if (!selecionavel(c)) return; if (sim) marcados.add(c.id); else marcados.delete(c.id); atualizarBarraSelecao(); }
+$("#selecionar-cortes").addEventListener("click", () => alternarSelecao(!modoSelecao));
+$("#sel-sair").addEventListener("click", () => alternarSelecao(false));
+$("#sel-pagina").addEventListener("change", (ev) => {
+  [...cartoes.keys()].forEach((id) => { const c = listaFiltrada.find((x) => x.id === id); if (c && selecionavel(c)) { if (ev.target.checked) marcados.add(id); else marcados.delete(id); } });
+  atualizarBarraSelecao();
+});
+$("#sel-todos").addEventListener("click", () => {
+  const todos = listaFiltrada.filter(selecionavel);
+  if (marcados.size === todos.length) marcados.clear(); else todos.forEach((c) => marcados.add(c.id));
+  atualizarBarraSelecao();
+});
+$("#sel-apagar").addEventListener("click", (ev) => confirmar(ev.currentTarget, `Apagar ${marcados.size} de vez`, async () => {
+  try {
+    const r = await api("POST", "/api/cortes/apagar", { ids: [...marcados] });
+    avisar(`${r.apagados} ${r.apagados === 1 ? "corte apagado" : "cortes apagados"}${r.pulados ? `. ${r.pulados} ainda em edição ${r.pulados === 1 ? "ficou" : "ficaram"}` : ""}`);
+    marcados.clear(); await atualizar(); atualizarBarraSelecao();
+  } catch (e) { avisar(e.message); }
+}));
+$("#sel-postado").addEventListener("click", async () => {
+  try { const r = await api("POST", "/api/cortes/postados", { ids: [...marcados], postado: true }); avisar(`${r.total} ${r.total === 1 ? "corte marcado" : "cortes marcados"} como postado`); marcados.clear(); await atualizar(); atualizarBarraSelecao(); }
+  catch (e) { avisar(e.message); }
+});
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && modoSelecao && !document.querySelector("dialog[open]")) alternarSelecao(false); });
+
 function cartao(c) {
   const poster = el("div", { class: "poster" });
+  if (modoSelecao && selecionavel(c)) {
+    const caixa = el("input", { type: "checkbox", class: "sel-caixa", "aria-label": `Selecionar ${c.gancho || "corte"}` });
+    caixa.checked = marcados.has(c.id);
+    caixa.addEventListener("click", (ev) => { ev.stopPropagation(); marcar(c, caixa.checked); });
+    poster.append(caixa);
+  }
   if (c.status === "pronto") {
     poster.append(el("img", { src: `/cortes/${c.id}/capa.jpg?v=${c.versao || 0}`, alt: "", loading: "lazy" }),
       el("span", { class: "poster-reacao" }, c.postado ? "Postado" : c.reacao_rotulo),
@@ -227,7 +281,7 @@ function cartao(c) {
   }
   const titulo = c.gancho || (c.status === "erro" ? "Corte com problema" : c.motivo);
   return el("button", { class: "corte", type: "button", dados: { postado: String(!!c.postado) }, disabled: c.status === "pronto" ? null : undefined,
-    onclick: () => { if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); else abrirBastidores(c.id); } },
+    onclick: () => { if (modoSelecao) { if (selecionavel(c)) marcar(c, !marcados.has(c.id)); return; } if (c.status === "pronto") abrirEditor(c.id); else if (c.status === "erro") removerFalho(c); else abrirBastidores(c.id); } },
     poster, el("h3", {}, titulo), el("p", {}, `${c.canal}, ${haQuanto(c.criado)}`));
 }
 
@@ -290,6 +344,8 @@ function renderCortes() {
   $("#n-montagens").textContent = montagens.length;
   let todos = filtro === "postar" ? postar : filtro === "postados" ? postados : filtro === "montagens" ? montagens : prontos;
   if ($("#ordem-cortes").value === "potencial") todos = [...todos].sort((a, b) => (b.potencial?.nota ?? -1) - (a.potencial?.nota ?? -1));
+  listaFiltrada = todos;
+  [...marcados].forEach((id) => { if (!todos.some((c) => c.id === id)) marcados.delete(id); });
   const porPagina = +$("#cortes-por-pagina").value, paginas = Math.max(1, Math.ceil(todos.length / porPagina));
   paginaCortes = Math.min(paginaCortes, paginas);
   const inicioPagina = (paginaCortes - 1) * porPagina, lista = todos.slice(inicioPagina, inicioPagina + porPagina);
@@ -303,7 +359,7 @@ function renderCortes() {
   for (const [id, item] of cartoes) if (!vivos.has(id)) { item.n.remove(); cartoes.delete(id); }
   const minuto = Math.floor(estado.agora / 60);
   lista.forEach((c, i) => {
-    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, c.potencial?.nota, c.na_fila, minuto].join("|");
+    const sinal = [c.status, c.versao, c.postado, c.gancho, c.erro, c.potencial?.nota, c.na_fila, minuto, modoSelecao].join("|");
     let item = cartoes.get(c.id);
     if (!item || item.sinal !== sinal) {
       const novo = cartao(c);
@@ -313,6 +369,7 @@ function renderCortes() {
     }
     if (grade.children[i] !== item.n) grade.insertBefore(item.n, grade.children[i] || null);
   });
+  if (modoSelecao) atualizarBarraSelecao();
   const vazio = $("#sem-cortes");
   vazio.hidden = todos.length > 0;
   vazio.textContent = filtro === "montagens" ? "Clique em Criar montagem para juntar os melhores momentos em um só vídeo." : filtro === "postados" ? "Os cortes marcados como postados ficam aqui."

@@ -216,6 +216,12 @@ class Postagem:
             ativas = self.config["pastas"]
             for corte_id in list(self.ordem):
                 item, meta = self.itens[corte_id], self.motor.cortes.get(corte_id)
+                if not meta and item["estado"] in ESTADOS_PENDENTES:  # o corte foi apagado: sai da agenda
+                    del self.itens[corte_id]
+                    self.ordem.remove(corte_id)
+                    self.guardados.pop(corte_id, None)
+                    mudou = True
+                    continue
                 if meta and meta.get("postado") and item["estado"] in ESTADOS_PENDENTES:
                     # Marcado como postado no editor: não pode continuar esperando na fila.
                     item.update(estado="publicado", marcado=True, erro=None, quando=item["quando"] or time.time())

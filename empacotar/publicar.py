@@ -74,8 +74,35 @@ def achar_gh() -> str:
     return str(local)
 
 
+GIT_EXTERNO: Path | None = None  # histórico do git fora da pasta do Clipador (ver usar_historico_proprio)
+TRAVADO = re.compile(r"index\.lock|\.lock'?: (Permission denied|File exists)|Unable to create .*lock|cannot lock ref|could not lock", re.I)
+
+
+def pasta_git() -> Path:
+    return GIT_EXTERNO or RAIZ / ".git"
+
+
 def rodar(*cmd: str, ok: bool = True, capturar: bool = True, pasta: Path = RAIZ) -> subprocess.CompletedProcess:
-    r = subprocess.run(cmd, cwd=pasta, text=True, encoding="utf-8", errors="replace", capture_output=capturar)
+    eh_git = Path(cmd[0]).stem.lower() == "git"
+    if eh_git and GIT_EXTERNO and pasta == RAIZ and len(cmd) > 1 and cmd[1] != "clone":
+        cmd = (cmd[0], f"--git-dir={GIT_EXTERNO}", f"--work-tree={RAIZ}", *cmd[1:])
+    for tentativa in range(6):
+        r = subprocess.run(cmd, cwd=pasta, text=True, encoding="utf-8", errors="replace", capture_output=capturar)
+        if not (eh_git and r.returncode and TRAVADO.search((r.stderr or "") + (r.stdout or ""))):
+            break
+        # Antivírus, sincronização de nuvem ou uma publicação interrompida segurando a trava: espera e tenta de novo
+        for trava in pasta_git().glob("*.lock"):
+            try:
+                if time.time() - trava.stat().st_mtime > 15:
+                    trava.unlink()
+            except OSError:
+                pass
+        time.sleep(2 + tentativa)
+    if ok and r.returncode and eh_git and TRAVADO.search((r.stderr or "") + (r.stdout or "")):
+        raise Parar("O Windows não deixou o git gravar na pasta de publicação.\n"
+                    f"Pasta: {pasta_git()}\n"
+                    "Costuma ser o antivírus (no Windows Defender: Proteção contra ransomware > Acesso controlado a pastas). "
+                    "Feche outras janelas de publicação, espere um minuto e rode de novo.")
     if ok and r.returncode:
         detalhe = (r.stderr or r.stdout or "").strip()[-500:]
         raise Parar(f"O comando {Path(cmd[0]).stem} {cmd[1]} falhou.\n{detalhe}")
@@ -250,6 +277,37 @@ def enviar(git: str, versao: str) -> None:
     rodar(git, "push", "-u", "origin", "HEAD:main")
 
 
+def usar_historico_proprio() -> Path:
+    """Guarda o histórico do git em %LOCALAPPDATA%\\Clipador, fora da pasta extraída.
+    Assim pastas em Downloads, na área de trabalho ou na nuvem não atrapalham, e cada .zip novo extraído
+    continua de onde o anterior parou."""
+    global GIT_EXTERNO
+    pasta = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Clipador" / "repositorio.git"
+    pasta.parent.mkdir(parents=True, exist_ok=True)
+    GIT_EXTERNO = pasta
+    return pasta
+
+
+def usar_config_propria() -> Path:
+    """O git e o gh guardam a configuração no arquivo .gitconfig da pasta do usuário. Se esse arquivo estiver
+    estragado, travado ou sem permissão (comum depois de o computador desligar no meio), a publicação para.
+    Para não depender dele, o Clipador usa um arquivo de configuração só seu."""
+    pasta = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Clipador"
+    pasta.mkdir(parents=True, exist_ok=True)
+    arquivo = pasta / "gitconfig"
+    trava = pasta / "gitconfig.lock"
+    if trava.exists():
+        trava.unlink(missing_ok=True)  # sobrou de uma publicação interrompida
+    try:
+        if arquivo.exists() and b"\0" in arquivo.read_bytes():  # estragado por desligamento
+            arquivo.replace(pasta / f"gitconfig-quebrado-{time.strftime('%Y%m%d-%H%M%S')}")
+        arquivo.touch(exist_ok=True)
+    except OSError as e:
+        raise Parar(f"Não consegui criar a configuração do git em {pasta}: {e}") from None
+    os.environ["GIT_CONFIG_GLOBAL"] = str(arquivo)
+    return arquivo
+
+
 def consertar_git(git: str) -> None:
     """Desliga o computador no meio da publicação pode estragar arquivos do git. Conserta os mais comuns."""
     r = rodar(git, "config", "--global", "--list", ok=False)
@@ -263,15 +321,15 @@ def consertar_git(git: str) -> None:
             print(f"O arquivo de configuração do git estava estragado (provavelmente o computador desligou no meio).\nGuardei uma cópia em {reserva} e o git vai começar um novo.")
         except OSError as e:
             raise Parar(f"O arquivo {quebrado} está estragado e não consegui trocar: {e}. Apague ou renomeie esse arquivo e rode de novo.") from None
-    trava = RAIZ / ".git" / "index.lock"
+    trava = pasta_git() / "index.lock"
     if trava.exists() and time.time() - trava.stat().st_mtime > 60:
         trava.unlink(missing_ok=True)  # sobrou de uma publicação interrompida
         print("Tirei uma trava que sobrou da publicação interrompida.")
-    if (RAIZ / ".git").exists() and rodar(git, "status", "--porcelain", ok=False).returncode:
+    if pasta_git().exists() and rodar(git, "status", "--porcelain", ok=False).returncode:
         detalhe = (rodar(git, "status", ok=False).stderr or "").strip()[-300:]
         if re.search(r"corrupt|bad object|index file|not a git repository|loose object", detalhe, re.I):
-            reserva = RAIZ / f".git-quebrado-{time.strftime('%Y%m%d-%H%M%S')}"
-            (RAIZ / ".git").replace(reserva)
+            reserva = pasta_git().with_name(f"{pasta_git().name}-quebrado-{time.strftime('%Y%m%d-%H%M%S')}")
+            pasta_git().replace(reserva)
             print(f"O histórico local do git estava estragado. Guardei em {reserva.name} e vou continuar a partir do que já está no GitHub.")
 
 
@@ -282,6 +340,8 @@ def main() -> int:
     print(f"Publicando o Clipador {versao} em um repositório privado.\n")
     git, gh = achar_git(), achar_gh()
     os.environ["PATH"] = str(Path(git).parent) + os.pathsep + os.environ["PATH"]
+    usar_config_propria()
+    usar_historico_proprio()
     consertar_git(git)
 
     if rodar(gh, "auth", "status", ok=False).returncode:
@@ -292,8 +352,8 @@ def main() -> int:
     dono = conta["login"]
     alvo = f"{dono}/{REPOSITORIO}"
 
-    if not (RAIZ / ".git").exists():
-        rodar(git, "init", "-b", "main")
+    if not (pasta_git() / "HEAD").exists():
+        rodar(git, "init", "-q", "-b", "main")
     rodar(git, "config", "user.name", conta.get("name") or dono)
     rodar(git, "config", "user.email", f"{conta['id']}+{dono}@users.noreply.github.com")
     conferir_arquivos(git)
