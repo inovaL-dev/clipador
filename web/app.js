@@ -313,7 +313,10 @@ function mostrarPotencial(c) {
     el("small", {}, x.texto))));
   const mh = c.melhorado;
   $("#ed-pot-melhorado").hidden = !mh;
-  if (mh) $("#ed-pot-melhorado").textContent = `${mh.auto ? "Melhorado sozinho" : "Melhorado"}: de ${mh.antes}% para ${mh.depois}% (${mh.mudancas.join(", ")}).`;
+  if (mh) $("#ed-pot-melhorado").textContent = [
+    mh.mudancas?.length ? `${mh.auto ? "Melhorado sozinho" : "Melhorado"}: de ${mh.antes}% para ${mh.depois}% (${mh.mudancas.join(", ")}).` : "",
+    mh.montagem ? "Este momento também virou um Short de cenas emendadas com as cenas mais fortes da mesma live. Ele está em Montagens." : "",
+    mh.limite || ""].filter(Boolean).join(" ");
   $("#ed-melhorar").hidden = !(p.nota < 90 && !c.projeto_exportado && !c.montagem);
   $("#ed-pot-dicas").replaceChildren(...(p.dicas || []).map((d) => el("li", {}, d)));
 }

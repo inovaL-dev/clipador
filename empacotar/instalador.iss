@@ -1,6 +1,6 @@
 ﻿; Instalador do Clipador. O criar-exe.bat passa a versão e as pastas.
 #ifndef Versao
-  #define Versao "1.17.2"
+  #define Versao "1.17.3"
 #endif
 #ifndef Origem
   #define Origem "..\build_exe\programa\Clipador"

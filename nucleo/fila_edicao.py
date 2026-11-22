@@ -11,7 +11,7 @@ import itertools
 import queue
 import threading
 
-PEDIDOS = {"refazer": 0, "encurtar": 0, "legendar": 0, "aprender": 5}
+PEDIDOS = {"refazer": 0, "encurtar": 0, "legendar": 0, "melhorar": 3, "aprender": 5}  # melhorar: depois dos cortes novos
 
 
 class FilaEdicao(queue.PriorityQueue):

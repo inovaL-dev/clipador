@@ -18,7 +18,7 @@ PROTEGIDO = (4.0, 3.0)  # segundos antes e depois do momento que nunca são cort
 GANHO_MINIMO = 3      # só troca o corte se a nota subir pelo menos isto
 
 
-def cortes_sem_pausas(palavras: list[dict], duracao: float, momento: float | None) -> list[list[float]]:
+def cortes_sem_pausas(palavras: list[dict], duracao: float, momento: float | None, pausa_minima: float = PAUSA_MINIMA) -> list[list[float]]:
     """Pedaços que ficam no vídeo, tirando os silêncios longos entre as falas."""
     if len(palavras) < 2:
         return [[0.0, round(duracao, 3)]]
@@ -26,7 +26,7 @@ def cortes_sem_pausas(palavras: list[dict], duracao: float, momento: float | Non
     cortes, inicio = [], 0.0
     for a, b in zip(lista, lista[1:]):
         fim_a, ini_b = float(a["fim"]), float(b["ini"])
-        if ini_b - fim_a < PAUSA_MINIMA:
+        if ini_b - fim_a < pausa_minima:
             continue
         x, y = fim_a + FOLGA, ini_b - FOLGA
         if momento is not None and x < momento + PROTEGIDO[1] and y > momento - PROTEGIDO[0]:
@@ -36,18 +36,19 @@ def cortes_sem_pausas(palavras: list[dict], duracao: float, momento: float | Non
         inicio = y
     cortes.append([round(inicio, 3), round(duracao, 3)])
     tirado = duracao - sum(b - a for a, b in cortes)
-    if tirado > duracao / 3 or tirado < .8:  # corta pouco demais para valer, ou demais e perde a naturalidade
+    if tirado > duracao * .4 or tirado < .8:  # corta pouco demais para valer, ou demais e perde a naturalidade
         return [[0.0, round(duracao, 3)]]
     return cortes
 
 
-def _versao(palavras: list[dict], ini: float, fim: float, momento_chat: float, titulo: str, meta: dict, aprendizado, sem_pausas: bool, manter_titulo: bool = False) -> dict:
+def _versao(palavras: list[dict], ini: float, fim: float, momento_chat: float, titulo: str, meta: dict, aprendizado, sem_pausas, manter_titulo: bool = False) -> dict:
     duracao = fim - ini
     trecho = [{"p": p["p"], "ini": round(max(0.0, p["ini"] - ini), 3), "fim": round(min(duracao, p["fim"] - ini), 3)}
               for p in palavras if p["fim"] > ini + .05 and p["ini"] < fim - .05]
     momento_fonte = round(min(max(0.0, momento_chat - ini - 4), max(0.0, duracao - 1)), 2)
     grupos = ctx.agrupar_legenda(trecho)
-    cortes = cortes_sem_pausas(trecho, duracao, momento_fonte) if sem_pausas else [[0.0, round(duracao, 3)]]
+    pausa = sem_pausas if isinstance(sem_pausas, float) else PAUSA_MINIMA
+    cortes = cortes_sem_pausas(trecho, duracao, momento_fonte, pausa) if sem_pausas else [[0.0, round(duracao, 3)]]
     gancho = (meta.get("gancho") or "") if manter_titulo else ctx.criar_gancho(trecho, momento_chat - ini, titulo, meta.get("reacao") or "")
     prova = {**meta, "grupos": grupos, "duracao": round(duracao, 2), "duracao_fonte": round(duracao, 3), "momento_fonte": momento_fonte,
              "gancho": gancho, "edicao": {"cortes": cortes}}
@@ -64,7 +65,8 @@ def melhor_versao(palavras: list[dict], momento_chat: float, disponivel: float, 
         return resultado
     janelas = {tuple(round(x, 2) for x in atual)}
     variacoes = [(minimo, maximo, 3.0, 3.0), (15, 35, 3.0, 3.0), (18, 45, 6.0, 3.0), (max(15, minimo - 5), maximo, 6.0, 5.0),
-                 (minimo, min(maximo, 45), 4.0, 5.0), (20, maximo, 8.0, 4.0), (15, 30, 2.0, 3.0)]
+                 (minimo, min(maximo, 45), 4.0, 5.0), (20, maximo, 8.0, 4.0), (15, 30, 2.0, 3.0),
+                 (15, 25, 2.0, 2.0), (20, 40, 5.0, 2.0), (25, maximo, 10.0, 4.0), (15, 40, 4.0, 6.0)]
     for mn, mx, prep, desf in variacoes:
         mn = max(mn, min(minimo, 18))  # respeita a duração mínima escolhida, sem passar de 18 s
         mn, mx = min(mn, mx - 5), max(mx, mn + 5)
@@ -80,7 +82,7 @@ def melhor_versao(palavras: list[dict], momento_chat: float, disponivel: float, 
             janelas.add((round(s, 2), round(atual[1], 2)))
     melhor = base
     for ini, fim in janelas:
-        for sem_pausas in (False, True):
+        for sem_pausas in (False, True, .75):
             v = _versao(palavras, ini, fim, momento_chat, titulo, meta, aprendizado, sem_pausas, manter_titulo)
             if v["nota"] > melhor["nota"]:
                 melhor = v
