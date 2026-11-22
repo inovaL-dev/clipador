@@ -187,9 +187,9 @@ function renderLives() {
 let assinaturaEventos = "";
 function renderAgora() {
   const leg = estado.sistema.legenda, aviso = $("#aviso-legenda");
-  aviso.hidden = leg.estado === "pronto";
-  aviso.textContent = leg.estado === "carregando"
-    ? "Preparando a legenda automática. Na primeira vez, o download tem cerca de 500 MB."
+  aviso.hidden = leg.estado === "pronto" && !leg.aviso;
+  aviso.textContent = leg.aviso ? leg.aviso : leg.estado === "carregando"
+    ? "Preparando a legenda automática. Na primeira vez, o download pode levar alguns minutos. Os cortes continuam sendo editados."
     : "A legenda automática não abriu. Os cortes saem sem texto até você reabrir o programa com internet.";
   const emAndamento = estado.cortes.filter((c) => !FINAIS.has(c.status)).reverse();
   $("#fila").replaceChildren(...emAndamento.map((c) => el("li", {}, el("b", {}, c.canal), el("span", {}, c.etapa))));
@@ -211,7 +211,7 @@ function renderAgora() {
 /* ---------- Seleção de vários cortes ---------- */
 let modoSelecao = false, listaFiltrada = [];
 const marcados = new Set();
-const selecionavel = (c) => c.status === "pronto" || c.status === "erro";
+const selecionavel = () => true;  // os que ainda estão em edição também: apagar cancela a edição
 function atualizarBarraSelecao() {
   const visiveis = [...cartoes.entries()].filter(([id]) => listaFiltrada.some((c) => c.id === id && selecionavel(c)));
   const n = marcados.size, todos = listaFiltrada.filter(selecionavel).length;
@@ -246,8 +246,15 @@ $("#sel-todos").addEventListener("click", () => {
 $("#sel-apagar").addEventListener("click", (ev) => confirmar(ev.currentTarget, `Apagar ${marcados.size} de vez`, async () => {
   try {
     const r = await api("POST", "/api/cortes/apagar", { ids: [...marcados] });
-    avisar(`${r.apagados} ${r.apagados === 1 ? "corte apagado" : "cortes apagados"}${r.pulados ? `. ${r.pulados} ainda em edição ${r.pulados === 1 ? "ficou" : "ficaram"}` : ""}`);
+    avisar(`${r.apagados} ${r.apagados === 1 ? "corte apagado" : "cortes apagados"}`);
     marcados.clear(); await atualizar(); atualizarBarraSelecao();
+  } catch (e) { avisar(e.message); }
+}));
+$("#cancelar-edicoes").addEventListener("click", (ev) => confirmar(ev.currentTarget, "Cancelar todas", async () => {
+  try {
+    const r = await api("POST", "/api/cortes/cancelar-edicoes", {});
+    avisar(r.total ? `${r.total} ${r.total === 1 ? "edição cancelada" : "edições canceladas"}` : "Nada estava sendo editado");
+    await atualizar();
   } catch (e) { avisar(e.message); }
 }));
 $("#sel-postado").addEventListener("click", async () => {
@@ -335,6 +342,10 @@ function montarPaginas(nav, atual, total, ir) {
 }
 function renderCortes() {
   renderFiltrosPasta();
+  const emEdicao = estado.cortes.filter((c) => !FINAIS.has(c.status)).length;
+  const btCancelar = $("#cancelar-edicoes");
+  btCancelar.hidden = !emEdicao;
+  if (btCancelar.dataset.confirmar !== "true") btCancelar.textContent = `Cancelar ${emEdicao} ${emEdicao === 1 ? "edição" : "edições"}`;
   const pastaVista = $("#filtro-pasta").value;
   const prontos = pastaVista ? estado.cortes.filter((c) => c.pasta === pastaVista) : estado.cortes;
   const postados = prontos.filter((c) => c.postado);

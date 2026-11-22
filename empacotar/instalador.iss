@@ -13,6 +13,7 @@
 AppId={{7C1B6E52-3C0D-4C39-9A57-CF21A7D4E8B3}
 AppName=Clipador
 AppVersion={#Versao}
+AppMutex=ClipadorProgramaAberto
 AppVerName=Clipador {#Versao}
 AppPublisher=Clipador
 VersionInfoVersion={#Versao}
@@ -96,6 +97,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Exe, Velho: String;
+  Codigo: Integer;
 begin
   Result := '';
   FecharPrograma;
@@ -116,6 +118,8 @@ begin
   Velho := ExpandConstant('{app}\Clipador.antigo');
   if FileExists(Exe) then
   begin
+    { arquivo marcado como somente leitura também dá "Acesso negado" }
+    Exec(ExpandConstant('{sys}\attrib.exe'), '-R -S -H "' + ExpandConstant('{app}') + '\*.*" /S', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
     DeleteFile(Velho);
     if not DeleteFile(Exe) then
       RenameFile(Exe, Velho);

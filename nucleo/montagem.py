@@ -219,9 +219,15 @@ class Montagens:
             try:
                 self.motor._etapa(meta, "editando")
                 self._produzir(meta)
+                if ident in self.motor.cancelados:
+                    shutil.rmtree(self.motor.saida / ident, ignore_errors=True)
+                    continue
                 self.motor._etapa(meta, "pronto")
                 self.motor.evento(meta["canal"], "pronto", f"Montagem pronta: {meta['gancho']}")
             except Exception as e:
+                if ident in self.motor.cancelados:
+                    shutil.rmtree(self.motor.saida / ident, ignore_errors=True)
+                    continue
                 for oid in meta["origens"]:
                     origem = self.motor.cortes.get(oid)
                     if origem and origem.get("montado") == ident:

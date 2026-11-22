@@ -548,6 +548,8 @@ class Painel(BaseHTTPRequestHandler):
                 return self._acao(acoes[m[3]])
         if caminho == "/api/cortes/apagar":
             return self._acao(lambda d: self.motor.apagar_cortes(d.get("ids")))
+        if caminho == "/api/cortes/cancelar-edicoes":
+            return self._acao(lambda d: self.motor.cancelar_edicoes())
         if caminho == "/api/cortes/postados":
             return self._acao(lambda d: self.motor.marcar_postados(d.get("ids"), bool(d.get("postado", True))))
         if m := re.fullmatch(r"/api/cortes/([\w-]+)/melhorar", caminho):

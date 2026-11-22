@@ -7,8 +7,10 @@ import queue
 import re
 import shutil
 import tempfile
+import heapq
 import threading
 import time
+import traceback
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -138,6 +140,11 @@ class Motor:
             self.config["corte_garantido"] = CONFIG_PADRAO["corte_garantido"]
         self.legenda = {"estado": "carregando", "nome": None}
         self._modelo = None
+        self._modelo_nome = None
+        self._reserva = None  # modelo equilibrado usado enquanto o preciso ainda baixa
+        self._carga: threading.Thread | None = None
+        self._trava_modelo = threading.Lock()
+        self.cancelados: set[str] = set()
         self.trava_escuta = threading.Lock()
         self._ultimas_pastas: dict[str, tuple[str, float]] = {}
         self._carregar_cortes()
@@ -265,10 +272,14 @@ class Motor:
         return sorted(grupos.values(), key=lambda g: g["ate"], reverse=True)
 
     def _salvar_corte(self, meta: dict) -> None:
+        if meta["id"] in self.cancelados:
+            return
         self._gravar(self.saida / meta["id"] / "corte.json", meta)
 
     def _bast(self, meta: dict, dados: dict) -> None:
         """Guarda o que está acontecendo na edição deste corte, para a tela "Assistir a edição"."""
+        if meta["id"] in self.cancelados:
+            raise InterruptedError("Edição cancelada.")
         with self.trava:
             b = self.bast.setdefault(meta["id"], {"inicio": time.time(), "log": [], "fala": [], "v": 0})
             for k, v in dados.items():
@@ -306,7 +317,7 @@ class Motor:
                 pass
 
     def _etapa(self, meta: dict, status: str, erro: str | None = None) -> None:
-        if status in ETAPAS and status not in ("fila",):
+        if status in ETAPAS and status not in ("fila",) and meta["id"] not in self.cancelados:
             self._bast(meta, {"etapa": status, "log": ("etapa", erro if status == "erro" else ETAPAS[status])})
         if status == "pronto":
             self._avaliar(meta)
@@ -530,29 +541,55 @@ class Motor:
             self._salvar_corte(meta)
         return meta
 
-    def excluir_corte(self, corte_id: str) -> None:
+    def excluir_corte(self, corte_id: str, cancelar: bool = False) -> None:
         with self.trava:
             meta = self.cortes[corte_id]
-            if meta["status"] not in ("pronto", "erro"):
+            em_edicao = meta["status"] not in ("pronto", "erro")
+            if em_edicao and not cancelar:
                 raise ValueError("Aguarde o corte terminar de ser editado.")
             del self.cortes[corte_id]
+            if em_edicao:  # quem estiver editando este corte para no próximo passo
+                self.cancelados.add(corte_id)
+                self.bast.pop(corte_id, None)
+                for oid in meta.get("origens") or ():
+                    origem = self.cortes.get(oid)
+                    if origem and origem.get("montado") == corte_id:
+                        origem.pop("montado", None)
+                        self._salvar_corte(origem)
         if meta["status"] == "pronto" and not meta.get("postado"):
             self.aprendizado.sinal_ideia(meta, "descartados")
         shutil.rmtree(self.saida / corte_id, ignore_errors=True)
 
     def apagar_cortes(self, ids: list) -> dict:
-        """Apaga vários cortes de uma vez. Os que ainda estão sendo editados ficam."""
+        """Apaga vários cortes de uma vez. Os que ainda estão sendo editados são cancelados."""
         if not isinstance(ids, list) or not ids:
             raise ValueError("Escolha os cortes que serão apagados.")
         apagados, pulados = 0, 0
         for corte_id in dict.fromkeys(str(i) for i in ids[:2000]):
             try:
-                self.excluir_corte(corte_id)
+                self.excluir_corte(corte_id, cancelar=True)
                 apagados += 1
             except (KeyError, ValueError):
                 pulados += 1
         self.postagem.sincronizar()  # tira da agenda os que ainda não foram enviados
         return {"apagados": apagados, "pulados": pulados}
+
+    def cancelar_edicoes(self) -> dict:
+        """Cancela tudo o que ainda está na fila ou sendo editado."""
+        with self.trava:
+            ids = [m["id"] for m in self.cortes.values() if m.get("status") not in ("pronto", "erro")]
+        n = 0
+        for corte_id in ids:
+            try:
+                self.excluir_corte(corte_id, cancelar=True)
+                n += 1
+            except (KeyError, ValueError):
+                pass
+        with self.fila.mutex:  # tira da fila o que não existe mais
+            self.fila.queue[:] = [x for x in self.fila.queue if not (x[2] and x[2][0] not in ("legendar", "aprender") and x[2][1] not in self.cortes)]
+            heapq.heapify(self.fila.queue)
+        self.postagem.sincronizar()
+        return {"total": n}
 
     def marcar_postados(self, ids: list, postado: bool = True) -> dict:
         n = 0
@@ -860,10 +897,11 @@ class Motor:
 
     def _ouvir(self, pcm) -> str | None:
         """Escuta a live quando a legenda não está usando o Whisper."""
-        if self._modelo is None or not self.trava_escuta.acquire(blocking=False):
+        modelo = self._modelo or self._reserva
+        if modelo is None or not self.trava_escuta.acquire(blocking=False):
             return None
         try:
-            return edicao.ouvir_trecho(self._modelo, pcm, self.config["idioma"])
+            return edicao.ouvir_trecho(modelo, pcm, self.config["idioma"])
         finally:
             self.trava_escuta.release()
 
@@ -873,44 +911,80 @@ class Motor:
         return {"esperadas": fala.palavras_esperadas(self.config.get("vocabulario", ""), meta.get("canal", ""), meta.get("titulo_live", ""), self.aprendizado.palavras_corrigidas()),
                 "correcoes": self.aprendizado.correcoes()}
 
-    def _modelo_whisper(self):
-        nome = self.modelo_forcado or self.config["modelo"]
-        if self._modelo is not None and self.legenda["nome"] == nome:
-            return self._modelo
-        self.legenda = {"estado": "carregando", "nome": nome}
-        from_faster = None
-        try:
-            from faster_whisper import WhisperModel as from_faster
+    @staticmethod
+    def _abrir_modelo(nome: str, so_local: bool = False):
+        from faster_whisper import WhisperModel
 
-            self._modelo = from_faster(nome, device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
+        return WhisperModel(nome, device="cpu", compute_type="int8", num_workers=1, local_files_only=so_local,
+                            cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
+
+    def _carregar_modelo(self, nome: str) -> None:
+        try:
+            modelo = self._abrir_modelo(nome)
+            self._modelo, self._modelo_nome = modelo, nome
             self.legenda = {"estado": "pronto", "nome": nome}
         except Exception as e:
-            self._modelo = None
-            self.legenda = {"estado": "indisponivel", "nome": nome, "erro": str(e)[:160]}
-            if from_faster is not None and nome != "small":  # sem internet ou sem memória para o modelo maior: segue com o equilibrado
+            erro = str(e)[:160]
+            if nome != "small":  # sem internet ou sem memória para o modelo maior: segue com o equilibrado
                 try:
-                    self._modelo = from_faster("small", device="cpu", compute_type="int8", num_workers=1, cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))
-                    self.legenda = {"estado": "pronto", "nome": nome, "aviso": f"Não deu para usar a precisão máxima ({str(e)[:100]}). Usando a equilibrada."}
+                    self._modelo, self._modelo_nome = self._reserva or self._abrir_modelo("small"), nome
+                    self.legenda = {"estado": "pronto", "nome": nome, "aviso": f"Não deu para usar a precisão máxima ({erro[:100]}). Usando a equilibrada."}
+                    return
                 except Exception:
                     pass
-        return self._modelo
+            self._modelo_nome = nome
+            self.legenda = {"estado": "indisponivel", "nome": nome, "erro": erro}
+
+    def _modelo_whisper(self):
+        """Abre o modelo da legenda. O download do modelo preciso não pode segurar a fila de edição:
+        enquanto ele baixa, os cortes usam o modelo equilibrado que já está no computador."""
+        nome = self.modelo_forcado or self.config["modelo"]
+        if self._modelo is not None and self._modelo_nome == nome:
+            return self._modelo
+        with self._trava_modelo:
+            if self._carga is None or (not self._carga.is_alive() and self._modelo_nome != nome):
+                self._modelo_nome = None
+                if self._modelo is None:
+                    self.legenda = {"estado": "carregando", "nome": nome}
+                self._carga = threading.Thread(target=self._carregar_modelo, args=(nome,), daemon=True)
+                self._carga.start()
+            carga = self._carga
+        if self._reserva is None and nome != "small":
+            for menor in ("small", "base"):
+                try:
+                    self._reserva = self._abrir_modelo(menor, so_local=True)
+                    break
+                except Exception:
+                    continue
+        carga.join(timeout=0 if self._reserva is not None else 900)  # sem modelo nenhum no computador, espera o download até 15 minutos
+        if self._modelo is not None and self._modelo_nome == nome:
+            return self._modelo
+        if carga.is_alive() and self._reserva is not None:
+            self.legenda = {"estado": "pronto", "nome": nome, "aviso": "A legenda mais precisa ainda está baixando. Enquanto isso, os cortes usam a equilibrada."}
+            return self._reserva
+        return self._modelo or self._reserva
 
     def _editor(self) -> None:
-        self._modelo_whisper()
+        threading.Thread(target=self._modelo_whisper, daemon=True).start()  # já deixa a legenda pronta, sem segurar a fila
         while True:
             item = self.fila.get()
             if item is None:
                 return
-            tipo, corte_id = item
+            try:
+                self._editar_item(*item)
+            except Exception:
+                traceback.print_exc()  # um problema em um corte não pode parar a fila inteira
+
+    def _editar_item(self, tipo: str, corte_id: str) -> None:
             if tipo == "legendar":
                 self.estudio.executar_legenda(corte_id)
-                continue
+                return
             if tipo == "aprender":
                 self.aprendizado.executar()
-                continue
+                return
             meta = self.cortes.get(corte_id)
-            if not meta:
-                continue
+            if not meta or corte_id in self.cancelados:
+                return
             if tipo != "novo":  # refazer: a tela mostra a edição de novo, do começo
                 with self.trava:
                     self.bast.pop(corte_id, None)
@@ -927,12 +1001,18 @@ class Motor:
                 if tipo == "novo":
                     self.montagens.corte_pronto(meta)
             except Exception as e:
-                self._etapa(meta, "erro", str(e)[:300])
-                self.evento(meta["canal"], "erro", "Um corte não pôde ser editado")
+                if corte_id not in self.cancelados:
+                    self._etapa(meta, "erro", str(e)[:300])
+                    self.evento(meta["canal"], "erro", "Um corte não pôde ser editado")
             finally:
                 bastidores.desligar()
-                self._guardar_bastidores(meta)
-                (self.saida / corte_id / "bastidores.jpg").unlink(missing_ok=True)
+                if corte_id in self.cancelados:
+                    with self.trava:
+                        self.bast.pop(corte_id, None)
+                    shutil.rmtree(self.saida / corte_id, ignore_errors=True)
+                else:
+                    self._guardar_bastidores(meta)
+                    (self.saida / corte_id / "bastidores.jpg").unlink(missing_ok=True)
 
     def _processar(self, meta: dict) -> None:
         pasta = self.saida / meta["id"]
