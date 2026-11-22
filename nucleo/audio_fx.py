@@ -1,7 +1,6 @@
 """Efeitos de voz e de áudio, música que abaixa sob a fala e batidas da música.
 
-A lista de efeitos segue o catálogo de áudio do Drift (voz, rádio, espaço, textura e utilidades),
-feita com filtros do próprio FFmpeg para a exportação e a prévia soarem iguais.
+Os efeitos são organizados em voz, rádio, espaço, textura e utilidades, feitos com filtros do próprio FFmpeg para a exportação e a prévia soarem iguais.
 """
 from __future__ import annotations
 

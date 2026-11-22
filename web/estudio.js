@@ -3,7 +3,7 @@
 (() => {
 const S = { aberto: false, tipo: null, id: null, p: null, capa: null, modo: "video", sel: new Set(), t: 0, tocando: false, px: 30, sujo: false, gerando: false,
   h: { video: { d: [], r: [] }, capa: { d: [], r: [] } }, caixas: new Map(), painel: "midia", zoomMao: false, filtros: [], fontes: [], sons: [], sug: [], clipe: [], ondas: new Map(), ultimoSom: 0, altFaixa: 1, vel: 1, ferr: "sel" };
-const ALTURAS = { video: 64, texto: 28, legenda: 30, efeito: 26, audio: 50 };  // vídeo com película e áudio com onda, nas alturas do Drift  // áudio mais alto para ver e arrastar o volume
+const ALTURAS = { video: 64, texto: 28, legenda: 30, efeito: 26, audio: 50 };  // vídeo com película e áudio com onda  // áudio mais alto para ver e arrastar o volume
 const altF = (f) => Math.round(ALTURAS[f.tipo] * S.altFaixa);
 const ROTULOS = { video: "Vídeo", imagem: "Imagem", forma: "Forma", texto: "Texto", legenda: "Legenda", efeito: "Efeito", audio: "Áudio" };
 const ANIM = [["nenhuma", "Nenhuma"], ["fade", "Aparecer"], ["pop", "Pop"], ["zoom", "Zoom"], ["subir", "Subir"], ["descer", "Descer"], ["esquerda", "Da direita"], ["direita", "Da esquerda"], ["quique", "Quicar"], ["digitando", "Digitando"], ["desfocar", "Desfocar"], ["carimbo", "Carimbo"], ["cair", "Cair quicando"], ["girar", "Girar"], ["piscar", "Piscar"], ["glitch", "Glitch"], ["esticar", "Esticar"], ["encolher", "Encolher"]];
@@ -271,7 +271,7 @@ function desenharTexto(txt, est, x, y, esc, rot, al, ativa, u = 0, an = null) {
   if (fxT === "neon" || fxT === "brilho" || fxT === "fogo" || fxT === "gelo" || fxT === "holografico") { g.shadowColor = fxT === "neon" ? est.cor_destaque : fxT === "brilho" || fxT === "holografico" ? est.cor : fxT === "fogo" ? "#ff5a0f" : "#5ac8ff"; g.shadowBlur = est.tamanho * .5 * fxF * S.escTela; g.shadowOffsetX = 0; g.shadowOffsetY = 0; }
   const pos = []; linhas.forEach((l, i) => { let px = -lar / 2 + (est.alinhamento === "esquerda" ? 0 : est.alinhamento === "direita" ? lar - largs[i] : (lar - largs[i]) / 2); const py = -altT / 2 + est.tamanho * 1.1 + extra + passo * i; for (const p of l) { pos.push({ ...p, px, py, i }); px += p.w + vazio; } });
   g.lineJoin = "round";
-  if (est.relevo > 0) { // letras em 3D: cópias empurradas na diagonal, como o pack Retrô 3D do Drift
+  if (est.relevo > 0) { // letras em 3D: cópias empurradas na diagonal, como no pack Retrô 3D
     const passos = Math.min(16, Math.max(2, Math.round(est.relevo))); g.save(); g.shadowColor = "transparent";
     for (let k = passos; k >= 1; k--) { const d = est.relevo * k / passos * .7; g.fillStyle = est.relevo_cor || "#1E1E1E"; g.strokeStyle = est.relevo_cor || "#1E1E1E"; g.lineWidth = est.contorno * 2;
       for (const p of pos) { g.font = p.ac && kEsc !== 1 ? fA : fN; if (est.contorno) g.strokeText(p.q, p.px + d, p.py + d); g.fillText(p.q, p.px + d, p.py + d); } }
@@ -490,7 +490,7 @@ function montarLinha() {
 }
 const temaCache = new Map();
 function corTema(v, padrao) { if (!temaCache.has(v)) temaCache.set(v, getComputedStyle(document.documentElement).getPropertyValue(v).trim() || padrao); return temaCache.get(v); }
-function tiraDe(m) { // miniaturas do clipe, como a película dos clipes no Drift
+function tiraDe(m) { // miniaturas do clipe, como uma película
   const k = `${m.raiz}:${m.rel}`; S.tiras ||= new Map();
   if (!S.tiras.has(k)) { S.tiras.set(k, null); api("GET", `/api/estudio/tira?raiz=${encodeURIComponent(m.raiz)}&rel=${encodeURIComponent(m.rel)}`).then((t) => { const im = new Image(); im.onload = () => { S.tiras.set(k, { ...t, im }); desenharLinha(); }; im.src = t.img; }).catch(() => {}); }
   return S.tiras.get(k);
@@ -784,14 +784,14 @@ function rqAplicar() {
   $("#rq-centro").addEventListener("click", () => { const r = RQ.r; RQ.r = { ...r, x: (1 - r.w) / 2, y: (1 - r.h) / 2 }; rqDesenhar(); });
   sobre.addEventListener("dblclick", () => { const o = !cap() && sel1(); if (o?.tipo === "video") abrirReenquadrar(o); });
 }
-/* ---------- Ferramentas trazidas do ViralCutter e do Drift ---------- */
+/* ---------- Ferramentas extras ---------- */
 const REGRAS = [["nenhum", "Nada"], ["palavra", "Palavra falada"], ["falado", "Já faladas (karaokê)"], ["importantes", "Palavras importantes"], ["ambos", "Falada e importantes"], ["primeira", "Primeira palavra"], ["ultima", "Última palavra"], ["alternadas", "Uma sim, outra não"]];
 function btnTrab(txt, fn, cls = "botao") { const b = btn(txt, async () => { if (b.disabled) return; const t0 = b.textContent; b.disabled = true; b.textContent = "Trabalhando…"; try { await fn(b); } catch (e) { avisar(e.message); } finally { b.disabled = false; b.textContent = t0; } }, cls); return b; }
 async function enquadrar(i, modo, b) {
   await salvar(); const r = await api("POST", `/api/estudio/${S.tipo}/${S.id}/rostos`, { projeto: S.p, item: i.id, t: S.t, modo });
   antes(); S.p = r.projeto; mudou(true); montarCabecas(); avisar(modo === "dois" ? "Tela dividida: uma pessoa em cima e outra embaixo" : modo === "fala" ? "O vídeo agora segue quem está falando" : "O vídeo agora mostra o rosto no centro");
 }
-async function congelarQuadro(i, b) { // como no Drift: o vídeo para numa imagem e tudo depois anda para a frente
+async function congelarQuadro(i, b) { // o vídeo para numa imagem e tudo depois anda para a frente
   if (S.t <= i.ini + .02 || S.t >= i.ini + i.dur - .02) throw new Error("Coloque a agulha sobre o vídeo, no quadro que quer congelar");
   const m = S.p.midias[i.midia], fonte = (i.entrada || 0) + (S.t - i.ini) * (i.velocidade || 1), d = 1.5;
   const img = await api("POST", "/api/estudio/congelar", { raiz: m.raiz, rel: m.rel, t: fonte }); S.p.midias[img.id] = img; antes();
@@ -914,7 +914,7 @@ const MODELOS_LEGENDA = [
   ["Faixa preta", { fonte: "Kanit-Black", tamanho: 56, cor: "#FFFFFF", cor_destaque: "#FFC933", contorno: 0, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: true, fundo_cor: "#101010", fundo_opac: 88, fundo_raio: 14, borda: 0, sombra: false, entrada: "subir" }],
   ["Pincel", { fonte: "Caveat-Brush", tamanho: 86, cor: "#FFFFFF", cor_destaque: "#5AD1B3", contorno: 6, maiusculas: false, destaque: "importantes", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: true, entrada: "fade" }],
   ["Arcade", { fonte: "Press-Start-2P", tamanho: 38, cor: "#FFFFFF", cor_destaque: "#39FF88", contorno: 5, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, fundo: false, sombra: false, entrada: "digitando" }],
-  // Packs de legenda inspirados no Drift: a própria regra decide quais palavras mudam
+  // Packs de legenda: a própria regra decide quais palavras mudam
   ["Hormozi", { fonte: "Anton", tamanho: 92, cor: "#FFFFFF", cor_destaque: "#FF2D2D", contorno: 6, maiusculas: true, destaque: "primeira", destaque_escala: 115, destaque_caixa: false, palavra_a_palavra: false, sombra: true, sombra_y: 6, sombra_blur: 10, entrada: "carimbo", tempo_anim: .12 }],
   ["Karaokê pop", { fonte: "Montserrat-Black", tamanho: 80, cor: "#FFFFFF", cor_destaque: "#FFD400", contorno: 5, maiusculas: true, destaque: "falado", destaque_escala: 112, destaque_caixa: false, palavra_a_palavra: false, sombra: true, entrada: "fade" }],
   ["Karaokê caixa", { fonte: "Inter-ExtraBold", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#22C55E", contorno: 3, maiusculas: false, destaque: "palavra", destaque_caixa: true, palavra_a_palavra: false, sombra: true, entrada: "fade" }],
@@ -925,7 +925,7 @@ const MODELOS_LEGENDA = [
   ["Retrô 3D", { fonte: "Bungee", tamanho: 64, cor: "#FFFFFF", cor_destaque: "#FFD65A", contorno: 3, maiusculas: true, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, efeito_texto: "por_do_sol", relevo: 10, relevo_cor: "#3C1E5A", sombra: false, entrada: "pop" }],
   ["Sem pontuação", { fonte: "Poppins-Black", tamanho: 74, cor: "#FFFFFF", cor_destaque: "#5AD1B3", contorno: 6, maiusculas: false, destaque: "palavra", destaque_caixa: false, palavra_a_palavra: false, sem_pontuacao: true, sombra: true, entrada: "pop" }],
 ];
-/* Packs de texto do Drift, refeitos com as fontes do Clipador: cada um já vem com animação. */
+/* Packs de texto com as fontes do Clipador: cada um já vem com animação. */
 const PACKS_TEXTO = [
   ["Título", "Título principal", { fonte: "Montserrat-Black", tamanho: 96, contorno: 2, sombra: true, sombra_y: 6, sombra_blur: 16, sombra_opac: 45, entrada: "subir", saida: "encolher", tempo_anim: .5 }],
   ["Faixa inferior", "Ana Souza · Convidada", { fonte: "Poppins-Bold", tamanho: 48, alinhamento: "esquerda", fundo: true, fundo_cor: "#000000", fundo_opac: 63, fundo_pad: 12, fundo_raio: 6, entrada: "direita", saida: "esquerda", tempo_anim: .5 }],
@@ -1169,7 +1169,7 @@ function cortesDaFala(limiar, vicios, mais) {
   l.sort((a, b) => a[0] - b[0]); const j = []; for (const [a, b] of l) { if (j.length && a <= j[j.length - 1][1] + .05) j[j.length - 1][1] = Math.max(j[j.length - 1][1], b); else j.push([a, b]); }
   return j.map(([a, b]) => [arred(Math.max(0, a)), arred(b)]).filter(([a, b]) => b - a >= .08);
 }
-function secPausas() { // como o "Edit the words" do Drift: corta silêncios e vícios a partir das palavras da legenda
+function secPausas() { // corta silêncios e vícios a partir das palavras da legenda
   const lim0 = el("input", { type: "number", value: S.limPausa ?? .7, min: ".2", max: "5", step: ".1", "aria-label": "Pausa mínima em segundos" }), vic = el("input", { type: "checkbox", checked: "" }), mais = el("input", { type: "checkbox" }), info = el("p", { class: "dica" });
   const contar = () => { S.limPausa = +lim0.value; const l = cortesDaFala(+lim0.value, vic.checked, mais.checked), tot = l.reduce((s0, [a, b]) => s0 + b - a, 0); info.textContent = palavrasDaFala().length ? (l.length ? `${l.length} trechos para cortar, ${String(arred(tot, 1)).replace(".", ",")} s no total.` : "Nada para cortar com essas opções.") : "Gere as legendas primeiro: o corte usa o tempo de cada palavra."; return l; };
   [lim0, vic, mais].forEach((x) => x.addEventListener("input", contar)); contar();

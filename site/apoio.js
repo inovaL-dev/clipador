@@ -16,6 +16,6 @@ window.CLIPADOR_APOIO = {
   pix: "",
   nome: "",
   cidade: "",
-  estrela: "inovaL-dev/inovaL-dev.github.io",
+  estrela: "inovaL-dev/clipador",
   instagram: "",
 };

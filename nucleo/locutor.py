@@ -1,6 +1,6 @@
 """Segue quem está falando: com duas ou mais pessoas na tela, o vertical mostra quem tem a palavra.
 
-Ideia do TopClip (MIT), refeita aqui: o rosto certo não é o maior, é o que mexe a boca enquanto há voz.
+O rosto certo não é o maior, é o que mexe a boca enquanto há voz.
 1. acha os rostos uma vez por segundo e junta cada pessoa numa trilha;
 2. mede o movimento da região da boca de cada trilha cinco vezes por segundo;
 3. só conta o movimento quando o áudio tem voz (uma foto ou alguém mastigando não ganham a vez);

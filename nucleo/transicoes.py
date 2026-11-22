@@ -98,7 +98,7 @@ def efeito_continuo(q: np.ndarray, tipo: str, forca: float, u: float, n: int) ->
 
 
 # ------------------------------------------------------------ transições que misturam as duas cenas
-# Inspiradas no catálogo do Drift (wipes, íris, relógio, persianas, pixelar, tinta). Aqui elas rodam
+# Wipes, íris, relógio, persianas, pixelar e tinta. Elas rodam
 # em NumPy, quadro a quadro, para a prévia exata e a exportação darem o mesmo resultado.
 
 MISTURAS = ("limpar_esquerda", "limpar_direita", "limpar_cima", "limpar_baixo", "diagonal", "iris", "relogio",
@@ -188,7 +188,7 @@ def misturar(a: np.ndarray, b: np.ndarray, tipo: str, p: float, semente: int = 0
     return (a.astype(np.float32) * (1 - m) + b.astype(np.float32) * m).astype(np.uint8)
 
 
-# ------------------------------------------------------------ efeitos de vídeo contínuos (lista do Drift)
+# ------------------------------------------------------------ efeitos de vídeo contínuos
 
 EFEITOS_EXTRA = ("grao", "vhs", "estrobo", "luz_vazada", "pixelar", "duotone", "contorno_neon", "caleidoscopio",
                  "meio_tom", "super8", "desfoque_movimento")

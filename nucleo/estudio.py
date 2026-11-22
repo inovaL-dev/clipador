@@ -186,7 +186,7 @@ class Estudio:
                 return alvo
         return None
 
-    # ------------------------------------------------------------ ferramentas extras (ViralCutter e Drift)
+    # ------------------------------------------------------------ ferramentas extras
 
     def _nome_projeto(self, tipo: str, ident: str) -> str:
         if tipo == "corte":

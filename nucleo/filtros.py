@@ -137,7 +137,7 @@ def ajustar(q: np.ndarray, a: dict | None) -> np.ndarray:
     return q
 
 
-# ------------------------------------------------------------ LUTs .cube (gradação de cor, como no Drift)
+# ------------------------------------------------------------ LUTs .cube (gradação de cor)
 
 from pathlib import Path  # noqa: E402
 

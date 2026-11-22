@@ -1,4 +1,4 @@
-"""Publica o projeto em um repositório privado do GitHub e pede a criação do instalador."""
+"""Publica o projeto em um repositório público do GitHub e pede a criação do instalador."""
 from __future__ import annotations
 
 import hashlib
@@ -121,6 +121,29 @@ def conferir_arquivos(git: str) -> None:
             ruins.append(nome)
     if ruins:
         raise Parar("Parei para proteger suas contas. Estes arquivos têm dados pessoais ou chaves:\n  " + "\n  ".join(sorted(set(ruins))))
+
+
+# O mesmo que SEGREDOS, escrito no formato que o git entende (ERE), para procurar no histórico.
+SEGREDOS_GIT = (r"GOCSPX-[A-Za-z0-9_-]{10,}|ya29\.[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|"
+                r"gh[pousr]_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----")
+
+
+def conferir_historico(git: str) -> None:
+    """Num repositório público, todas as versões antigas ficam visíveis, não só os arquivos de agora.
+    Procura chaves e arquivos pessoais em todo o histórico antes de abrir o repositório."""
+    nomes = rodar(git, "log", "--all", "--name-only", "--format=").stdout.splitlines()
+    ruins = sorted({n for n in nomes if n.strip() and PROIBIDOS.search(n)})
+    commits = rodar(git, "log", "--all", "--format=%h %s", "-E", "-G", SEGREDOS_GIT).stdout.strip()
+    if ruins or commits:
+        partes = []
+        if ruins:
+            partes.append("Arquivos pessoais em versões antigas:\n  " + "\n  ".join(ruins))
+        if commits:
+            partes.append("Versões antigas com chaves ou senhas:\n  " + "\n  ".join(commits.splitlines()))
+        raise Parar("Parei antes de deixar o repositório público para proteger suas contas.\n"
+                    + "\n".join(partes) + "\n"
+                    "Nada foi aberto ao público. Troque essas chaves (elas podem ter vazado) e limpe o histórico "
+                    "antes de publicar.")
 
 
 def ler_novidades() -> list[dict]:
@@ -356,7 +379,7 @@ def main() -> int:
     versao = re.search(r'VERSAO = "([^"]+)"', (RAIZ / "nucleo" / "versao.py").read_text(encoding="utf-8"))[1]
     if "--lancar" in sys.argv:
         versao = preparar_lancamento(versao)
-    print(f"Publicando o Clipador {versao} em um repositório privado.\n")
+    print(f"Publicando o Clipador {versao} em um repositório público.\n")
     git, gh = achar_git(), achar_gh()
     os.environ["PATH"] = str(Path(git).parent) + os.pathsep + os.environ["PATH"]
     usar_config_propria()
@@ -378,11 +401,14 @@ def main() -> int:
     conferir_arquivos(git)
 
     atual = rodar(gh, "repo", "view", alvo, "--json", "visibility", ok=False)
-    if atual.returncode:
-        print(f"Criando {alvo} como privado")
-        rodar(gh, "repo", "create", alvo, "--private", "--description", DESCRICAO, "--disable-wiki")
-    elif json.loads(atual.stdout)["visibility"] != "PRIVATE":
-        raise Parar(f"O repositório {alvo} já existe e não é privado. Nada foi enviado.")
+    novo = bool(atual.returncode)
+    visibilidade = "NOVO" if novo else json.loads(atual.stdout)["visibility"]
+    if visibilidade == "INTERNAL":
+        raise Parar(f"O repositório {alvo} é interno de uma organização. Nada foi enviado.")
+    if novo:
+        conferir_historico(git)  # o histórico desta pasta vai inteiro para o repositório público
+        print(f"Criando {alvo} como público")
+        rodar(gh, "repo", "create", alvo, "--public", "--description", DESCRICAO, "--disable-wiki")
 
     endereco = f"https://github.com/{alvo}.git"
     if rodar(git, "remote", "get-url", "origin", ok=False).returncode:
@@ -395,6 +421,12 @@ def main() -> int:
     print("Enviando os arquivos")
     enviar(git, versao)
 
+    if visibilidade == "PRIVATE":
+        # Depois do envio, o histórico desta pasta é o mesmo do GitHub: confere tudo antes de abrir.
+        conferir_historico(git)
+        print(f"Deixando {alvo} público")
+        rodar(gh, "repo", "edit", alvo, "--visibility", "public", "--accept-visibility-change-consequences")
+
     topicos = [x for t in TOPICOS for x in ("--add-topic", t)]
     rodar(gh, "repo", "edit", alvo, "--description", DESCRICAO, "--enable-issues", "--enable-wiki=false", "--enable-projects=false", "--delete-branch-on-merge", *topicos)
 
@@ -403,7 +435,7 @@ def main() -> int:
     aguardar_instalador(gh, alvo, marca)
     print("Publicando o site")
     site = publicar_site(git, gh, conta)
-    print(f"\nPronto!\nRepositório privado: https://github.com/{alvo}\nSite público: {site} (pode levar alguns minutos para abrir)")
+    print(f"\nPronto!\nRepositório público: https://github.com/{alvo}\nSite público: {site} (pode levar alguns minutos para abrir)")
     webbrowser.open(site)
     return 0
 

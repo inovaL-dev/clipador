@@ -74,7 +74,7 @@ Para atualizar, feche o programa e instale a versão nova por cima.
 Você precisa do [Python 3.12](https://www.python.org/downloads/) e do [FFmpeg](https://ffmpeg.org/download.html).
 
 ```bash
-git clone <endereço-deste-repositório>
+git clone https://github.com/inovaL-dev/clipador.git
 cd clipador
 ```
 
@@ -110,4 +110,4 @@ Vídeos, contas e chaves ficam no seu computador. O painel só aceita conexões 
 
 ## Licença
 
-Distribuído sob a licença [GPL-3.0](LICENSE). Os componentes de terceiros estão listados em [AVISOS-DE-TERCEIROS.md](AVISOS-DE-TERCEIROS.md).
+Distribuído sob a licença [GPL-3.0](LICENSE).

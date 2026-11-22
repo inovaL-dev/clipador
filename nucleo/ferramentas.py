@@ -1,4 +1,4 @@
-"""Ferramentas extras do estúdio, trazidas do ViralCutter e do Drift.
+"""Ferramentas extras do estúdio.
 
 - XML para Premiere Pro e DaVinci Resolve (com as legendas em .srt ao lado);
 - tradução das legendas para outro idioma;
@@ -269,7 +269,7 @@ def traduzir_legendas(proj: dict, destino: str) -> dict:
         palavras = texto_novo.split()
         total = sum(len(p) + 1 for p in palavras) or 1
         pos, lista = 0.0, []
-        for p in palavras:  # o tempo de cada palavra segue o tamanho dela, como no ViralCutter
+        for p in palavras:  # o tempo de cada palavra segue o tamanho dela
             d = n["dur"] * (len(p) + 1) / total
             lista.append({"p": p, "ini": round(pos, 3), "fim": round(pos + d, 3)})
             pos += d
@@ -285,7 +285,7 @@ def traduzir_legendas(proj: dict, destino: str) -> dict:
 # ------------------------------------------------------------ miniaturas da timeline
 
 def tira(arq: Path, tmp: Path) -> dict:
-    """Uma imagem com as miniaturas do vídeo lado a lado, usada para desenhar os clipes como no Drift."""
+    """Uma imagem com as miniaturas do vídeo lado a lado, usada para desenhar os clipes na timeline."""
     marca = uuid.uuid5(uuid.NAMESPACE_URL, f"{arq}:{arq.stat().st_mtime_ns}").hex[:20]
     meta = tmp / f"tira_{marca}.json"
     if meta.exists():

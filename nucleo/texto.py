@@ -28,7 +28,7 @@ EFEITOS_PIXEL = ("neon", "brilho", "reflexo", "ouro", "fogo", "gelo", "arcoiris"
                  "cromado", "por_do_sol", "doce", "holografico")
 ANIMACOES = ("nenhuma", "fade", "pop", "zoom", "subir", "descer", "esquerda", "direita", "quique", "digitando",
              "desfocar", "carimbo", "cair", "girar", "piscar", "glitch", "esticar", "encolher")
-# Regras de destaque por palavra (como os packs do Drift): quais palavras ganham a cor de destaque.
+# Regras de destaque por palavra (como nos packs de texto): quais palavras ganham a cor de destaque.
 REGRAS_DESTAQUE = ("nenhum", "palavra", "importantes", "ambos", "falado", "primeira", "ultima", "alternadas")
 PONTUACAO = re.compile(r"[.,;:!?…\"“”()¿¡]+")
 _extras: list[Path] = []

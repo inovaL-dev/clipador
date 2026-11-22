@@ -1,6 +1,6 @@
 """Posts de frase: as frases mais fortes de um corte, divididas em prints do rosto, para o feed e os stories.
 
-Ideia do TopClip (MIT), refeita para o Clipador sem depender de IA paga:
+Funciona sem depender de IA paga:
 - as frases saem da fala já transcrita do corte, escolhidas por regras de post que viraliza
   (funciona sozinha, tem contraste, conselho, número, emoção; nada de "isso", merchan ou palavrão);
 - cada frase é dividida em 2 ou 3 partes, com as palavras-chave em negrito;
