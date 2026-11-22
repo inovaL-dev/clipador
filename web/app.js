@@ -758,11 +758,28 @@ $("#abrir-ajustes").addEventListener("click", () => {
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
   f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.melhorar_abaixo.value = String(c.melhorar_abaixo ?? 75); f.desempenho.value = c.desempenho || "auto";
-  const dz = estado?.sistema?.desempenho; if (dz) $("#aj-desempenho-dica").textContent = `Este computador: ${dz.nucleos} núcleos e ${dz.memoria_gb} GB de memória. Recomendado: ${dz.recomendado === "leve" ? "leve" : "total"}. No leve, a legenda usa metade dos núcleos e a montagem roda com prioridade baixa: demora mais e esquenta menos. A gravação da live nunca fica mais lenta.`; f.corte_garantido.value = String(c.corte_garantido);
+  const dz = estado?.sistema?.desempenho;
+  $("#aj-pc").hidden = !dz;
+  if (dz) { $("#aj-pc-nucleos").textContent = `${dz.nucleos} núcleos`; $("#aj-pc-memoria").textContent = `${dz.memoria_gb} GB`; $("#aj-pc-recomendado").textContent = dz.recomendado === "leve" ? "Leve" : "Total"; }
+  f.corte_garantido.value = String(c.corte_garantido);
   f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 3); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados === true;
-  $("#aj-erro").hidden = true;
+  $("#aj-erro").hidden = true; $("#aj-mudou").hidden = true;
   $("#janela-ajustes").showModal();
+  $("#ajx-corpo").scrollTop = 0; marcarSecaoAjustes("ajx-cortes");
 });
+/* Navegação lateral dos ajustes: rola até a seção e acende a seção que está na tela */
+function marcarSecaoAjustes(id) { $$(".ajx-nav a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.sec === id)); }
+$$(".ajx-nav a").forEach((a) => a.addEventListener("click", (ev) => {
+  ev.preventDefault(); const alvo = document.getElementById(a.dataset.sec);
+  $("#ajx-corpo").scrollTo({ top: alvo.offsetTop - $("#ajx-corpo").offsetTop - 8, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  marcarSecaoAjustes(a.dataset.sec);
+}));
+$("#ajx-corpo").addEventListener("scroll", () => {
+  const corpo = $("#ajx-corpo"), topo = corpo.getBoundingClientRect().top + 90;
+  if (corpo.scrollTop + corpo.clientHeight >= corpo.scrollHeight - 4) { marcarSecaoAjustes("ajx-programa"); return; }
+  let atual = "ajx-cortes"; $$(".ajx-sec").forEach((sec) => { if (sec.getBoundingClientRect().top <= topo) atual = sec.id; }); marcarSecaoAjustes(atual);
+}, { passive: true });
+for (const tipo of ["input", "change"]) $("#form-ajustes").addEventListener(tipo, (ev) => { if (!ev.target.closest("#aj-fundo-rot, #aj-win-rot")) $("#aj-mudou").hidden = false; });
 $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
@@ -1304,7 +1321,7 @@ function estiloEscolhido() {
   const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
   return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked,
     barra_progresso: $("#es-barra").checked, abertura: $("#es-abertura").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked,
-    texto_fixo: $("#es-fixo").value.trim(), fixo_lugar: $("#es-fixo-lugar").value, fixo_tempo: $("#es-fixo-tempo").value, fixo_cor: $("#es-fixo-cor").value, fixo_tamanho: $("#es-fixo-tamanho").value, ...posicoesEstilo };
+    texto_fixo: $("#es-fixo").value.trim(), fixo_lugar: $("#es-fixo-lugar").value, fixo_tempo: $("#es-fixo-tempo").value, fixo_cor: $("#es-fixo-cor").value, ...posicoesEstilo };
 }
 function atualizarPrevia() {
   clearTimeout(tempoPrevia);
@@ -1322,7 +1339,7 @@ $("#abrir-estilo").addEventListener("click", () => {
   $("#es-barra").checked = e.barra_progresso === true; $("#es-abertura").checked = e.abertura !== false;
   [["#es-fonte-legenda", e.fonte_legenda], ["#es-fonte-titulo", e.fonte_titulo]].forEach(([q, v]) => { const s = $(q); s.dataset.valor = v || ""; s.value = v || ""; mostrarFonte(s); });
   $("#es-arroba").value = e.arroba || ""; $("#es-encerramento").checked = e.encerramento !== false;
-  $("#es-fixo").value = e.texto_fixo || ""; $("#es-fixo-lugar").value = e.fixo_lugar || "cima"; $("#es-fixo-tempo").value = e.fixo_tempo || "todo"; $("#es-fixo-cor").value = e.fixo_cor || "branco"; $("#es-fixo-tamanho").value = e.fixo_tamanho || "medio";
+  $("#es-fixo").value = e.texto_fixo || ""; $("#es-fixo-lugar").value = e.fixo_lugar || "topo"; $("#es-fixo-tempo").value = e.fixo_tempo || "todo"; $("#es-fixo-cor").value = e.fixo_cor || "destaque";
   $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();
   atualizarPrevia(); $("#janela-estilo").showModal();
 });
@@ -1496,7 +1513,7 @@ $("#jl-timeline").addEventListener("click", () => { const id = longoAberto.id; $
 $("#it-timeline").addEventListener("click", () => { const id = itemAberto.corte || itemAberto.id; $("#janela-item").close(); abrirTimeline("corte", id); });
 
 /* ---------- Programa ---------- */
-api("GET", "/api/programa").then((p) => { $("#aj-versao").textContent = `Versão ${p.versao}`; $("#aj-encerrar").hidden = !p.pode_encerrar;
+api("GET", "/api/programa").then((p) => { $("#aj-versao").textContent = `Clipador ${p.versao}`; $("#aj-encerrar").hidden = !p.pode_encerrar; $("#aj-perigo").hidden = !p.pode_encerrar;
   $("#aj-fundo-rot").hidden = !p.disponivel; $("#aj-win-rot").hidden = !p.pode_iniciar_windows; $("#aj-fundo").checked = !!p.segundo_plano; $("#aj-win").checked = !!p.com_windows; }).catch(() => {});
 $("#aj-fundo").addEventListener("change", (ev) => api("POST", "/api/programa", { segundo_plano: ev.target.checked }).catch((e) => avisar(e.message)));
 $("#aj-win").addEventListener("change", (ev) => api("POST", "/api/programa", { com_windows: ev.target.checked }).catch((e) => avisar(e.message)));

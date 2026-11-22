@@ -32,10 +32,3 @@ O código-fonte do FFmpeg está disponível em <https://ffmpeg.org/download.html
 A tradução das legendas usa o serviço público de tradução do Google e só funciona com internet. Nenhum outro dado do projeto sai do computador.
 
 Kick, Twitch, YouTube e X são marcas de seus respectivos donos. O Clipador não tem ligação com essas empresas.
-
-## Ideias do Cortador Automático
-
-Algumas ideias da versão 1.18.0 vieram do projeto Cortador Automático, de Gabriel Workspace
-(https://github.com/gabrielworkspace/cortador-automatico), licença MIT: escolher o que você quer nos
-cortes, texto fixo na tela, modo leve do processador, título-promessa e a tecla C para cortar.
-O código do Clipador foi escrito do zero; o nome e o logo do Cortador Automático não são usados.

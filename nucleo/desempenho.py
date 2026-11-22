@@ -22,7 +22,8 @@ def definir(modo: str) -> None:
 def recomendado() -> str:
     from .fala import memoria_gb
 
-    return "leve" if memoria_gb() < 11.5 or (os.cpu_count() or 2) <= 4 else "total"
+    # o modo total combina com a legenda mais precisa e várias lives ao mesmo tempo
+    return "total" if memoria_gb() >= 13.5 and (os.cpu_count() or 2) >= 6 else "leve"
 
 
 def valendo() -> str:

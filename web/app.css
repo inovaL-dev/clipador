@@ -581,3 +581,4 @@ kbd.atalho { margin-left: .5em; padding: .05em .4em; border: 1px solid currentCo
 .chip input:checked + span { background: var(--corte); border-color: transparent; color: #0b1518; font-weight: 600; }
 .chip input:focus-visible + span { outline: 2px solid var(--corte); outline-offset: 2px; }
 .gr-foco { display: block; font-size: .85em; opacity: .75; }
+#gr-pedido { width: 100%; min-height: 2.75rem; padding: .5rem .875rem; color: var(--giz); font: inherit; font-size: .9375rem; }

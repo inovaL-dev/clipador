@@ -281,14 +281,13 @@ def importar_corte(meta: dict, motor) -> dict:
             textos["itens"].append(_item_texto("texto", t_m, min(7.0, total - t_m), est["arroba"], x_m + (-150 if al == "direita" else 150), y_m,
                                                {"fonte": "Roboto-Black", "tamanho": 30, "opacidade": 70, "contorno": 2, "alinhamento": al, "largura": 300, "maiusculas": False}, "Seu @"))
             t_m, n_m = t_m + 7.0, n_m + 1
-    linhas_fixo = edicao.linhas_texto_fixo(est.get("texto_fixo"))
-    if linhas_fixo:  # o texto fixo vira um texto comum no editor, então dá para mover e mudar
-        lugar = est.get("fixo_lugar", "cima")
-        y_f = int(plano.get("altura_cam", 760)) if layout == "dividido" and lugar == "meio" else edicao.FIXO_Y.get(lugar, 150)
-        dur_f = total if est.get("fixo_tempo") != "inicio" else min(total, 5.0)
-        textos["itens"].append(_item_texto("texto", 0.0, dur_f, "\n".join(linhas_fixo), 540, y_f,
-                                           {"fonte": "Roboto-Black", "tamanho": edicao.FIXO_TAMANHO.get(est.get("fixo_tamanho"), 54), "cor": "#FFD744" if est.get("fixo_cor") == "amarelo" else "#FFFFFF",
-                                            "contorno": 4, "alinhamento": "centro", "largura": 980, "maiusculas": False}, "Texto fixo"))
+    selo = str(est.get("texto_fixo") or "").strip()
+    if selo:  # o selo vira um texto comum no editor, então dá para mover e mudar
+        fundo, _ = edicao.cores_selo(est)
+        ini_s, fim_s = edicao.janela_selo(est, total)
+        textos["itens"].append(_item_texto("texto", ini_s, fim_s - ini_s, selo.upper(), 540, edicao.y_selo(est, layout, int(plano.get("altura_cam", 760))),
+                                           {"fonte": "Roboto-Black", "tamanho": 40, "cor": "#FFFFFF" if fundo == "FF4B5C" else "#141414", "fundo": True, "fundo_cor": f"#{fundo}", "fundo_opac": 100, "fundo_pad": 14, "fundo_raio": 6,
+                                            "contorno": 0, "alinhamento": "centro", "largura": 980, "maiusculas": True}, "Selo da live"))
     audio = _faixa("audio", "Efeitos sonoros")
     sons = ed.get("sons") if ed else [{"som": "whoosh_rapido", "t": 0.0, "volume": .3}, {"som": "boom_grave", "t": momento, "volume": .42}, *[{"som": "zoom_in", "t": f["t"], "volume": .36} for f in meta.get("focos") or []]]
     for s in sons or []:

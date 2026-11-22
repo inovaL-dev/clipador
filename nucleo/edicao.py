@@ -108,30 +108,47 @@ def _marca_dagua(arroba: str, duracao: float, layout: str, hc: int) -> list[str]
     return saida
 
 
-FIXO_Y = {"cima": 150, "meio": 960, "baixo": 1700}
-FIXO_TAMANHO = {"pequeno": 40, "medio": 54, "grande": 72}
-FIXO_COR = {"branco": "&HFFFFFF&", "amarelo": "&H44D7FF&"}
+SELO_Y = {"topo": 120, "rodape": 1760}
+SELO_COR = {"vermelho": ("FF4B5C", "&HFFFFFF&"), "branco": ("FFFFFF", "&H141414&")}  # fundo do selo, cor da letra
 
 
-def linhas_texto_fixo(texto: str) -> list[str]:
-    """"AO VIVO AGORA / @seucanal" vira duas linhas: a barra quebra a linha."""
-    return [p.strip() for p in str(texto or "").split("/") if p.strip()][:3]
+def cores_selo(est: dict) -> tuple[str, str]:
+    """Fundo e letra do selo. "destaque" usa a cor de destaque escolhida no estilo."""
+    if est.get("fixo_cor") in SELO_COR:
+        fundo, letra = SELO_COR[est["fixo_cor"]]
+    else:
+        fundo = estilos.CORES.get(est.get("cor"), "FFC933")
+        letra = "&H141414&" if fundo not in ("FF4B5C",) else "&HFFFFFF&"
+    return fundo, letra
+
+
+def janela_selo(est: dict, duracao: float) -> tuple[float, float]:
+    """Quando o selo aparece: o vídeo todo, junto com o título ou nos últimos 3 segundos."""
+    tempo = est.get("fixo_tempo")
+    if tempo == "titulo":
+        return 0.0, min(duracao, float(est.get("tempo_gancho") or 5) + .5)
+    if tempo == "final":
+        return max(0.0, duracao - 3.0), duracao
+    return 0.0, duracao
+
+
+def y_selo(est: dict, layout: str, hc: int) -> int:
+    lugar = est.get("fixo_lugar")
+    if lugar == "divisao":
+        return hc - 50 if layout == "dividido" else 1180  # sem encostar no título
+    return SELO_Y.get(lugar, 120)
 
 
 def _texto_fixo(est: dict, duracao: float, layout: str, hc: int) -> list[str]:
-    """Um texto que vai em todo corte: "AO VIVO AGORA", o nome do streamer, o seu canal."""
-    linhas = linhas_texto_fixo(est.get("texto_fixo"))
-    if not linhas:
+    """Selo da live em todos os cortes: "AO VIVO", o nome do streamer, o seu canal. Uma faixa colorida, em uma linha."""
+    texto = _sem_chaves(str(est.get("texto_fixo") or "").strip())
+    if not texto:
         return []
-    lugar = est.get("fixo_lugar", "cima")
-    y = FIXO_Y.get(lugar, 150)
-    if layout == "dividido" and lugar == "meio":
-        y = hc  # na divisão entre o rosto e o jogo
-    fim = duracao if est.get("fixo_tempo") != "inicio" else min(duracao, 5.0)
-    tam = FIXO_TAMANHO.get(est.get("fixo_tamanho"), 54)
-    cor = FIXO_COR.get(est.get("fixo_cor"), FIXO_COR["branco"])
-    texto = "\\N".join(_sem_chaves(l) for l in linhas)
-    return [f"Dialogue: 2,{_tempo_ass(0)},{_tempo_ass(fim)},Fixo,,0,0,0,,{{\\an5\\pos(540,{y})\\fs{tam}\\1c{cor}\\fad(150,{250 if fim < duracao else 0})}}{texto}"]
+    fundo, letra = cores_selo(est)
+    ini, fim = janela_selo(est, duracao)
+    caixa = estilos.cor_ass(fundo)
+    return [f"Dialogue: 2,{_tempo_ass(ini)},{_tempo_ass(fim)},Selo,,0,0,0,,"
+            f"{{\\an5\\pos(540,{y_selo(est, layout, hc)})\\1c{letra}\\3c{caixa}\\fscx90\\fscy90\\t(0,160,\\fscx100\\fscy100)\\fad(120,{200 if fim < duracao else 0})}}{texto.upper()}"]
 
 
 def _encerramento(arroba: str, ini: float, dur: float) -> list[str]:
@@ -162,7 +179,7 @@ def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, dura
         estilos.estilo_legenda(est, 66), estilos.estilo_gancho(est, 54),
         "Style: Marca,Roboto Black,30,&H50FFFFFF,&H00FFFFFF,&H90000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,40,40,0,1",
         "Style: Fim,Roboto Black,90,&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1",
-        "Style: Fixo,Roboto Black,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,2,5,60,60,0,1",
+        "Style: Selo,Roboto Black,40,&H00141414,&H00FFFFFF,&H00FFC933,&H00000000,-1,0,0,0,100,100,1.5,0,3,14,0,5,60,60,0,1",
         "Style: Contexto,Poppins,32,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,8,90,90,0,1",
         "Style: Credito,Poppins,28,&H30FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1" if layout != "pip"
         else "Style: Credito,Poppins,34,&H00FFFFFF,&H00FFFFFF,&H30101010,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,2,60,60,0,1",

@@ -687,15 +687,14 @@
         <div class="bloco"><label for="es-arroba">Seu @ nas redes</label>
           <input id="es-arroba" placeholder="@seucanal" maxlength="31" autocomplete="off" spellcheck="false">
           <p class="dica">Aparece pequeno no vídeo, trocando de canto a cada 7 segundos. Deixe vazio para não usar.</p></div>
-        <fieldset class="es-fixo"><legend>Texto fixo na tela</legend>
-          <input id="es-fixo" placeholder="AO VIVO AGORA / @seucanal" maxlength="60" autocomplete="off" spellcheck="false" aria-label="Texto fixo na tela">
+        <fieldset class="es-fixo"><legend>Selo da live</legend>
+          <input id="es-fixo" placeholder="AO VIVO AGORA" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Texto do selo da live">
           <div class="es-duas">
-            <div class="bloco"><label for="es-fixo-lugar">Onde</label><select id="es-fixo-lugar"><option value="cima">Em cima</option><option value="meio">No meio</option><option value="baixo">Embaixo</option></select></div>
-            <div class="bloco"><label for="es-fixo-tempo">Quanto tempo</label><select id="es-fixo-tempo"><option value="todo">O vídeo todo</option><option value="inicio">Só os 5 primeiros segundos</option></select></div>
-            <div class="bloco"><label for="es-fixo-cor">Cor</label><select id="es-fixo-cor"><option value="branco">Branco</option><option value="amarelo">Amarelo</option></select></div>
-            <div class="bloco"><label for="es-fixo-tamanho">Tamanho</label><select id="es-fixo-tamanho"><option value="pequeno">Pequeno</option><option value="medio">Médio</option><option value="grande">Grande</option></select></div>
+            <div class="bloco"><label for="es-fixo-lugar">Lugar</label><select id="es-fixo-lugar"><option value="topo">No topo</option><option value="divisao">Na divisão entre câmera e jogo</option><option value="rodape">No rodapé</option></select></div>
+            <div class="bloco"><label for="es-fixo-tempo">Quando aparece</label><select id="es-fixo-tempo"><option value="todo">O vídeo todo</option><option value="titulo">Junto com o título</option><option value="final">Nos últimos 3 segundos</option></select></div>
+            <div class="bloco"><label for="es-fixo-cor">Cor do selo</label><select id="es-fixo-cor"><option value="destaque">A cor de destaque do estilo</option><option value="vermelho">Vermelho de ao vivo</option><option value="branco">Branco</option></select></div>
           </div>
-          <p class="dica">Vai em todos os cortes, por cima do vídeo. Use / para quebrar a linha. Deixe vazio para não usar.</p>
+          <p class="dica">Uma faixa colorida em todos os cortes, com o nome do streamer, o seu canal ou AO VIVO. Deixe vazio para não usar.</p>
         </fieldset>
         <label class="marcar"><input type="checkbox" id="es-encerramento"><span>Terminar com o seu @ na tela (2 segundos a mais, sem passar de 59 s)</span></label>
       </div>
@@ -796,77 +795,133 @@
   <div class="av-acoes"><button class="botao principal" type="button" id="av-baixar">Baixar atualização</button><button class="botao fantasma" type="button" id="av-depois">Depois</button></div>
 </aside>
 
-<dialog class="janela ajustes" id="janela-ajustes" aria-labelledby="aj-titulo">
-  <form id="form-ajustes">
-    <header class="editor-topo">
-      <h2 id="aj-titulo">Ajustes</h2>
-      <button class="botao fantasma" type="button" data-fechar>Fechar</button>
+<dialog class="janela ajx" id="janela-ajustes" aria-labelledby="aj-titulo">
+  <form id="form-ajustes" class="ajx-form">
+    <header class="ajx-topo">
+      <div><h2 id="aj-titulo">Ajustes</h2><p>As mudanças valem para os próximos cortes.</p></div>
+      <button class="botao fantasma ajx-x" type="button" data-fechar aria-label="Fechar ajustes">✕</button>
     </header>
-    <fieldset class="modos coluna">
-      <legend>Quando cortar</legend>
-      <label><input type="radio" name="sensibilidade" value="baixa"><span><b>Só os grandes momentos</b>Reações muito fortes</span></label>
-      <label><input type="radio" name="sensibilidade" value="media"><span><b>Equilibrado</b>Boas reações do streamer e do chat</span></label>
-      <label><input type="radio" name="sensibilidade" value="alta"><span><b>Mais cortes</b>Pega também as reações menores</span></label>
-    </fieldset>
-    <div class="duas uma">
-      <div class="bloco">
-        <label for="aj-garantido">Corte automático</label>
-        <select id="aj-garantido" name="corte_garantido">
-          <option value="0">Só por reação do streamer e do chat</option>
-          <option value="3">Por reação e melhor momento a cada 3 minutos</option>
-          <option value="5">Por reação e melhor momento a cada 5 minutos</option>
-          <option value="10">Por reação e melhor momento a cada 10 minutos</option>
-        </select>
-      </div>
+    <nav class="ajx-nav" aria-label="Seções dos ajustes">
+      <a href="#ajx-cortes" data-sec="ajx-cortes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg><span>Cortes</span></a><a href="#ajx-legenda" data-sec="ajx-legenda"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 14h4M13 14h4M7 10h10"/></svg><span>Legenda</span></a><a href="#ajx-potencial" data-sec="ajx-potencial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Potencial</span></a><a href="#ajx-edicao" data-sec="ajx-edicao"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg><span>Edição</span></a><a href="#ajx-desempenho" data-sec="ajx-desempenho"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg><span>Desempenho</span></a><a href="#ajx-programa" data-sec="ajx-programa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Programa</span></a>
+    </nav>
+    <div class="ajx-corpo" id="ajx-corpo">
+
+      <section class="ajx-sec" id="ajx-cortes" aria-labelledby="ajx-t-cortes">
+        <h3 id="ajx-t-cortes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></svg>Cortes</h3>
+        <p class="ajx-desc">Quando o Clipador corta e o tamanho de cada corte.</p>
+        <fieldset class="ajx-cartoes tres">
+          <legend>Quando cortar</legend>
+          <label><input type="radio" name="sensibilidade" value="baixa"><span><b>Só os grandes momentos</b>Reações muito fortes. Menos cortes, todos fortes.</span></label>
+          <label><input type="radio" name="sensibilidade" value="media"><span><b>Equilibrado <em class="ajx-selo">Recomendado</em></b>Boas reações do streamer e do chat.</span></label>
+          <label><input type="radio" name="sensibilidade" value="alta"><span><b>Mais cortes</b>Pega também as reações menores.</span></label>
+        </fieldset>
+        <div class="ajx-linha">
+          <div><label for="aj-garantido">Corte garantido</label><p>Mesmo sem uma reação forte, corta o melhor momento de cada intervalo.</p></div>
+          <select id="aj-garantido" name="corte_garantido">
+            <option value="0">Desligado: só por reação</option>
+            <option value="3">A cada 3 minutos</option>
+            <option value="5">A cada 5 minutos</option>
+            <option value="10">A cada 10 minutos</option>
+          </select>
+        </div>
+        <div class="ajx-linha">
+          <div><span class="ajx-rotulo">Duração dos cortes</span><p>Até 59 segundos o YouTube trata como Short.</p></div>
+          <div class="ajx-faixa">
+            <label class="ajx-num"><span>Mínimo</span><input id="aj-min" name="duracao_min" type="number" min="10" max="180" required><i>s</i></label>
+            <b aria-hidden="true">até</b>
+            <label class="ajx-num"><span>Máximo</span><input id="aj-max" name="duracao_max" type="number" min="10" max="180" required><i>s</i></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="ajx-sec" id="ajx-legenda" aria-labelledby="ajx-t-legenda">
+        <h3 id="ajx-t-legenda"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 14h4M13 14h4M7 10h10"/></svg>Legenda</h3>
+        <p class="ajx-desc">O reconhecimento de fala roda no seu computador.</p>
+        <fieldset class="ajx-cartoes quatro">
+          <legend>Precisão</legend>
+          <label><input type="radio" name="modelo" value="base"><span><b>Rápida</b>Para computadores bem simples.</span></label>
+          <label><input type="radio" name="modelo" value="small"><span><b>Equilibrada</b>Boa e leve.</span></label>
+          <label><input type="radio" name="modelo" value="medium"><span><b>Boa</b>Acerta mais, demora mais.</span></label>
+          <label><input type="radio" name="modelo" value="large-v3-turbo"><span><b>Máxima <em class="ajx-selo">Recomendada</em></b>A que mais acerta em português. Baixa 1,6 GB na primeira vez.</span></label>
+        </fieldset>
+        <div class="ajx-linha">
+          <div><label for="aj-idioma">Idioma da live</label><p>O idioma falado pelo streamer.</p></div>
+          <select id="aj-idioma" name="idioma"><option value="pt">Português</option><option value="es">Espanhol</option><option value="en">Inglês</option></select>
+        </div>
+        <div class="ajx-bloco">
+          <label for="aj-vocabulario">Nomes e palavras das suas lives</label>
+          <p>Separe por vírgula. A legenda passa a acertar esses nomes, jogos e gírias. O nome do canal e o título da live já entram sozinhos.</p>
+          <textarea id="aj-vocabulario" name="vocabulario" rows="3" maxlength="600" placeholder="Gaules, Cerol, Free Fire, GTA RP, Paulinho o Loko"></textarea>
+        </div>
+      </section>
+
+      <section class="ajx-sec" id="ajx-potencial" aria-labelledby="ajx-t-potencial">
+        <h3 id="ajx-t-potencial"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Potencial de viralizar</h3>
+        <p class="ajx-desc">O que acontece com os cortes que ficam com nota baixa.</p>
+        <div class="ajx-linha">
+          <div><label for="aj-melhorar">Melhorar sozinho abaixo de</label><p>Usa este valor ou o mínimo para postar, o que for maior.</p></div>
+          <select id="aj-melhorar" name="melhorar_abaixo"><option value="0">Desligado</option><option value="60">60%</option><option value="70">70%</option><option value="75">75% (recomendado)</option><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select>
+        </div>
+        <ol class="ajx-passos" aria-label="Como a melhoria funciona">
+          <li><b>Outra parte da live</b>Procura em todo o trecho gravado um começo e um fim que contam melhor a história.</li>
+          <li><b>Sem pausas</b>Tira os silêncios longos sem mexer no momento da reação.</li>
+          <li><b>Cenas mais fortes</b>Se a reação foi fraca, junta com os melhores momentos da mesma live.</li>
+        </ol>
+        <p class="ajx-nota">O que não passar do valor fica com a melhor versão e não é postado sozinho.</p>
+      </section>
+
+      <section class="ajx-sec" id="ajx-edicao" aria-labelledby="ajx-t-edicao">
+        <h3 id="ajx-t-edicao"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>Edição</h3>
+        <p class="ajx-desc">Vídeos extras que o Clipador monta sozinho. O visual dos cortes fica em Estilo do vídeo.</p>
+        <div class="ajx-lista">
+          <label class="opcao"><input type="checkbox" name="montagem_auto" role="switch"><span><b>Montagens automáticas</b>Junta os melhores momentos da live em um só vídeo.</span></label>
+          <label class="opcao"><input type="checkbox" name="shorts_emendados" role="switch"><span><b>Shorts com cenas emendadas</b>Vários momentos rápidos em um Short, cada um com preparação, momento e desfecho.</span></label>
+          <div class="ajx-linha ajx-dentro">
+            <div><label for="aj-cenas">Cenas em cada montagem</label><p>Vale também para os Shorts emendados.</p></div>
+            <select id="aj-cenas" name="montagem_cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select>
+          </div>
+          <label class="opcao"><input type="checkbox" name="foco_auto" role="switch"><span><b>Zoom no que o streamer mostrar</b>Aproxima estrelas, mapa, dinheiro e o que ele apontar.</span></label>
+        </div>
+      </section>
+
+      <section class="ajx-sec" id="ajx-desempenho" aria-labelledby="ajx-t-desempenho">
+        <h3 id="ajx-t-desempenho"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>Desempenho</h3>
+        <p class="ajx-desc">Quanto do computador o Clipador usa para legendar e montar os vídeos. A gravação da live nunca fica mais lenta.</p>
+        <div class="ajx-pc" id="aj-pc" hidden>
+          <div><span>Processador</span><b id="aj-pc-nucleos"></b></div>
+          <div><span>Memória</span><b id="aj-pc-memoria"></b></div>
+          <div><span>Recomendado</span><b id="aj-pc-recomendado"></b></div>
+        </div>
+        <fieldset class="ajx-cartoes tres">
+          <legend>Uso do processador</legend>
+          <label><input type="radio" name="desempenho" value="auto"><span><b>Automático</b>O Clipador escolhe pelo seu computador.</span></label>
+          <label><input type="radio" name="desempenho" value="leve"><span><b>Leve</b>Metade dos núcleos e prioridade baixa. Esquenta menos e o PC continua usável.</span></label>
+          <label><input type="radio" name="desempenho" value="total"><span><b>Total</b>Todos os núcleos livres. Cortes mais rápidos.</span></label>
+        </fieldset>
+      </section>
+
+      <section class="ajx-sec" id="ajx-programa" aria-labelledby="ajx-t-programa">
+        <h3 id="ajx-t-programa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Programa</h3>
+        <div class="ajx-lista">
+          <label class="opcao" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo" role="switch"><span><b>Continuar em segundo plano</b>Ao fechar a janela, segue gravando perto do relógio.</span></label>
+          <label class="opcao" id="aj-win-rot" hidden><input type="checkbox" id="aj-win" role="switch"><span><b>Abrir junto com o Windows</b>Começa a vigiar as lives assim que o computador liga.</span></label>
+        </div>
+        <div class="ajx-linha ajx-versao">
+          <div><span class="ajx-rotulo">Versão</span><p id="aj-versao"></p></div>
+          <button class="botao" type="button" id="aj-atualizar">Procurar atualizações</button>
+        </div>
+        <div class="ajx-linha ajx-perigo" id="aj-perigo" hidden>
+          <div><span class="ajx-rotulo">Fechar o Clipador</span><p>Para as gravações e fecha o programa, inclusive o ícone perto do relógio.</p></div>
+          <button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button>
+        </div>
+      </section>
     </div>
-    <div class="duas">
-      <div class="bloco"><label for="aj-min">Duração mínima (segundos)</label><input id="aj-min" name="duracao_min" type="number" min="10" max="180" required></div>
-      <div class="bloco"><label for="aj-max">Duração máxima (segundos)</label><input id="aj-max" name="duracao_max" type="number" min="10" max="180" required></div>
-    </div>
-    <div class="duas">
-      <div class="bloco">
-        <label for="aj-modelo">Precisão da legenda</label>
-        <select id="aj-modelo" name="modelo">
-          <option value="base">Rápida</option>
-          <option value="small">Equilibrada</option>
-          <option value="medium">Boa, mais lenta</option>
-          <option value="large-v3-turbo">Máxima (recomendada)</option>
-        </select>
-        <p class="dica">A máxima é a que mais acerta em português. Baixa 1,6 GB na primeira vez e precisa de 8 GB de memória.</p>
-      </div>
-      <div class="bloco">
-        <label for="aj-idioma">Idioma da live</label>
-        <select id="aj-idioma" name="idioma">
-          <option value="pt">Português</option>
-          <option value="es">Espanhol</option>
-          <option value="en">Inglês</option>
-        </select>
-      </div>
-    </div>
-    <div class="bloco aj-vocabulario"><label for="aj-desempenho">Uso do processador</label>
-      <select id="aj-desempenho" name="desempenho"><option value="auto">Automático</option><option value="leve">Leve: o computador continua usável</option><option value="total">Total: cortes mais rápidos</option></select>
-      <p class="dica" id="aj-desempenho-dica">No leve, a legenda usa metade dos núcleos e a montagem roda com prioridade baixa: demora mais e esquenta menos. A gravação da live nunca fica mais lenta.</p></div>
-    <div class="bloco aj-vocabulario"><label for="aj-melhorar">Melhorar sozinho os cortes com potencial abaixo de</label>
-      <select id="aj-melhorar" name="melhorar_abaixo"><option value="0">Desligado</option><option value="60">60%</option><option value="70">70%</option><option value="75">75% (recomendado)</option><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option></select>
-      <p class="dica">Sozinho, sem você clicar: o corte que ficar abaixo deste valor (ou do mínimo para postar, o que for maior) é refeito mirando bem acima dele. O Clipador procura em todo o trecho gravado da live outro começo e fim, tira as pausas e, se a reação foi fraca demais, junta o momento com as cenas mais fortes da mesma live em um Short de cenas emendadas. O que não passar do valor não é postado.</p></div>
-    <div class="bloco aj-vocabulario"><label for="aj-vocabulario">Nomes e palavras das suas lives</label>
-      <textarea id="aj-vocabulario" name="vocabulario" rows="3" maxlength="600" placeholder="Gaules, Cerol, Free Fire, GTA RP, Paulinho o Loko"></textarea>
-      <p class="dica">Separe por vírgula. A legenda passa a acertar esses nomes, jogos e gírias. O nome do canal e o título da live já entram sozinhos.</p></div>
-    <fieldset class="aj-secao">
-      <legend>Edição dinâmica</legend>
-      <label class="opcao"><input type="checkbox" name="montagem_auto" role="switch"><span><b>Montagens automáticas</b>Junta os melhores momentos da live em um só vídeo</span></label>
-      <label class="opcao"><input type="checkbox" name="shorts_emendados" role="switch"><span><b>Shorts com cenas emendadas</b>Além do corte normal, junta vários momentos rápidos num Short. Cada cena entra com a preparação, o momento e o desfecho, nunca picada</span></label>
-      <div class="bloco"><label for="aj-cenas">Cenas em cada montagem e short emendado</label><select id="aj-cenas" name="montagem_cenas"><option value="3">3 cenas</option><option value="4">4 cenas</option><option value="5">5 cenas</option><option value="6">6 cenas</option></select></div>
-      <label class="opcao"><input type="checkbox" name="foco_auto" role="switch"><span><b>Zoom no que o streamer mostrar</b>Aproxima estrelas, mapa, dinheiro e o que ele apontar</span></label>
-    </fieldset>
-    <fieldset class="aj-secao">
-      <legend>Programa</legend>
-      <label class="opcao" id="aj-fundo-rot" hidden><input type="checkbox" id="aj-fundo" role="switch"><span><b>Continuar em segundo plano</b>Ao fechar a janela, segue gravando perto do relógio</span></label>
-      <label class="opcao" id="aj-win-rot" hidden><input type="checkbox" id="aj-win" role="switch"><span><b>Abrir junto com o Windows</b>Começa a vigiar as lives assim que o computador liga</span></label>
-      <div class="aj-versao"><span id="aj-versao"></span><button class="botao" type="button" id="aj-atualizar">Procurar atualizações</button></div>
-    </fieldset>
-    <p class="erro-campo" id="aj-erro" role="alert" hidden></p>
-    <footer class="editor-acoes aj-acoes"><button class="botao principal" type="submit">Salvar ajustes</button><button class="botao perigo" type="button" id="aj-encerrar" hidden>Fechar o Clipador</button></footer>
+    <footer class="ajx-rodape">
+      <p class="erro-campo" id="aj-erro" role="alert" hidden></p>
+      <span class="ajx-mudou" id="aj-mudou" hidden>Mudanças não salvas</span>
+      <button class="botao fantasma" type="button" data-fechar>Cancelar</button>
+      <button class="botao principal" type="submit">Salvar ajustes</button>
+    </footer>
   </form>
 </dialog>
 

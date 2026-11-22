@@ -1,4 +1,4 @@
-"""O que você quer nos cortes de um vídeo gravado (ideia trazida do Cortador Automático).
+"""O que você quer nos cortes de um vídeo gravado.
 
 Você marca o tipo de momento ou escreve com suas palavras ("quando ele foge da polícia", "as risadas") e isso
 muda de verdade quais momentos viram corte: os momentos em que o chat fala disso, e em que o sinal certo
@@ -28,9 +28,10 @@ INTENCOES = {
     "briga": {"nome": "Treta e discussão", "gatilhos": r"treta|briga|discuss|polemic|polêmic|xing|barraco|desabaf",
               "chat": r"treta|briga|barraco|eita|vish|calma|tretou|🍿|polemic", "causa": ("streamer", "chat")},
 }
-VAZIAS = set("quero queria gostaria preciso melhores melhor momentos momento partes parte trechos trecho cortes corte video videos "
-             "mais muito para pra que com dos das uma onde quando ele ela eles elas sobre tudo coisa coisas fazer tenha tem seja ser bem "
-             "todo toda todos pega pegue foco focar deixa faz pode vai pessoas galera aparece acontece fica tipo estilo forma jeito live".split())
+# Palavras de pedido ("quero os momentos em que...") não dizem nada sobre o assunto: só as outras viram busca.
+PEDIDO = {"quero", "queria", "gostaria", "momento", "momentos", "trecho", "trechos", "cortes", "videos", "melhores", "aquele", "aquela",
+          "quando", "sempre", "todas", "todos", "coisas", "partes", "focado", "focar", "pegar", "mostrar", "aparecer", "acontece",
+          "streamer", "live", "chat", "galera", "pessoal", "muito", "mais", "tipo", "jeito", "estilo", "algum", "alguma", "sobre", "dentro"}
 
 
 def _sem_acento(t: str) -> str:
@@ -46,10 +47,10 @@ def interpretar(escolhidas: list | None, texto: str = "") -> dict:
         if texto and i not in ids and (re.search(d["gatilhos"], texto, re.I) or re.search(d["gatilhos"], normal, re.I)):
             ids.append(i)
     termos = []
-    for p in re.findall(r"[a-zà-ú0-9]{4,}", texto.lower()):
-        limpo = _sem_acento(p)
-        if limpo not in VAZIAS and limpo not in termos:
-            termos.append(limpo)
+    for palavra in normal.replace("-", " ").split():
+        palavra = re.sub(r"[^a-z0-9]", "", palavra)
+        if len(palavra) >= 5 and palavra not in PEDIDO and palavra not in termos:
+            termos.append(palavra)
     nomes = [INTENCOES[i]["nome"] for i in ids] + [f"“{t}”" for t in termos[:4]]
     return {"ids": ids, "termos": termos[:8], "texto": texto, "resumo": ", ".join(nomes)}
 
