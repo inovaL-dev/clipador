@@ -16,7 +16,8 @@ import zipfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-FERRAMENTAS = RAIZ / ".ferramentas" / "github"
+# Fora da pasta extraída: Downloads e pastas na nuvem às vezes bloqueiam programas baixados (o sh.exe do git).
+FERRAMENTAS = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Clipador" / "ferramentas"
 REPOSITORIO = os.environ.get("CLIPADOR_REPO", "clipador")
 DESCRICAO = "Cortes de lives prontos enquanto a transmissão acontece: Shorts, vídeos longos, editor completo e agenda para o YouTube."
 TOPICOS = ("clips", "live-streaming", "video-editor", "youtube-shorts", "whisper", "ffmpeg", "kick", "twitch", "python", "windows")
@@ -86,6 +87,8 @@ def rodar(*cmd: str, ok: bool = True, capturar: bool = True, pasta: Path = RAIZ)
     eh_git = Path(cmd[0]).stem.lower() == "git"
     if eh_git and GIT_EXTERNO and pasta == RAIZ and len(cmd) > 1 and cmd[1] != "clone":
         cmd = (cmd[0], f"--git-dir={GIT_EXTERNO}", f"--work-tree={RAIZ}", *cmd[1:])
+    if eh_git:  # sem "ajudante de senha": ele roda pelo sh.exe, que o Windows às vezes bloqueia; o login vai pelo cabeçalho
+        cmd = (cmd[0], "-c", "credential.helper=", *cmd[1:])
     for tentativa in range(6):
         r = subprocess.run(cmd, cwd=pasta, text=True, encoding="utf-8", errors="replace", capture_output=capturar)
         if not (eh_git and r.returncode and TRAVADO.search((r.stderr or "") + (r.stdout or ""))):
@@ -277,6 +280,22 @@ def enviar(git: str, versao: str) -> None:
     rodar(git, "push", "-u", "origin", "HEAD:main")
 
 
+def entrar_sem_ajudante(gh: str) -> None:
+    """Passa o login do GitHub direto para o git, sem o "ajudante de senha".
+    O ajudante do gh roda por um shell (sh.exe), que antivírus e pastas protegidas costumam bloquear."""
+    import base64
+    token = rodar(gh, "auth", "token").stdout.strip()
+    if not token:
+        raise Parar("Não consegui o acesso da sua conta do GitHub. Rode de novo para entrar.")
+    chave = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    # No Windows uma variável de ambiente vazia some; o "sem ajudante" vai na linha de comando (ver rodar)
+    for velho in ("GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"):
+        os.environ.pop(velho, None)
+    os.environ["GIT_CONFIG_COUNT"] = "1"
+    os.environ["GIT_CONFIG_KEY_0"], os.environ["GIT_CONFIG_VALUE_0"] = "http.https://github.com/.extraheader", f"AUTHORIZATION: basic {chave}"
+    os.environ["GIT_TERMINAL_PROMPT"] = "0"
+
+
 def usar_historico_proprio() -> Path:
     """Guarda o histórico do git em %LOCALAPPDATA%\\Clipador, fora da pasta extraída.
     Assim pastas em Downloads, na área de trabalho ou na nuvem não atrapalham, e cada .zip novo extraído
@@ -301,7 +320,7 @@ def usar_config_propria() -> Path:
     try:
         if arquivo.exists() and b"\0" in arquivo.read_bytes():  # estragado por desligamento
             arquivo.replace(pasta / f"gitconfig-quebrado-{time.strftime('%Y%m%d-%H%M%S')}")
-        arquivo.touch(exist_ok=True)
+        arquivo.write_text("", encoding="utf-8")  # começa limpa: o login vai direto, sem ajudante
     except OSError as e:
         raise Parar(f"Não consegui criar a configuração do git em {pasta}: {e}") from None
     os.environ["GIT_CONFIG_GLOBAL"] = str(arquivo)
@@ -347,7 +366,7 @@ def main() -> int:
     if rodar(gh, "auth", "status", ok=False).returncode:
         print("O navegador vai abrir para você entrar na sua conta do GitHub.")
         rodar(gh, "auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--scopes", "repo,workflow", capturar=False)
-    rodar(gh, "auth", "setup-git")
+    entrar_sem_ajudante(gh)
     conta = json.loads(rodar(gh, "api", "user").stdout)
     dono = conta["login"]
     alvo = f"{dono}/{REPOSITORIO}"
