@@ -354,6 +354,25 @@ def _quadros_short(origem, regioes: list[tuple], movimentos: list[efeitos.Movime
         yield quadro
 
 
+def _rebobinar(quadros, fim_previa: float):
+    """Fim da prévia do auge: a imagem treme, perde a cor e clareia, como fita voltando; depois um clarão e a história começa."""
+    for i, q in enumerate(quadros):
+        t = i / efeitos.FPS
+        falta = fim_previa - t
+        if 0 <= falta < .35:
+            p = 1 - falta / .35
+            cinza = cv2.cvtColor(cv2.cvtColor(q, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+            q = cv2.addWeighted(q, 1 - .7 * p, cinza, .7 * p, 0)
+            desloca = int(18 * p) * (1 if i % 2 else -1)
+            q = np.roll(q, desloca, axis=1)
+            linhas = q[::6].astype(np.int16) + int(60 * p)
+            q[::6] = np.clip(linhas, 0, 255).astype(np.uint8)
+            q = efeitos.clarear(q, .35 * p)
+        elif 0 <= t - fim_previa < .16:
+            q = efeitos.clarear(q, .75 * (1 - (t - fim_previa) / .16))
+        yield q
+
+
 def _com_encerramento(quadros, extra: int):
     """Depois do último quadro, o fim do vídeo desfocado e escuro, aproximando devagar, para o seu @ aparecer."""
     ultimo = None
@@ -394,7 +413,8 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     movimentos = _agenda_short(layout, total, duracao, momento, picos)
     for mov in movimentos:
         mov.z = 1 + (mov.z - 1) * est["zoom_forca"] / 100
-    tomadas = planejar_tomadas(plano, grupos, duracao, momento, picos, fonte, est)
+    previa = float(ajuste.get("previa") or 0) if ajuste else 0.0  # fim da prévia do auge, no começo do vídeo
+    tomadas = planejar_tomadas(plano, grupos, duracao, momento, picos, fonte, est, previa)
     if tomadas:
         plano = {**plano, **_recortes_cheios(plano, fonte)}
     outro = duracao_encerramento(duracao, est) if not ajuste.get("trilha") else 0.0
@@ -403,9 +423,11 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     destino = pasta / "corte_novo.mp4"
     fim_total = duracao + extra / efeitos.FPS
     if bastidores.ligado():
-        bastidores.contar(trilhas=_trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, extra / efeitos.FPS, layout))
+        bastidores.contar(trilhas=_trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, extra / efeitos.FPS, layout, previa))
     try:
         quadros = _quadros_short(efeitos.ler_quadros(fonte, filtro, 1080, 1920, total), regioes, movimentos, total, estilos.cor_bgr(est["cor"]) if est.get("barra_progresso") else None, pip, momento, focos, tomadas)
+        if previa:
+            quadros = _rebobinar(quadros, previa)
         efeitos.gravar(
         destino, bastidores.acompanhar_quadros(_com_encerramento(quadros, extra), total + extra),
         total + extra, 1080, 1920, gerar_ass(grupos, gancho, contexto, credito, duracao, layout, est, plano.get("altura_cam"), tomadas, extra / efeitos.FPS), fonte,
@@ -420,7 +442,7 @@ def _renderizar_com_movimento(fonte: Path, pasta: Path, plano: dict, grupos: lis
     destino.replace(pasta / "corte.mp4")
 
 
-def _trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, outro, layout) -> dict:
+def _trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, focos, outro, layout, previa: float = 0.0) -> dict:
     """O que vai em cada faixa da timeline, para a tela que mostra a edição acontecendo."""
     if est["legenda"] == "react":
         pedacos = estilos.picar(grupos)
@@ -439,13 +461,15 @@ def _trilhas_bastidores(grupos, gancho, est, duracao, momento, picos, tomadas, f
         "focos": [{"t": round(f["t"], 2), "dur": round(f["dur"], 2)} for f in focos],
         "sons": [{"t": 0.0, "nome": "Whoosh de abertura"}, {"t": round(momento, 2), "nome": "Impacto na reação"},
                  *[{"t": round(e["ini"], 2), "nome": "Whoosh da troca de câmera"} for e in tomadas if e["tipo"] == "jogo"]],
-        "legenda_modelo": est["legenda"], "cor": "#" + estilos.CORES[est["cor"]],
+        "legenda_modelo": est["legenda"], "cor": "#" + estilos.CORES[est["cor"]], "previa": round(previa, 2),
     }
 
 
-def planejar_tomadas(plano: dict, grupos: list[dict], duracao: float, momento: float | None, picos: list, fonte: Path, est: dict) -> list[dict]:
+def planejar_tomadas(plano: dict, grupos: list[dict], duracao: float, momento: float | None, picos: list, fonte: Path, est: dict, previa: float = 0.0) -> list[dict]:
     if plano.get("layout") != "dividido" or not est.get("camera_dinamica", True) or not plano.get("moldura") or not plano.get("jogo"):
         return []
+    if previa:  # a prévia do auge é a reação: rosto de perto; a câmera dinâmica volta depois da fita rebobinar
+        return [{"ini": 0.0, "fim": round(previa - .02, 3), "tipo": "rosto"}, *tm.planejar(grupos, duracao, momento, picos, inicio=previa + 1.0)]
     return tm.planejar(grupos, duracao, momento, picos)
 
 

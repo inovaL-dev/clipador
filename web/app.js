@@ -473,6 +473,7 @@ function preencherEditor(c) {
   $("#ed-titulo").textContent = c.canal;
   $("#ed-meta").textContent = `${c.nome_plataforma}, ${relogio(c.duracao)} de vídeo. ${c.motivo}.${c.ideia ? ` Ideia em teste: ${c.ideia_nome || NOMES_IDEIA[c.ideia] || c.ideia}.` : ""}`;
   $("#ed-camera-bloco").hidden = c.plano?.layout !== "dividido";
+  $("#ed-abertura").value = c.estilo?.abertura === undefined ? "" : String(c.estilo.abertura === true || c.estilo.abertura === "true");
   $("#ed-camera-dinamica").value = c.estilo?.camera_dinamica === undefined ? "" : String(c.estilo.camera_dinamica === true || c.estilo.camera_dinamica === "true");
   $("#ed-gancho").value = c.gancho || "";
   $("#ed-post").value = c.post || "";
@@ -551,7 +552,8 @@ $("#ed-postado").addEventListener("click", async () => {
 $("#ed-salvar").addEventListener("click", async () => {
   const grupos = $$("#ed-linhas li[data-ini] input").map((i) => ({ texto: i.value }));
   try {
-    await api("PATCH", `/api/cortes/${corteAberto.id}`, { gancho: $("#ed-gancho").value, post: $("#ed-post").value, grupos, refazer: true, estilo: { legenda: $("#ed-estilo-legenda").value, gancho: $("#ed-estilo-gancho").value, ...($("#ed-camera-bloco").hidden || !$("#ed-camera-dinamica").value ? {} : { camera_dinamica: $("#ed-camera-dinamica").value }) } });
+    await api("PATCH", `/api/cortes/${corteAberto.id}`, { gancho: $("#ed-gancho").value, post: $("#ed-post").value, grupos, refazer: true, estilo: { legenda: $("#ed-estilo-legenda").value, gancho: $("#ed-estilo-gancho").value, ...($("#ed-camera-bloco").hidden || !$("#ed-camera-dinamica").value ? {} : { camera_dinamica: $("#ed-camera-dinamica").value }),
+    ...($("#ed-abertura").value ? { abertura: $("#ed-abertura").value } : {}) } });
     acompanharRefazer(corteAberto.id);
   } catch (e) { avisar(e.message); }
 });
@@ -1228,7 +1230,7 @@ $("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...
 function estiloEscolhido() {
   const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
   return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked,
-    barra_progresso: $("#es-barra").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
+    barra_progresso: $("#es-barra").checked, abertura: $("#es-abertura").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
 }
 function atualizarPrevia() {
   clearTimeout(tempoPrevia);
@@ -1243,7 +1245,7 @@ $("#abrir-estilo").addEventListener("click", () => {
   if (!e) return;
   [["es-legenda", e.legenda], ["es-gancho", e.gancho], ["es-cor", e.cor]].forEach(([n, v]) => { const r = $(`#form-estilo input[name="${n}"][value="${v}"]`); if (r) r.checked = true; });
   $("#es-filtro").value = e.filtro || "nenhum"; $("#es-sons").checked = e.sons_auto !== false;
-  $("#es-barra").checked = e.barra_progresso === true;
+  $("#es-barra").checked = e.barra_progresso === true; $("#es-abertura").checked = e.abertura !== false;
   [["#es-fonte-legenda", e.fonte_legenda], ["#es-fonte-titulo", e.fonte_titulo]].forEach(([q, v]) => { const s = $(q); s.dataset.valor = v || ""; s.value = v || ""; mostrarFonte(s); });
   $("#es-arroba").value = e.arroba || ""; $("#es-encerramento").checked = e.encerramento !== false;
   $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();

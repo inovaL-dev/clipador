@@ -27,10 +27,10 @@ def _palavras(grupos: list[dict]) -> list[dict]:
     return sorted((p for g in grupos or [] for p in g.get("palavras") or []), key=lambda p: float(p["ini"]))
 
 
-def planejar(grupos: list[dict], duracao: float, momento: float | None, picos: list[tuple[float, float]], fim_util: float | None = None) -> list[dict]:
+def planejar(grupos: list[dict], duracao: float, momento: float | None, picos: list[tuple[float, float]], fim_util: float | None = None, inicio: float = INICIO_LIVRE) -> list[dict]:
     """Devolve as trocas como [{"ini", "fim", "tipo": "rosto" | "jogo"}], em ordem."""
     fim_util = min(duracao, fim_util or duracao) - 0.5
-    if fim_util - INICIO_LIVRE < 4:
+    if fim_util - inicio < 4:
         return []
     palavras = _palavras(grupos)
     candidatos: list[tuple[float, float, float, str, int]] = []  # (prioridade, ini, fim, tipo, bloco)
@@ -38,9 +38,9 @@ def planejar(grupos: list[dict], duracao: float, momento: float | None, picos: l
     # 1. O momento: primeiro o que aconteceu no jogo, depois a cara do streamer.
     if momento is not None:
         m = float(momento)
-        if m - 1.5 >= INICIO_LIVRE:
+        if m - 1.5 >= inicio:
             candidatos.append((10, m - 1.5, m + 0.25, "jogo", 1))
-        candidatos.append((10, max(INICIO_LIVRE, m + 0.25), m + 2.5, "rosto", 1))
+        candidatos.append((10, max(inicio, m + 0.25), m + 2.5, "rosto", 1))
 
     # 2. Fala com emoção: grito, risada, palavrão, exclamação.
     forca_pico = {round(t, 1): f for t, f in picos}
@@ -71,7 +71,7 @@ def planejar(grupos: list[dict], duracao: float, momento: float | None, picos: l
     teto = PARTE_MAXIMA * duracao
     usado = 0.0
     for prio, a, b, tipo, bloco in sorted(candidatos, key=lambda c: -c[0]):
-        a, b = max(a, INICIO_LIVRE), min(b, fim_util)
+        a, b = max(a, inicio), min(b, fim_util)
         if b - a < 0.9 or usado + (b - a) > teto:
             continue
         livre = True
@@ -86,7 +86,7 @@ def planejar(grupos: list[dict], duracao: float, momento: float | None, picos: l
             usado += b - a
     # Respiro: mais de 8 s parado na tela dividida cansa; entra o rosto no pico de som mais forte do trecho.
     escolhidas.sort(key=lambda e: e["ini"])
-    bordas = [3.5 - INTERVALO] + [x for e in escolhidas for x in (e["ini"], e["fim"])] + [fim_util + INTERVALO]
+    bordas = [max(3.5, inicio + 2) - INTERVALO] + [x for e in escolhidas for x in (e["ini"], e["fim"])] + [fim_util + INTERVALO]
     for a, b in zip(bordas[::2], bordas[1::2]):
         livre_a, livre_b = a + INTERVALO, b - INTERVALO
         if livre_b - livre_a < 8 - 2 * INTERVALO or usado + 1.4 > teto:

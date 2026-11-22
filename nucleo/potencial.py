@@ -49,7 +49,11 @@ def calcular(meta: dict, aprendizado=None) -> dict:
     partes.append({"nome": "Reação", "pontos": round(pontos), "maximo": 30, "texto": texto})
 
     # 2. Gancho nos 3 primeiros segundos (até 20)
-    inicio = [p for p in palavras if float(p["ini"]) < 3.0]
+    previa = meta.get("abertura") if meta.get("previa_usada") else None
+    if previa:  # o vídeo abre com o auge: os primeiros segundos são a prévia
+        inicio = [p for p in _palavras(meta) if previa[0] <= float(p["ini"]) < previa[1]]
+    else:
+        inicio = [p for p in palavras if float(p["ini"]) < 3.0]
     frase0 = " ".join(p["p"] for p in inicio)
     pontos = 0.0
     if len(inicio) >= 3:
@@ -62,7 +66,9 @@ def calcular(meta: dict, aprendizado=None) -> dict:
         pontos += 6
     if re.search(r"[?!]", frase0):
         pontos += 3
-    if inicio and ctx._nucleo(inicio[0]["p"]) in ctx.CONECTIVOS:
+    if previa:
+        pontos += 4
+    if inicio and not previa and ctx._nucleo(inicio[0]["p"]) in ctx.CONECTIVOS:
         pontos -= 5
         dicas.append(f"O vídeo abre com “{inicio[0]['p']}”, que soa como continuação. Comece uma frase depois.")
     gancho = (meta.get("gancho") or "").strip()
@@ -72,7 +78,7 @@ def calcular(meta: dict, aprendizado=None) -> dict:
         dicas.append("Sem título no vídeo: um título curto nos primeiros segundos segura quem chegou agora.")
     pontos = _faixa(pontos, 0, 20)
     partes.append({"nome": "Gancho", "pontos": round(pontos), "maximo": 20,
-                   "texto": "Começa com fala forte e título." if pontos >= 15 else "O começo podia prender mais." if pontos >= 8 else "O começo é fraco para quem está rolando o feed."})
+                   "texto": "Abre com o auge e volta para o começo da história." if previa and pontos >= 12 else "Começa com fala forte e título." if pontos >= 15 else "O começo podia prender mais." if pontos >= 8 else "O começo é fraco para quem está rolando o feed."})
 
     # 3. História completa (até 20)
     lista = ctx.frases(palavras)
@@ -124,7 +130,7 @@ def calcular(meta: dict, aprendizado=None) -> dict:
                    "texto": "Muita emoção na voz e nas palavras." if pontos >= 7 else "Alguma emoção." if pontos >= 3 else "Fala calma, pouca emoção."})
 
     # 6. Duração (até 5)
-    d = float(duracao if cortes else (meta.get("duracao") or duracao))
+    d = float(duracao if cortes else (meta.get("duracao_fonte") or meta.get("duracao") or duracao)) + ((previa[1] - previa[0]) if previa else 0)
     pontos = 5 if 15 <= d <= 45 else 3 if 12 <= d <= 59 else 1
     if d > 59:
         dicas.append("Passa de 59 segundos: o YouTube pode não tratar como Short.")

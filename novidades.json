@@ -1,5 +1,16 @@
 [
   {
+    "versao": "1.16.0",
+    "data": "2026-11-22",
+    "notas": [
+      "Gancho de abertura nos Shorts: o vídeo começa com 2 a 3 segundos do auge (o grito, a risada, o susto), com o rosto do streamer de perto e a legenda. Depois a imagem treme, perde a cor e a fita volta, com o som de rebobinar e um clarão, e a história começa do começo.",
+      "O auge é achado pelo pico de som perto do momento e pelas falas fortes da reação. A prévia nunca começa nem termina no meio de uma palavra.",
+      "Quando a história já começa no auge, não há prévia. Também não há quando o Short passaria de 1 minuto.",
+      "Liga e desliga em Estilo do vídeo. Na janela de cada corte dá para escolher entre começar pelo auge e começar do começo da história.",
+      "O potencial de viralizar conta a prévia do auge como gancho forte."
+    ]
+  },
+  {
     "versao": "1.15.0",
     "data": "2026-11-21",
     "notas": [

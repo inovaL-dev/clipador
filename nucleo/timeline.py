@@ -54,13 +54,16 @@ def duracao_total(cortes: list[list[float]]) -> float:
 
 
 def saida_de(t: float, cortes: list[list[float]]) -> float | None:
-    """Converte o tempo do vídeo original para o tempo do vídeo editado."""
-    corrido = 0.0
+    """Converte o tempo do vídeo original para o tempo do vídeo editado.
+
+    Um trecho pode aparecer duas vezes (a prévia do auge no começo e o mesmo trecho no meio da história);
+    vale a última vez, que é onde ele acontece na ordem da história."""
+    corrido, achado = 0.0, None
     for a, b in cortes:
         if a <= t < b:
-            return corrido + t - a
+            achado = corrido + t - a
         corrido += b - a
-    return None
+    return achado
 
 
 def proxima_saida(t: float, cortes: list[list[float]]) -> float:
@@ -73,18 +76,21 @@ def proxima_saida(t: float, cortes: list[list[float]]) -> float:
 
 
 def mapear_grupos(grupos: list[dict], cortes: list[list[float]]) -> list[dict]:
-    saida = []
-    for grupo in grupos:
-        palavras = []
-        for p in grupo.get("palavras", []):
-            meio = (float(p["ini"]) + float(p["fim"])) / 2
-            alvo = saida_de(meio, cortes)
-            if alvo is None:
-                continue
-            metade = max(0.02, (float(p["fim"]) - float(p["ini"])) / 2)
-            palavras.append({"p": p["p"], "ini": round(max(0.0, alvo - metade), 3), "fim": round(alvo + metade, 3)})
-        if palavras:
-            saida.append({"ini": palavras[0]["ini"], "fim": palavras[-1]["fim"], "palavras": palavras})
+    """Leva a legenda para o vídeo editado. Os trechos podem vir em qualquer ordem e se repetir (prévia do auge)."""
+    saida, corrido = [], 0.0
+    for a, b in cortes:
+        for grupo in grupos:
+            palavras = []
+            for p in grupo.get("palavras", []):
+                meio = (float(p["ini"]) + float(p["fim"])) / 2
+                if not a <= meio < b:
+                    continue
+                alvo = corrido + meio - a
+                metade = max(0.02, (float(p["fim"]) - float(p["ini"])) / 2)
+                palavras.append({"p": p["p"], "ini": round(max(0.0, alvo - metade), 3), "fim": round(alvo + metade, 3)})
+            if palavras:
+                saida.append({"ini": palavras[0]["ini"], "fim": palavras[-1]["fim"], "palavras": palavras})
+        corrido += b - a
     return saida
 
 
@@ -184,12 +190,13 @@ def _tem_audio(video: Path) -> bool:
     return bool(r.stdout.strip())
 
 
-def criar_trilha(sons: list[dict], cortes: list[list[float]], duracao: float, biblioteca, destino: Path) -> None:
-    """Mistura os efeitos nos tempos do vídeo já editado. Sons de trechos apagados saem junto."""
+def criar_trilha(sons: list[dict], cortes: list[list[float]], duracao: float, biblioteca, destino: Path, extras: list[dict] | None = None) -> None:
+    """Mistura os efeitos nos tempos do vídeo já editado. Sons de trechos apagados saem junto.
+    `extras` já vêm no tempo do vídeo editado (ex.: a fita voltando depois da prévia do auge)."""
     trilha = np.zeros((int(duracao * SR) + 1, 2), dtype=np.float32)
     guardados: dict[str, np.ndarray] = {}
-    for s in sons:
-        alvo = saida_de(float(s["t"]), cortes)
+    for s in [*sons, *[{**x, "saida": True} for x in extras or []]]:
+        alvo = float(s["t"]) if s.get("saida") else saida_de(float(s["t"]), cortes)
         if alvo is None or not biblioteca.existe(s["som"]):  # o som pode ter sido apagado da biblioteca
             continue
         if s["som"] not in guardados:

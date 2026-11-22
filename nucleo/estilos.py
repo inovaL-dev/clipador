@@ -45,7 +45,7 @@ TEMPOS_GANCHO = (3, 5, 8)
 POSICOES = ("legenda_x", "legenda_y", "gancho_x", "gancho_y", "legenda_hx", "legenda_hy", "gancho_hx", "gancho_hy")
 PADRAO = {"legenda": "destaque", "gancho": "faixa", "cor": "amarelo", "tamanho": "medio", "tempo_gancho": 5, "filtro": "nenhum", "filtro_forca": 100,
           "sons_auto": True, "zoom_forca": 100, "ritmo": 5.0, "camera_dinamica": False, "arroba": "", "encerramento": True,
-          "fonte_legenda": "", "fonte_titulo": "", "barra_progresso": False, **{p: None for p in POSICOES}}
+          "fonte_legenda": "", "fonte_titulo": "", "barra_progresso": False, "abertura": True, **{p: None for p in POSICOES}}
 ARROBA = re.compile(r"^@?([A-Za-z0-9_.]{2,30})$")
 
 
@@ -77,7 +77,7 @@ def normalizar(estilo: dict | None, base: dict | None = None) -> dict:
                 final[chave] = int(min(200, max(0, float(valor))))
             elif chave == "ritmo":
                 final[chave] = float(min(8.0, max(2.0, float(valor))))
-            elif chave in ("sons_auto", "camera_dinamica", "encerramento", "barra_progresso"):
+            elif chave in ("sons_auto", "camera_dinamica", "encerramento", "barra_progresso", "abertura"):
                 final[chave] = valor in (True, "true", "True", 1, "1")
             elif chave in ("fonte_legenda", "fonte_titulo"):
                 final[chave] = valor if valor in fontes() else ""
@@ -100,7 +100,7 @@ def validar(estilo: dict) -> dict:
                 _posicao(valor)
             except (TypeError, ValueError):
                 raise ValueError("Posição inválida.") from None
-        elif chave in ("sons_auto", "zoom_forca", "ritmo", "camera_dinamica", "encerramento", "barra_progresso"):
+        elif chave in ("sons_auto", "zoom_forca", "ritmo", "camera_dinamica", "encerramento", "barra_progresso", "abertura"):
             continue
         elif chave == "arroba":
             if str(valor or "").strip() and not final["arroba"]:

@@ -26,6 +26,8 @@ from .deteccao import REACOES, SeletorMomento, classificar_reacao, mensagens_mar
 from .atualizacao import Atualizacao
 from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
+from . import abertura as abertura_mod
+from . import efeitos
 from . import bastidores, fala, ideias, melhorar, potencial
 from .fila_edicao import FilaEdicao
 from .gravadas import Gravadas
@@ -504,8 +506,9 @@ class Motor:
                 pedido = dados["estilo"] or {}
                 proprio = {k: v for k, v in pedido.items() if v}
                 est.validar(proprio)
-                if "camera_dinamica" in proprio:
-                    proprio["camera_dinamica"] = proprio["camera_dinamica"] in (True, "true", "True", 1, "1")
+                for chave in ("camera_dinamica", "abertura"):
+                    if chave in proprio:
+                        proprio[chave] = proprio[chave] in (True, "true", "True", 1, "1")
                 # Só muda o que veio da janela; o que a ideia ou o modelo escolheram para o resto continua
                 novo = {**{k: v for k, v in (meta.get("estilo") or {}).items() if k not in pedido}, **proprio}
                 if novo != (meta.get("estilo") or {}):
@@ -1038,6 +1041,26 @@ class Motor:
             meta["momento_fonte"] = round(max(0.0, float(meta["momento_fonte"]) - inicio), 2)
         self._refazer(meta)
 
+    def _previa_do_auge(self, meta: dict, fonte: Path, total: float, estilo: dict) -> list[float] | None:
+        """Escolhe (uma vez) os segundos do auge que abrem o Short. None quando não precisa ou está desligado."""
+        if not estilo.get("abertura", True) or meta.get("montagem") or meta.get("formato") == "longo":
+            return None
+        if "abertura" not in meta:
+            try:
+                picos = efeitos.batidas(fonte, duracao=total)
+            except Exception:
+                picos = []
+            meta["abertura"] = abertura_mod.escolher(meta.get("grupos") or [], total, meta.get("momento_fonte"), picos)
+        previa = meta.get("abertura")
+        if not previa:
+            return None
+        corpo = tl.duracao_total((meta.get("edicao") or {}).get("cortes") or [[0.0, total]])
+        limite = 59.5 if self.config["duracao_max"] <= 60 else self.config["duracao_max"] + 3
+        if corpo + previa[1] - previa[0] > limite:  # sem espaço: o Short passaria de 1 minuto
+            return None
+        self._bast(meta, {"log": ("decisao", abertura_mod.descrever(previa))})
+        return previa
+
     def _refazer(self, meta: dict) -> None:
         pasta = self.saida / meta["id"]
         fonte = pasta / "fonte.mp4"
@@ -1069,23 +1092,30 @@ class Motor:
         video, grupos, duracao, momento, ajuste = fonte, meta["grupos"], meta["duracao"], meta.get("momento_fonte"), None
         plano = meta["plano"]
         ed = meta.get("edicao")
+        estilo = est.normalizar(meta.get("estilo"), self.config["estilo"])
+        total = float(meta.get("duracao_fonte") or cam.dimensoes(fonte)[2] or meta["duracao"])
+        previa = self._previa_do_auge(meta, fonte, total, estilo)
+        meta["previa_usada"] = bool(previa)
         try:
-            if ed:
-                total = float(meta.get("duracao_fonte") or cam.dimensoes(fonte)[2] or meta["duracao"])
+            if ed or previa:
                 meta["duracao_fonte"] = total
-                duracao = tl.duracao_total(ed["cortes"])
-                video = tl.montar_fonte(fonte, ed["cortes"], pasta / "montagem.mp4", total)
-                grupos = tl.mapear_grupos(meta["grupos"], ed["cortes"])
-                momento = None if momento is None else tl.saida_de(float(momento), ed["cortes"])
-                focos = [{**f, "t": round(tl.saida_de(f["t"], ed["cortes"]), 3)} for f in focos if any(a <= f["t"] and f["t"] + f["dur"] <= b for a, b in ed["cortes"])]
-                tl.criar_trilha(ed["sons"], ed["cortes"], duracao, self.biblioteca, pasta / "sons.wav")
-                ajuste = {"filtro": ed.get("filtro"), "intensidade": ed.get("intensidade", 100), "volume": ed.get("volume", 100), "trilha": pasta / "sons.wav"}
+                corpo = ed["cortes"] if ed else [[0.0, round(total, 3)]]
+                cortes = [previa, *corpo] if previa else corpo  # a prévia do auge vem antes da história
+                duracao = tl.duracao_total(cortes)
+                video = tl.montar_fonte(fonte, cortes, pasta / "montagem.mp4", total)
+                grupos = tl.mapear_grupos(meta["grupos"], cortes)
+                momento = None if momento is None else tl.saida_de(float(momento), cortes)
+                focos = [{**f, "t": round(tl.saida_de(f["t"], corpo) + (previa[1] - previa[0] if previa else 0), 3)} for f in focos if any(a <= f["t"] and f["t"] + f["dur"] <= b for a, b in corpo)]
+                fita = [{"som": "fita_voltando", "t": round(previa[1] - previa[0] - .3, 3), "volume": .55}] if previa and self.biblioteca.existe("fita_voltando") else []
+                tl.criar_trilha((ed or {}).get("sons") or [], cortes, duracao, self.biblioteca, pasta / "sons.wav", fita)
+                ajuste = {"filtro": (ed or {}).get("filtro"), "intensidade": (ed or {}).get("intensidade", 100), "volume": (ed or {}).get("volume", 100), "trilha": pasta / "sons.wav",
+                          "previa": round(previa[1] - previa[0], 3) if previa else 0}
                 meta["duracao"] = round(duracao, 2)
                 if plano.get("trechos"):  # quem fala muda de lugar junto com os cortes da edição
-                    plano = {**plano, "trechos": cam.mapear_trechos(plano["trechos"], ed["cortes"])}
+                    plano = {**plano, "trechos": cam.mapear_trechos(plano["trechos"], cortes)}
             edicao.renderizar(
                 video, pasta, plano, grupos, meta["gancho"], contexto, meta["credito"], duracao,
-                momento, est.normalizar(meta.get("estilo"), self.config["estilo"]), ajuste, focos,
+                momento, estilo, ajuste, focos,
             )
         finally:
             for temporario in ("montagem.mp4", "sons.wav"):

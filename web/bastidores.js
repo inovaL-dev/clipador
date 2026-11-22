@@ -106,7 +106,11 @@
   function prepararCorte(t) {
     base = { ini: 0, fim: t.duracao + (t.outro || 0), zero: 0, fase: "corte" };
     montarFaixas(["video", "camera", "zoom", "titulo", "legenda", "sons"]); regua();
-    filaItens.push(() => bloco("video", 0, t.duracao, "Corte", "bs-video"));
+    if (t.previa) {
+      filaItens.push(() => bloco("video", 0, t.previa, "Prévia do auge", "bs-previa"));
+      filaLog.push(["item", `Abrindo com ${t.previa.toFixed(1).replace(".", ",")} s do auge, depois a fita volta para o começo`]);
+    }
+    filaItens.push(() => bloco("video", t.previa || 0, t.duracao, "Corte", "bs-video"));
     if (t.outro) filaItens.push(() => bloco("video", t.duracao, t.duracao + t.outro, "Final com o seu @", "bs-outro"));
     filaLog.push(["passo", `Montando a timeline: ${relogio(t.duracao)} de vídeo`]);
     for (const c of t.cameras) {
