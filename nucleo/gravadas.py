@@ -15,6 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import intencao
 from . import camera as cam
 from .deteccao import mensagens_marcantes
 from .longo import DURACOES
@@ -191,10 +192,14 @@ def analisar_video(video: Path, duracao: float, chat: dict[int, list[str]], para
     return notas
 
 
-def escolher_momentos(notas: list[dict], quantos: int, espaco: float = ESPACO_MINIMO) -> list[dict]:
-    """Os momentos mais fortes da live, sem dois cortes em cima do mesmo acontecimento."""
+def escolher_momentos(notas: list[dict], quantos: int, espaco: float = ESPACO_MINIMO, pedido: dict | None = None) -> list[dict]:
+    """Os momentos mais fortes da live, sem dois cortes em cima do mesmo acontecimento.
+    `pedido`: o que você quer nos cortes; os momentos que combinam com ele ganham força."""
     def forca(n: dict) -> float:
-        return n["nota"] + (n["chat"] + n["streamer"] + n["jogo"]) / 300
+        extra = intencao.bonus(n, pedido)
+        if n["nota"] <= 0 and extra < 20:
+            return 0.0
+        return n["nota"] + extra + (n["chat"] + n["streamer"] + n["jogo"]) / 300
 
     escolhidos: list[dict] = []
     for n in sorted(notas, key=forca, reverse=True):
@@ -317,6 +322,7 @@ class Gravadas:
                 item_id, n = f"{base}{n}", n + 1
             item = {"id": item_id, "link": link, "status": "fila", "etapa": "Na fila", "progresso": 0, "erro": None, "criado": time.time(),
                     "envio": bool(envio), "titulo": Path(envio["nome"]).stem if envio else Path(link).stem if Path(link).is_file() else link, "canal": "", "momentos": quantos, "qualidade": qualidade,
+                    "intencao": intencao.interpretar(dados.get("intencoes") or [], str(dados.get("pedido") or "")),
                     "criar_longo": bool(dados.get("longo", True)), "programar": bool(dados.get("programar", False)), "minutos": minutos, "chat": None, "mensagens": 0, "achados": 0, "feitos": 0, "duracao": 0}
             self.itens[item_id] = item
             self.paradas[item_id] = threading.Event()
@@ -391,7 +397,7 @@ class Gravadas:
             self._etapa(item, "analisando", "Procurando os melhores momentos")
             notas = analisar_video(video, duracao, agrupar_chat(mensagens), parar, lambda f: item.__setitem__("progresso", round(f * 100)))
             espaco = max(20.0, min(ESPACO_MINIMO, duracao / (item["momentos"] + 1))) if item.get("envio") else ESPACO_MINIMO
-            momentos = escolher_momentos(notas, item["momentos"], espaco)
+            momentos = escolher_momentos(notas, item["momentos"], espaco, item.get("intencao"))
             if not momentos:
                 raise ValueError("Não encontrei momentos com som ou movimento nesta gravação.")
             item["pontos"] = momentos

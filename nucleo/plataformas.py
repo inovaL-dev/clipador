@@ -17,9 +17,15 @@ def cmd_streamlink() -> list[str]:
     return [exe] if exe else [sys.executable, "-m", "streamlink_cli"]
 
 
-def sem_janela() -> dict:
-    """Evita abrir janelas de console no Windows."""
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+def sem_janela(gravacao: bool = False) -> dict:
+    """Evita abrir janelas de console no Windows. No modo leve, o trabalho pesado roda com prioridade baixa
+    (a gravação da live nunca: `gravacao=True`)."""
+    if os.name != "nt":
+        return {}
+    from . import desempenho
+
+    baixa = 0x00004000 if not gravacao and desempenho.leve() else 0  # BELOW_NORMAL_PRIORITY_CLASS
+    return {"creationflags": subprocess.CREATE_NO_WINDOW | baixa}
 
 
 @dataclass
@@ -85,7 +91,7 @@ class CanalTwitch(Canal):
         url = f"https://www.twitch.tv/{self.ident}"
         r = subprocess.run(
             [*cmd_streamlink(), "--json", url], capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=90, **sem_janela(),
+            encoding="utf-8", errors="replace", timeout=90, **sem_janela(gravacao=True),
         )
         try:
             dados = json.loads(r.stdout)
@@ -141,7 +147,7 @@ class CanalYoutube(Canal):
         try:
             r = subprocess.run(
                 [*cmd_streamlink(), "--json", self.url], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=90, **sem_janela(),
+                encoding="utf-8", errors="replace", timeout=90, **sem_janela(gravacao=True),
             )
             dados = json.loads(r.stdout)
         except (OSError, ValueError, subprocess.SubprocessError):

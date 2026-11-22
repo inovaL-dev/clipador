@@ -28,6 +28,7 @@ IDADE_MINIMA = 48 * 3600
 INTERVALO_CANAL = 6 * 3600
 LIMITE_EXEMPLOS = 200
 PARECIDO = 1.0      # abaixo dessa distância, dois exemplos pertencem ao mesmo modelo
+TITULOS = ("fala", "promessa")
 EXPLORAR = 0.12     # parte dos cortes que testa uma ideia qualquer, mesmo que outra esteja indo melhor
 ANALISE_MAX = 120  # segundos analisados de cada vídeo de exemplo
 
@@ -783,13 +784,40 @@ class Aprendizado:
 
     def sinal_ideia(self, meta: dict, tipo: str, quanto: int = 1) -> None:
         """postados: você postou; descartados: apagou sem postar; trocados: mudou a legenda ou a câmera do corte."""
-        ident = meta.get("ideia")
-        if not ident or not self.m["ativo"]["edicoes"]:
+        if not self.m["ativo"]["edicoes"]:
             return
+        ident = meta.get("ideia")
         with self.trava:
-            d = self.m.setdefault("ideias", {}).setdefault(ident, {})
-            d[tipo] = max(0, d.get(tipo, 0) + quanto)
+            if ident:
+                d = self.m.setdefault("ideias", {}).setdefault(ident, {})
+                d[tipo] = max(0, d.get(tipo, 0) + quanto)
+            if meta.get("titulo_tipo") and tipo != "trocados":  # o título também aprende com o que você posta
+                t = self.m.setdefault("titulos", {}).setdefault(meta["titulo_tipo"], {})
+                t[tipo] = max(0, t.get(tipo, 0) + quanto)
             self._salvar()
+
+    def escolher_titulo(self) -> str:
+        """Título tirado da fala ou título-promessa: os dois são testados e o que você posta mais aparece mais."""
+        with self.trava:
+            dados = self.m.setdefault("titulos", {})
+
+            def nota(tipo: str) -> float:
+                d = dados.get(tipo) or {}
+                return random.betavariate(1 + d.get("postados", 0), 1 + d.get("descartados", 0) + d.get("trocados", 0))
+
+            escolhido = random.choice(TITULOS) if random.random() < EXPLORAR else max(TITULOS, key=nota)
+            d = dados.setdefault(escolhido, {})
+            d["usos"] = d.get("usos", 0) + 1
+            self._salvar()
+        return escolhido
+
+    def titulo_trocado(self, meta: dict) -> None:
+        """Você reescreveu o título deste corte: conta contra o jeito de título que ele usou."""
+        if meta.get("titulo_tipo") and self.m["ativo"]["edicoes"]:
+            with self.trava:
+                t = self.m.setdefault("titulos", {}).setdefault(meta["titulo_tipo"], {})
+                t["trocados"] = t.get("trocados", 0) + 1
+                self._salvar()
 
     def chances_ideias(self) -> dict[str, float]:
         lista = self.ideias_ligadas()

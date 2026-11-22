@@ -213,7 +213,7 @@ def marcar_publicacao(pasta: Path, publicacao: dict) -> None:
         resumo.update(arquivo.name.encode("utf-8") + arquivo.read_bytes())
     codigo = resumo.hexdigest()[:12]
     pagina = (pasta / "index.html").read_text(encoding="utf-8").replace('const atual = "dev"', f'const atual = "{codigo}"', 1)
-    pagina = pagina.replace('href="estilo.css"', f'href="estilo.css?v={codigo}"').replace('src="site.js"', f'src="site.js?v={codigo}"')
+    pagina = pagina.replace('href="estilo.css"', f'href="estilo.css?v={codigo}"').replace('src="site.js"', f'src="site.js?v={codigo}"').replace('src="apoio.js"', f'src="apoio.js?v={codigo}"')
     if publicacao:
         pagina = re.sub(r"(<(?:b|span) data-versao>)[^<]*", rf"\g<1>{publicacao['versao']}", pagina)
         (pasta / "versao.json").write_text(json.dumps({**publicacao, "site": codigo}, ensure_ascii=False, indent=2), encoding="utf-8")

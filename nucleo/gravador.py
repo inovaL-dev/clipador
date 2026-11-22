@@ -27,7 +27,7 @@ class Gravador:
         extra = ["--twitch-disable-ads"] if "twitch.tv" in self.fonte else []
         self.sl = subprocess.Popen(
             [*cmd_streamlink(), "--stdout", "--loglevel", "error", *extra, self.fonte, "best"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **sem_janela(),
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **sem_janela(gravacao=True),
         )
         self.ff = subprocess.Popen(
             ["ffmpeg", "-hide_banner", "-loglevel", "fatal", "-fflags", "+genpts", "-i", "pipe:0",
@@ -35,7 +35,7 @@ class Gravador:
              "-segment_time", str(SEGUNDOS_SEGMENTO), "-segment_format", "mpegts",
              "-segment_list", f"lista_{self.parte:02d}.csv", "-segment_list_type", "csv",
              "-segment_list_flags", "+live", f"seg_{self.parte:02d}_%06d.ts"],
-            stdin=self.sl.stdout, cwd=self.pasta, stderr=subprocess.DEVNULL, **sem_janela(),
+            stdin=self.sl.stdout, cwd=self.pasta, stderr=subprocess.DEVNULL, **sem_janela(gravacao=True),
         )
         self.sl.stdout.close()
 
@@ -112,7 +112,7 @@ class Gravador:
             return False
         r = subprocess.run(
             ["ffmpeg", "-v", "error", "-y", "-i", str(segs[-1][0]), "-frames:v", "1", "-q:v", "3", str(destino)],
-            capture_output=True, **sem_janela(),
+            capture_output=True, **sem_janela(gravacao=True),
         )
         return r.returncode == 0 and destino.exists()
 
@@ -131,7 +131,7 @@ class Gravador:
 def volume_medio(arquivo: Path) -> float | None:
     r = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostats", "-i", str(arquivo), "-vn", "-af", "volumedetect", "-f", "null", "-"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", **sem_janela(),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", **sem_janela(gravacao=True),
     )
     m = re.search(r"mean_volume: (-?[\d.]+) dB", r.stderr)
     return 10 ** (float(m[1]) / 10) if m else None

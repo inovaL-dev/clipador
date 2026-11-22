@@ -281,6 +281,14 @@ def importar_corte(meta: dict, motor) -> dict:
             textos["itens"].append(_item_texto("texto", t_m, min(7.0, total - t_m), est["arroba"], x_m + (-150 if al == "direita" else 150), y_m,
                                                {"fonte": "Roboto-Black", "tamanho": 30, "opacidade": 70, "contorno": 2, "alinhamento": al, "largura": 300, "maiusculas": False}, "Seu @"))
             t_m, n_m = t_m + 7.0, n_m + 1
+    linhas_fixo = edicao.linhas_texto_fixo(est.get("texto_fixo"))
+    if linhas_fixo:  # o texto fixo vira um texto comum no editor, então dá para mover e mudar
+        lugar = est.get("fixo_lugar", "cima")
+        y_f = int(plano.get("altura_cam", 760)) if layout == "dividido" and lugar == "meio" else edicao.FIXO_Y.get(lugar, 150)
+        dur_f = total if est.get("fixo_tempo") != "inicio" else min(total, 5.0)
+        textos["itens"].append(_item_texto("texto", 0.0, dur_f, "\n".join(linhas_fixo), 540, y_f,
+                                           {"fonte": "Roboto-Black", "tamanho": edicao.FIXO_TAMANHO.get(est.get("fixo_tamanho"), 54), "cor": "#FFD744" if est.get("fixo_cor") == "amarelo" else "#FFFFFF",
+                                            "contorno": 4, "alinhamento": "centro", "largura": 980, "maiusculas": False}, "Texto fixo"))
     audio = _faixa("audio", "Efeitos sonoros")
     sons = ed.get("sons") if ed else [{"som": "whoosh_rapido", "t": 0.0, "volume": .3}, {"som": "boom_grave", "t": momento, "volume": .42}, *[{"som": "zoom_in", "t": f["t"], "volume": .36} for f in meta.get("focos") or []]]
     for s in sons or []:

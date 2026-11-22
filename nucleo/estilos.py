@@ -45,7 +45,9 @@ TEMPOS_GANCHO = (3, 5, 8)
 POSICOES = ("legenda_x", "legenda_y", "gancho_x", "gancho_y", "legenda_hx", "legenda_hy", "gancho_hx", "gancho_hy")
 PADRAO = {"legenda": "destaque", "gancho": "faixa", "cor": "amarelo", "tamanho": "medio", "tempo_gancho": 5, "filtro": "nenhum", "filtro_forca": 100,
           "sons_auto": True, "zoom_forca": 100, "ritmo": 5.0, "camera_dinamica": False, "arroba": "", "encerramento": True,
-          "fonte_legenda": "", "fonte_titulo": "", "barra_progresso": False, "abertura": True, **{p: None for p in POSICOES}}
+          "fonte_legenda": "", "fonte_titulo": "", "barra_progresso": False, "abertura": True,
+          "texto_fixo": "", "fixo_lugar": "cima", "fixo_tempo": "todo", "fixo_cor": "branco", "fixo_tamanho": "medio", **{p: None for p in POSICOES}}
+FIXO_OPCOES = {"fixo_lugar": ("cima", "meio", "baixo"), "fixo_tempo": ("todo", "inicio"), "fixo_cor": ("branco", "amarelo"), "fixo_tamanho": ("pequeno", "medio", "grande")}
 ARROBA = re.compile(r"^@?([A-Za-z0-9_.]{2,30})$")
 
 
@@ -84,6 +86,10 @@ def normalizar(estilo: dict | None, base: dict | None = None) -> dict:
             elif chave == "arroba":
                 m = ARROBA.match(str(valor or "").strip())
                 final[chave] = f"@{m[1]}" if m else ""
+            elif chave == "texto_fixo":
+                final[chave] = re.sub(r"[{}\\]", "", " ".join(str(valor or "").split()))[:60]
+            elif chave in FIXO_OPCOES and valor in FIXO_OPCOES[chave]:
+                final[chave] = valor
             elif chave in POSICOES:
                 try:
                     final[chave] = _posicao(valor)
@@ -100,7 +106,7 @@ def validar(estilo: dict) -> dict:
                 _posicao(valor)
             except (TypeError, ValueError):
                 raise ValueError("Posição inválida.") from None
-        elif chave in ("sons_auto", "zoom_forca", "ritmo", "camera_dinamica", "encerramento", "barra_progresso", "abertura"):
+        elif chave in ("sons_auto", "zoom_forca", "ritmo", "camera_dinamica", "encerramento", "barra_progresso", "abertura", "texto_fixo"):
             continue
         elif chave == "arroba":
             if str(valor or "").strip() and not final["arroba"]:

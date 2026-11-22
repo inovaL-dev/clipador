@@ -289,6 +289,60 @@ def criar_gancho(palavras: list[dict], momento: float, titulo_live: str, reacao:
     return GANCHOS_REACAO.get(reacao) or _encurtar(titulo_live) or GANCHOS_REACAO["manual"]
 
 
+# ---------- Título-promessa (ideia trazida do Cortador Automático) ----------
+# O título não resume o que foi dito: ele promete algo que só se descobre assistindo. Só promete o que o
+# trecho realmente tem (um número absurdo, algo raro, um deu ruim, uma conquista, uma aposta).
+_NUMERO = re.compile(r"\b(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?)\s*(milh[oõ]es|milh[aã]o|mil|bilh[oõ]es|bilh[aã]o|k)?\s*(reais|conto|pila|d[oó]lares|robux|pontos?|kills?|abates?|metros|%|por cento)?", re.I)
+_APOSTA = re.compile(r"\b(chuta|adivinha|aposto|aposta|quanto (voc[eê]s? )?acha|o que (voc[eê]s? )?acha)", re.I)
+_RARO = re.compile(r"\b(mais rar[oa]|rar[ií]ssim[oa]|lend[aá]ri[oa]|secret[oa]|m[ií]tic[oa]|imposs[ií]vel|primeira vez|nunca vi)\b", re.I)
+_DEU_RUIM = re.compile(r"\b(perdi|perdeu|deu ruim|se ferrou|morri|morreu|quebrou|errei|falhei|estraguei|f[ou]i banid[oa])\b", re.I)
+_CONQUISTA = re.compile(r"\b(consegui|ganhei|ganhamos|venci|zerei|finalmente|peguei|achei|bati o recorde|passei)\b", re.I)
+_PROMESSAS = {
+    "aposta": ["Chuta o que aconteceu aqui", "Você não vai adivinhar o final", "Aposto que você erra o que vem"],
+    "numero": ["{NUM}?! Olha isso", "Ele falou {NUM} mesmo", "{NUM} em um momento só"],
+    "raro": ["Isso quase nunca acontece", "Ninguém tinha visto isso na live", "Um dos momentos mais raros da live"],
+    "ruim": ["Deu muito ruim no final", "Era pra dar certo, mas olha", "Ele não esperava esse final"],
+    "conquista": ["Ele finalmente conseguiu", "Espera pra ver ele conseguir", "Ninguém achou que ia dar certo"],
+}
+
+
+def _numero_forte(texto: str) -> str | None:
+    melhor, peso_melhor = None, 0.0
+    for m in _NUMERO.finditer(texto):
+        escala, unidade = (m[2] or "").lower(), (m[3] or "").lower()
+        if not escala and not unidade:
+            continue
+        try:
+            n = float(re.sub(r"[.,](?=\d{3}\b)", "", m[1]).replace(",", "."))
+        except ValueError:
+            continue
+        peso = n * (1e9 if escala.startswith("bilh") else 1e6 if escala.startswith("milh") else 1e3 if escala in ("mil", "k") else 1)
+        if (peso >= 1000 or unidade in ("kills", "kill", "abates", "%", "por cento")) and peso > peso_melhor:
+            melhor, peso_melhor = " ".join(m[0].split()), peso
+    return melhor
+
+
+def gancho_promessa(palavras: list[dict], momento: float) -> str | None:
+    """Título que cria curiosidade a partir do que o trecho tem de mais forte. None quando não tem material."""
+    perto = [p for p in palavras if momento - 20 <= float(p["ini"]) <= momento + 8]
+    texto = " ".join(p["p"] for p in perto)
+    if len(texto) < 12:
+        return None
+    semente = sum(ord(c) for c in texto[:80])
+    escolher = lambda tipo: _PROMESSAS[tipo][semente % len(_PROMESSAS[tipo])]  # o mesmo trecho dá sempre o mesmo título
+    if _APOSTA.search(texto):
+        return escolher("aposta")
+    if num := _numero_forte(texto):
+        return escolher("numero").replace("{NUM}", num.upper() if len(num) <= 4 else num)
+    if _RARO.search(texto):
+        return escolher("raro")
+    if _DEU_RUIM.search(texto):
+        return escolher("ruim")
+    if _CONQUISTA.search(texto):
+        return escolher("conquista")
+    return None
+
+
 def criar_post(gancho: str, canal: str, credito: str, titulo_live: str, plataforma: str, ident: str) -> str:
     contexto = f"Momento da live de {canal}"
     if titulo_live:

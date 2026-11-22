@@ -108,6 +108,32 @@ def _marca_dagua(arroba: str, duracao: float, layout: str, hc: int) -> list[str]
     return saida
 
 
+FIXO_Y = {"cima": 150, "meio": 960, "baixo": 1700}
+FIXO_TAMANHO = {"pequeno": 40, "medio": 54, "grande": 72}
+FIXO_COR = {"branco": "&HFFFFFF&", "amarelo": "&H44D7FF&"}
+
+
+def linhas_texto_fixo(texto: str) -> list[str]:
+    """"AO VIVO AGORA / @seucanal" vira duas linhas: a barra quebra a linha."""
+    return [p.strip() for p in str(texto or "").split("/") if p.strip()][:3]
+
+
+def _texto_fixo(est: dict, duracao: float, layout: str, hc: int) -> list[str]:
+    """Um texto que vai em todo corte: "AO VIVO AGORA", o nome do streamer, o seu canal."""
+    linhas = linhas_texto_fixo(est.get("texto_fixo"))
+    if not linhas:
+        return []
+    lugar = est.get("fixo_lugar", "cima")
+    y = FIXO_Y.get(lugar, 150)
+    if layout == "dividido" and lugar == "meio":
+        y = hc  # na divisão entre o rosto e o jogo
+    fim = duracao if est.get("fixo_tempo") != "inicio" else min(duracao, 5.0)
+    tam = FIXO_TAMANHO.get(est.get("fixo_tamanho"), 54)
+    cor = FIXO_COR.get(est.get("fixo_cor"), FIXO_COR["branco"])
+    texto = "\\N".join(_sem_chaves(l) for l in linhas)
+    return [f"Dialogue: 2,{_tempo_ass(0)},{_tempo_ass(fim)},Fixo,,0,0,0,,{{\\an5\\pos(540,{y})\\fs{tam}\\1c{cor}\\fad(150,{250 if fim < duracao else 0})}}{texto}"]
+
+
 def _encerramento(arroba: str, ini: float, dur: float) -> list[str]:
     fim = ini + dur
     return [
@@ -136,6 +162,7 @@ def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, dura
         estilos.estilo_legenda(est, 66), estilos.estilo_gancho(est, 54),
         "Style: Marca,Roboto Black,30,&H50FFFFFF,&H00FFFFFF,&H90000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,40,40,0,1",
         "Style: Fim,Roboto Black,90,&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1",
+        "Style: Fixo,Roboto Black,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,4,2,5,60,60,0,1",
         "Style: Contexto,Poppins,32,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,0,8,90,90,0,1",
         "Style: Credito,Poppins,28,&H30FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,60,60,0,1" if layout != "pip"
         else "Style: Credito,Poppins,34,&H00FFFFFF,&H00FFFFFF,&H30101010,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,2,60,60,0,1",
@@ -169,6 +196,7 @@ def gerar_ass(grupos: list[dict], gancho: str, contexto: str, credito: str, dura
         else:  # logo abaixo da divisão; quando o rosto ou o jogo ocupam a tela, um pouco abaixo do meio
             y_em = lambda t: (8, hc + 30) if tm.tipo_em(tomadas or [], t) == "dividido" else (8, tm.ROSTO_Y_LEGENDA)
     saida += estilos.eventos_legenda(grupos, duracao, est, x_legenda, y_legenda, 66, 18, _tempo_ass, y_em)
+    saida += _texto_fixo(est, duracao, layout, int(altura_cam or 760))
     if est.get("arroba"):
         saida += _marca_dagua(est["arroba"], duracao, layout, int(altura_cam or 760))
         if outro > 0:

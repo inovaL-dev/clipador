@@ -30,7 +30,7 @@ from .foco import achar_focos
 from .montagem import CENAS_MONTAGEM, Montagens
 from . import abertura as abertura_mod
 from . import efeitos
-from . import bastidores, fala, ideias, melhorar, potencial
+from . import bastidores, desempenho, fala, ideias, melhorar, potencial
 from .fila_edicao import FilaEdicao
 from .gravadas import Gravadas
 from .gravador import Gravador
@@ -110,6 +110,7 @@ class Motor:
         self.fila = FilaEdicao(self.cortes)  # com várias lives, os momentos mais fortes são editados primeiro
         self.fim = threading.Event()
         self.config = {**CONFIG_PADRAO, **self._ler(self.dados / "config.json", {})}
+        desempenho.definir(self.config.get("desempenho", "auto"))
         self.config["estilo"] = est.normalizar(self.config.get("estilo"))
         if self.config.get("fala_precisa") != 1:
             # 1.11.1: quem estava na precisão equilibrada passa para o large-v3-turbo, que erra bem menos em português.
@@ -573,6 +574,12 @@ class Motor:
             cfg["sensibilidade"] = novos["sensibilidade"]
         if novos.get("modelo") in fala.MODELOS:
             cfg["modelo"] = novos["modelo"]
+        if "desempenho" in novos:
+            if novos["desempenho"] not in desempenho.MODOS:
+                raise ValueError("Escolha leve, total ou automático.")
+            cfg["desempenho"] = novos["desempenho"]
+            desempenho.definir(cfg["desempenho"])
+            self._modelo_nome = None  # a legenda reabre com o novo número de núcleos no próximo corte
         if "melhorar_abaixo" in novos:
             if int(novos["melhorar_abaixo"]) not in (0, 60, 70, 75, 80, 85, 90):
                 raise ValueError("Escolha um valor da lista para a melhora automática.")
@@ -631,6 +638,7 @@ class Motor:
                 meta["post"] = dados["post"][:4000]
                 (self.saida / corte_id / "post.txt").write_text(meta["post"], encoding="utf-8")
             if isinstance(dados.get("gancho"), str) and dados["gancho"].strip() != meta.get("gancho"):
+                self.aprendizado.titulo_trocado(meta)
                 meta["gancho"] = dados["gancho"].strip()[:90]
                 refazer = True
             if isinstance(dados.get("grupos"), list):
@@ -746,7 +754,7 @@ class Motor:
             base = {
                 "agora": time.time(), "canais": canais, "cortes": resumo,
                 "eventos": list(self.eventos)[-40:][::-1], "config": self.config,
-                "sistema": {"legenda": self.legenda, "fila": self.fila.qsize(), "lives_recomendadas": self.lives_recomendadas()},
+                "sistema": {"legenda": self.legenda, "fila": self.fila.qsize(), "lives_recomendadas": self.lives_recomendadas(), "desempenho": desempenho.resumo()},
             }
         # Fora da trava do motor: a postagem usa as duas travas sempre na mesma ordem.
         # Cada parte é montada à parte: um problema em uma delas não apaga a tela inteira.
@@ -1050,7 +1058,7 @@ class Motor:
         from faster_whisper import WhisperModel
 
         return WhisperModel(nome, device="cpu", compute_type="int8", num_workers=1, local_files_only=so_local,
-                            cpu_threads=max(1, min(8, (os.cpu_count() or 4) - 2)))  # deixa núcleos livres para a janela e as gravações
+                            cpu_threads=desempenho.nucleos_legenda())  # deixa núcleos livres para a janela e as gravações
 
     def _carregar_modelo(self, nome: str) -> None:
         try:
@@ -1221,6 +1229,12 @@ class Motor:
         # O chat reage alguns segundos depois do que aconteceu na tela.
         meta["momento_fonte"] = round(min(max(0.0, momento - ini - 4), max(0.0, duracao - 1)), 2)
         meta["gancho"] = ctx.criar_gancho(trecho, momento - ini, titulo, meta["reacao"])
+        tipo_titulo = self.aprendizado.escolher_titulo()
+        promessa = ctx.gancho_promessa(trecho, momento - ini) if tipo_titulo == "promessa" else None
+        if promessa:
+            meta["gancho"], meta["titulo_tipo"] = promessa, "promessa"
+        else:
+            meta["titulo_tipo"] = "fala" if tipo_titulo == "fala" else None  # sem material para promessa: não conta no teste
         meta["post"] = ctx.criar_post(
             meta["gancho"], meta["canal"], meta["credito"], titulo, meta["plataforma"], meta["ident"],
         )

@@ -79,7 +79,7 @@ function criarFaixa(c) {
     try { await api("POST", `/api/canais/${c.id}/cortar`); avisar("Corte iniciado"); }
     catch (e) { avisar(e.message); }
     setTimeout(() => (cortar.disabled = false), 2500);
-  } }, "Cortar agora");
+  } }, "Cortar agora", el("kbd", { class: "atalho", title: "Atalho: tecla C" }, "C"));
   const camera = el("button", { class: "botao", type: "button", onclick: () => abrirCamera({ canal: c.id }) }, "Câmera");
   const parar = el("button", { class: "botao fantasma", type: "button", onclick: () => confirmar(parar, "Confirmar", async () => {
     await api("DELETE", `/api/canais/${c.id}`);
@@ -757,7 +757,8 @@ $("#abrir-ajustes").addEventListener("click", () => {
   if (!c) return;
   f.querySelector(`input[name="sensibilidade"][value="${c.sensibilidade}"]`).checked = true;
   f.duracao_min.value = c.duracao_min; f.duracao_max.value = c.duracao_max;
-  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.melhorar_abaixo.value = String(c.melhorar_abaixo ?? 75); f.corte_garantido.value = String(c.corte_garantido);
+  f.modelo.value = c.modelo; f.idioma.value = c.idioma; f.vocabulario.value = c.vocabulario || ""; f.melhorar_abaixo.value = String(c.melhorar_abaixo ?? 75); f.desempenho.value = c.desempenho || "auto";
+  const dz = estado?.sistema?.desempenho; if (dz) $("#aj-desempenho-dica").textContent = `Este computador: ${dz.nucleos} núcleos e ${dz.memoria_gb} GB de memória. Recomendado: ${dz.recomendado === "leve" ? "leve" : "total"}. No leve, a legenda usa metade dos núcleos e a montagem roda com prioridade baixa: demora mais e esquenta menos. A gravação da live nunca fica mais lenta.`; f.corte_garantido.value = String(c.corte_garantido);
   f.montagem_auto.checked = c.montagem_auto !== false; f.montagem_cenas.value = String(c.montagem_cenas || 3); f.foco_auto.checked = c.foco_auto !== false; f.shorts_emendados.checked = c.shorts_emendados === true;
   $("#aj-erro").hidden = true;
   $("#janela-ajustes").showModal();
@@ -766,7 +767,7 @@ $("#form-ajustes").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   try {
-    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, vocabulario: f.vocabulario.value, melhorar_abaixo: +f.melhorar_abaixo.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
+    await api("POST", "/api/config", { montagem_auto: f.montagem_auto.checked, montagem_cenas: +f.montagem_cenas.value, foco_auto: f.foco_auto.checked, shorts_emendados: f.shorts_emendados.checked, sensibilidade: f.sensibilidade.value, duracao_min: +f.duracao_min.value, duracao_max: +f.duracao_max.value, modelo: f.modelo.value, idioma: f.idioma.value, vocabulario: f.vocabulario.value, melhorar_abaixo: +f.melhorar_abaixo.value, desempenho: f.desempenho.value, corte_garantido: f.corte_garantido.value === "" ? 3 : +f.corte_garantido.value });
     $("#janela-ajustes").close(); avisar("Ajustes salvos"); atualizar();
   } catch (e) { $("#aj-erro").textContent = e.message; $("#aj-erro").hidden = false; }
 });
@@ -1065,7 +1066,7 @@ function linhaGravada(g) {
     avisar(ativo ? "Cancelando a análise" : "Análise removida"); atualizar();
   }) }, ativo ? "Cancelar" : "Remover");
   return el("li", { class: "trabalho", dados: { status: g.status } },
-    el("div", { class: "trabalho-texto" }, el("b", { title: g.titulo }, g.titulo), el("span", {}, ativo ? `${g.etapa}. ${detalheGravada(g)}` : detalheGravada(g)), ativo ? barra(g.progresso) : null), acao);
+    el("div", { class: "trabalho-texto" }, el("b", { title: g.titulo }, g.titulo), el("span", {}, ativo ? `${g.etapa}. ${detalheGravada(g)}` : detalheGravada(g)), g.intencao?.resumo ? el("span", { class: "gr-foco" }, `Foco: ${g.intencao.resumo}`) : null, ativo ? barra(g.progresso) : null), acao);
 }
 
 const POR_PAGINA_LONGOS = 12;
@@ -1219,6 +1220,7 @@ function enviarVideo(arquivo) {
     x.send(arquivo);
   }).finally(() => { envioAtual = null; });
 }
+const pedidoGravada = () => ({ intencoes: $$("#gr-intencoes input:checked").map((c) => c.value), pedido: $("#gr-pedido").value.trim() });
 $("#form-gravada").addEventListener("submit", async (ev) => {
   ev.preventDefault(); erroEnvio("");
   if (videoEscolhido) {
@@ -1226,14 +1228,14 @@ $("#form-gravada").addEventListener("submit", async (ev) => {
     try {
       await api("POST", "/api/gravadas/envio/conferir", { nome: videoEscolhido.name, tamanho: videoEscolhido.size });
       const { envio } = await enviarVideo(videoEscolhido);
-      await api("POST", "/api/gravadas", { envio, momentos: +$("#gr-momentos").value, qualidade: 1080, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
+      await api("POST", "/api/gravadas", { ...pedidoGravada(), envio, momentos: +$("#gr-momentos").value, qualidade: 1080, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
       mostrarVideo(null); avisar("Vídeo enviado. A análise começou"); atualizar();
     } catch (e) { $("#gr-barra").hidden = true; $("#gr-tirar").textContent = "Trocar vídeo"; $("#gr-info").textContent = tamanhoTexto(videoEscolhido.size); erroEnvio(e.message); }
     b.disabled = false; return;
   }
   if (!$("#gr-link").value.trim()) { erroEnvio("Escolha um vídeo ou cole o link da gravação."); return; }
   try {
-    await api("POST", "/api/gravadas", { link: $("#gr-link").value, momentos: +$("#gr-momentos").value, qualidade: +$("#gr-qualidade").value, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
+    await api("POST", "/api/gravadas", { ...pedidoGravada(), link: $("#gr-link").value, momentos: +$("#gr-momentos").value, qualidade: +$("#gr-qualidade").value, minutos: +$("#gr-minutos").value, longo: $("#gr-longo").checked, programar: $("#gr-programar").checked });
     $("#gr-link").value = ""; avisar("Análise iniciada"); atualizar();
   } catch (e) { $("#gr-erro").textContent = e.message; $("#gr-erro").hidden = false; }
 });
@@ -1301,7 +1303,8 @@ $("#ed-estilo-gancho").append(el("option", { value: "" }, "Estilo padrão"), ...
 function estiloEscolhido() {
   const marcado = (nome) => $(`#form-estilo input[name="${nome}"]:checked`)?.value;
   return { legenda: marcado("es-legenda"), gancho: marcado("es-gancho"), cor: marcado("es-cor"), tamanho: $("#es-tamanho").value, tempo_gancho: +$("#es-tempo").value, filtro: $("#es-filtro").value, sons_auto: $("#es-sons").checked,
-    barra_progresso: $("#es-barra").checked, abertura: $("#es-abertura").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked, ...posicoesEstilo };
+    barra_progresso: $("#es-barra").checked, abertura: $("#es-abertura").checked, fonte_legenda: $("#es-fonte-legenda").value, fonte_titulo: $("#es-fonte-titulo").value, arroba: $("#es-arroba").value.trim(), encerramento: $("#es-encerramento").checked,
+    texto_fixo: $("#es-fixo").value.trim(), fixo_lugar: $("#es-fixo-lugar").value, fixo_tempo: $("#es-fixo-tempo").value, fixo_cor: $("#es-fixo-cor").value, fixo_tamanho: $("#es-fixo-tamanho").value, ...posicoesEstilo };
 }
 function atualizarPrevia() {
   clearTimeout(tempoPrevia);
@@ -1319,10 +1322,12 @@ $("#abrir-estilo").addEventListener("click", () => {
   $("#es-barra").checked = e.barra_progresso === true; $("#es-abertura").checked = e.abertura !== false;
   [["#es-fonte-legenda", e.fonte_legenda], ["#es-fonte-titulo", e.fonte_titulo]].forEach(([q, v]) => { const s = $(q); s.dataset.valor = v || ""; s.value = v || ""; mostrarFonte(s); });
   $("#es-arroba").value = e.arroba || ""; $("#es-encerramento").checked = e.encerramento !== false;
+  $("#es-fixo").value = e.texto_fixo || ""; $("#es-fixo-lugar").value = e.fixo_lugar || "cima"; $("#es-fixo-tempo").value = e.fixo_tempo || "todo"; $("#es-fixo-cor").value = e.fixo_cor || "branco"; $("#es-fixo-tamanho").value = e.fixo_tamanho || "medio";
   $("#es-tamanho").value = e.tamanho; $("#es-tempo").value = String(e.tempo_gancho); $("#es-erro").hidden = true; amostrasEstilo();
   atualizarPrevia(); $("#janela-estilo").showModal();
 });
 $("#form-estilo").addEventListener("change", atualizarPrevia);
+$("#es-fixo").addEventListener("input", atualizarPrevia);
 $("#form-estilo").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try { await api("POST", "/api/config", { estilo: estiloEscolhido() }); $("#janela-estilo").close(); avisar("Estilo salvo para os próximos vídeos"); atualizar(); }
@@ -1611,3 +1616,14 @@ $("#janela-aprendizado [data-fechar]").addEventListener("click", () => $("#janel
 // Destaca a plataforma reconhecida enquanto o link é digitado
 $("#link").addEventListener("input", (ev) => { const v = ev.target.value.toLowerCase(), p = /kick\.com/.test(v) ? "kick" : /twitch\.tv/.test(v) ? "twitch" : /youtu(\.be|be\.com)/.test(v) ? "youtube" : /(^|\/\/|\.)(x|twitter)\.com/.test(v) ? "x" : "";
   $$("#plataformas li").forEach((li) => li.toggleAttribute("data-ativa", li.dataset.p === p)); });
+
+/* Tecla C: corta a live na hora, sem tirar o olho da transmissão. */
+document.addEventListener("keydown", (ev) => {
+  if (ev.key.toLowerCase() !== "c" || ev.ctrlKey || ev.metaKey || ev.altKey || ev.repeat) return;
+  if (ev.target.closest?.("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]") || $("#aba-vivo").hidden) return;
+  const gravando = (estado?.canais || []).filter((c) => c.status === "gravando");
+  if (!gravando.length) { avisar("Nenhuma live sendo gravada agora"); return; }
+  if (gravando.length > 1) { avisar("Com várias lives, use o botão Cortar agora de cada uma"); return; }
+  ev.preventDefault();
+  api("POST", `/api/canais/${gravando[0].id}/cortar`).then(() => avisar(`Corte iniciado em ${gravando[0].nome}`)).catch((e) => avisar(e.message));
+});

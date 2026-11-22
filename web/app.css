@@ -567,3 +567,17 @@ button.longo:hover .longo-capa img { transform: scale(1.02); }
 .sel-caixa { position: absolute; left: .5rem; top: .5rem; z-index: 3; width: 1.4rem; height: 1.4rem; accent-color: var(--corte); cursor: pointer; }
 .corte.marcado .poster { outline: 3px solid var(--corte); outline-offset: -3px; }
 .corte.marcado .poster::after { content: ""; position: absolute; inset: 0; background: rgb(242 181 68 / .14); pointer-events: none; }
+
+kbd.atalho { margin-left: .5em; padding: .05em .4em; border: 1px solid currentColor; border-radius: 4px; font: inherit; font-size: .75em; opacity: .7; }
+.es-fixo { display: grid; gap: .6rem; }
+
+.gr-o-que { display: grid; gap: .6rem; border: 0; padding: 0; margin: 0; }
+.gr-o-que legend { font-weight: 600; margin-bottom: .4rem; }
+.gr-o-que .opcional { font-weight: 400; opacity: .6; font-size: .85em; }
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip { position: relative; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip span { display: inline-block; padding: .35rem .75rem; border-radius: 999px; border: 1px solid var(--fio); font-size: .88rem; transition: background .15s, border-color .15s, color .15s; }
+.chip input:checked + span { background: var(--corte); border-color: transparent; color: #0b1518; font-weight: 600; }
+.chip input:focus-visible + span { outline: 2px solid var(--corte); outline-offset: 2px; }
+.gr-foco { display: block; font-size: .85em; opacity: .75; }
