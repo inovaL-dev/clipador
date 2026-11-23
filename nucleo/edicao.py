@@ -265,7 +265,19 @@ def _filtro_video(plano: dict, tomadas: list[dict] | None = None) -> str:
         r = plano["recorte"]
         trechos = plano.get("trechos") or []
         x = cam.expressao_x(trechos, r["x"]) if len(trechos) > 1 else trechos[0]["x"] if trechos else r["x"]  # segue quem está falando
-        return f"[0:v]crop={r['w']}:{r['h']}:{x}:{r['y']},scale=1080:1920:flags=lanczos,setsar=1"
+        recorte = f"crop={r['w']}:{r['h']}:{x}:{r['y']},scale=1080:1920:flags=lanczos,setsar=1"
+        inteiro = cam.expressao_inteiro(trechos)
+        if not inteiro:
+            return f"[0:v]{recorte}"
+        # vídeo editado: plano aberto aparece inteiro, com fundo desfocado; close continua recortado no rosto
+        return (
+            f"[0:v]split=3[r][a][b];[r]{recorte}[vr];"
+            "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+            "gblur=sigma=40,eq=brightness=-0.2:saturation=1.15[fundo];"
+            "[b]scale=1080:1920:force_original_aspect_ratio=decrease[frente];"
+            "[fundo][frente]overlay=(W-w)/2:(H-h)/2,setsar=1[vi];"
+            f"[vr][vi]overlay=0:0:enable='{inteiro}'"
+        )
     return (
         "[0:v]split=2[a][b];"
         "[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"

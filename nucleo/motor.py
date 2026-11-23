@@ -1369,7 +1369,7 @@ class Motor:
         p = meta["plano"]
         self._bast(meta, {"plano": {"layout": p["layout"], "moldura": p.get("moldura"), "rosto": p.get("rosto")},
                           "log": ("decisao", {"dividido": "Webcam em cima e jogo embaixo", "pip": "Jogo na tela toda com a webcam por cima", "tela_cheia": "A pessoa ocupa a tela toda",
-                                              "inteiro": "O vídeo inteiro, sem webcam separada", "conversa": "Conversa: a câmera segue quem fala"}.get(p["layout"], p["layout"]))})
+                                              "inteiro": "O vídeo inteiro, sem webcam separada", "conversa": "Conversa: a câmera segue quem fala"}.get(p["layout"], p["layout"]) if not p.get("editado") else "Vídeo já editado: o vertical acompanha cada troca de câmera")})
         if (pasta / "quadro.jpg").exists() and not (pasta / "bastidores.jpg").exists():
             shutil.copy(pasta / "quadro.jpg", pasta / "bastidores.jpg")
         self._etapa(meta, "editando")

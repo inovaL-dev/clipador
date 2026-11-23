@@ -160,6 +160,8 @@ def _pega_webcam(q: dict, plano: dict, vw: int, vh: int) -> bool:
 
 def achar_focos(fonte: Path, grupos: list[dict], plano: dict, duracao: float, momento: float | None = None) -> list[dict]:
     """Só aproxima quando encontra na imagem o que foi citado. Na dúvida, não mexe no vídeo."""
+    if plano.get("editado"):
+        return []  # o vídeo já foi editado por alguém: zoom automático cairia em objeto ou parede depois de um corte de câmera
     palavras = [p for g in grupos for p in g.get("palavras", [])]
     cap = cv2.VideoCapture(str(fonte))
     vw, vh = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

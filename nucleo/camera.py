@@ -163,6 +163,118 @@ def encontrar_moldura(quadros: list[np.ndarray], rosto: tuple) -> list[float]:
     return [x0 / lar, y0 / alt, (x1 - x0) / lar, (y1 - y0) / alt]
 
 
+CENA_LIMIAR = 0.32       # o quanto a imagem precisa mudar de um quadro para o outro para contar como troca de câmera
+CENAS_POR_SEGUNDO = 1 / 10  # uma troca a cada 10 s ou mais: o vídeo já foi editado (programa, podcast com várias câmeras, vlog)
+
+
+def detectar_cenas(video: Path) -> tuple[list[float], float]:
+    """Instantes em que a imagem troca de câmera (corte seco da edição original)."""
+    _, _, dur = dimensoes(video)
+    r = subprocess.run(
+        ["ffmpeg", "-v", "info", "-i", str(video), "-an", "-vf", f"scale=320:-2,select='gt(scene,{CENA_LIMIAR})',showinfo", "-f", "null", "-"],
+        capture_output=True, text=True, errors="replace", **sem_janela(),
+    )
+    tempos = []
+    for linha in r.stderr.splitlines():
+        if "showinfo" in linha and "pts_time:" in linha:
+            try:
+                t = float(linha.split("pts_time:")[1].split()[0])
+            except (IndexError, ValueError):
+                continue
+            if not tempos or t - tempos[-1] >= 0.4:  # um flash ou uma transição rápida conta uma vez só
+                tempos.append(round(t, 3))
+    return tempos, dur
+
+
+def video_editado(cenas: list[float], dur: float) -> bool:
+    return dur > 0 and len(cenas) >= max(3, dur * CENAS_POR_SEGUNDO)
+
+
+def webcam_estavel(quadros: list[np.ndarray], moldura: list[float], minimo: float = 0.6) -> bool:
+    """Uma webcam de verdade mostra a mesma pessoa no mesmo lugar o tempo todo.
+    Num vídeo editado, o mesmo retângulo mostra parede, ombro ou objeto quando a câmera troca."""
+    alt, lar = quadros[0].shape[:2]
+    x, y, w, h = moldura
+    x0, y0 = int(x * lar), int(y * alt)
+    x1, y1 = max(x0 + 8, int((x + w) * lar)), max(y0 + 8, int((y + h) * alt))
+    pedacos = [cv2.resize(cv2.cvtColor(q[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY), (32, 32)).astype(np.float32).ravel() for q in quadros]
+    ref = np.median(np.stack(pedacos), axis=0)
+    ref = ref - ref.mean()
+    parecidos = 0
+    for p in pedacos:
+        p = p - p.mean()
+        c = float(p @ ref / (np.linalg.norm(p) * np.linalg.norm(ref) + 1e-6))
+        parecidos += c >= 0.5
+    return parecidos >= len(pedacos) * minimo
+
+
+def _quadro_em(video: Path, t: float, lar: int = 640) -> np.ndarray | None:
+    w, h, _ = dimensoes(video)
+    alt = int(round(lar * h / max(w, 1) / 2)) * 2
+    r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{max(0.0, t):.3f}", "-i", str(video), "-frames:v", "1",
+                        "-vf", f"scale={lar}:{alt}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"], capture_output=True, **sem_janela())
+    if len(r.stdout) < lar * alt * 3:
+        return None
+    return np.frombuffer(r.stdout, np.uint8, lar * alt * 3).reshape(alt, lar, 3)
+
+
+def _decidir_cena(rostos: list[tuple], w: float) -> float | None:
+    """Centro do recorte vertical para uma cena, ou None quando ela deve aparecer inteira (com fundo desfocado).
+
+    Close e plano médio: o recorte fica no rosto em destaque, ou no meio de quem cabe junto.
+    Grupo espalhado (bancada, mesa): o recorte fica na parte com mais gente, mostrando duas ou três pessoas.
+    Plano muito aberto (rostos minúsculos) ou cena sem rosto: o vídeo aparece inteiro."""
+    rostos = [r for r in rostos if r[3] >= 0.055]
+    if not rostos:
+        return None
+    rostos = sorted(rostos, key=lambda r: r[2] * r[3], reverse=True)
+    maior = rostos[0]
+    fortes = [r for r in rostos if r[3] >= maior[3] * 0.6]
+    xs = [r[0] + r[2] / 2 for r in fortes]
+    if max(xs) - min(xs) <= w * 0.75:
+        return float(np.average(xs, weights=[r[2] * r[3] for r in fortes]))
+    segundo = fortes[1]
+    if maior[3] >= 0.18 and maior[2] * maior[3] >= segundo[2] * segundo[3] * 2.2:
+        return maior[0] + maior[2] / 2  # um rosto bem maior que os outros: é ele que está em destaque
+    # janela com mais gente: a que junta mais área de rosto, e na dúvida a mais perto do meio da tela
+    melhor, nota_melhor = None, -1.0
+    for r in fortes:
+        for inicio in (r[0] - w * .08, r[0] + r[2] / 2 - w / 2, r[0] + r[2] + w * .08 - w):
+            dentro = [f for f in fortes if inicio <= f[0] + f[2] / 2 <= inicio + w * .92]
+            nota = sum(f[2] * f[3] for f in dentro) - abs(inicio + w / 2 - .5) * 1e-3
+            if dentro and nota > nota_melhor:
+                melhor, nota_melhor = dentro, nota
+    return float(np.average([f[0] + f[2] / 2 for f in melhor], weights=[f[2] * f[3] for f in melhor]))
+
+
+def enquadrar_cenas(video: Path, cenas: list[float], dur: float, largura: int, altura: int, w: float) -> list[dict]:
+    """Vídeo editado: cada cena ganha o próprio enquadramento (recorte no rosto ou vídeo inteiro)."""
+    limites = [0.0, *[c for c in cenas if 0 < c < dur], dur]
+    trechos: list[dict] = []
+    for a, b in zip(limites, limites[1:]):
+        if b - a < 0.12:
+            if trechos:
+                trechos[-1]["fim"] = round(b, 3)
+            continue
+        por_quadro = []
+        for k in ((0.5,) if b - a < 1.2 else (0.2, 0.5, 0.8)):
+            q = _quadro_em(video, a + (b - a) * k)
+            if q is not None:
+                por_quadro.append(detectar_rostos(q))
+        decisoes = [_decidir_cena(r, w) for r in por_quadro]
+        centros = [c for c in decisoes if c is not None]
+        if len(centros) * 2 > len(decisoes):  # a maior parte da cena tem alguém em destaque
+            cx = float(np.median(centros))
+            novo = {"x": _recorte(float(np.clip(cx - w / 2, 0, max(0.0, 1 - w))), 0, min(w, 1), 1, largura, altura)["x"]}
+        else:
+            novo = {"x": _recorte(float(np.clip(0.5 - w / 2, 0, max(0.0, 1 - w))), 0, min(w, 1), 1, largura, altura)["x"], "inteiro": True}
+        if trechos and trechos[-1]["x"] == novo["x"] and trechos[-1].get("inteiro") == novo.get("inteiro"):
+            trechos[-1]["fim"] = round(b, 3)
+        else:
+            trechos.append({"ini": round(a, 3), "fim": round(b, 3), **novo})
+    return trechos
+
+
 def analisar(video: Path) -> dict:
     quadros = amostrar(video)
     if not quadros:
@@ -170,6 +282,22 @@ def analisar(video: Path) -> dict:
     por_quadro = [detectar_rostos(q) for q in quadros]
     grupos = _agrupar_rostos(por_quadro)
     presenca = len(quadros) * 0.4
+    try:
+        cenas, dur = detectar_cenas(video)
+    except Exception:
+        cenas, dur = [], 0.0
+    editado = video_editado(cenas, dur)
+    if editado:
+        # Vídeo que já foi editado com várias câmeras: só divide a tela se houver uma webcam de verdade por cima
+        # (um jogo também troca de cena o tempo todo); senão, o vertical acompanha cada cena.
+        fixos = [g for g in grupos if len(g["quadros"]) >= len(quadros) * 0.7]
+        if fixos:
+            grupo = max(fixos, key=lambda g: len(g["quadros"]))
+            rosto = tuple(float(v) for v in np.median(np.array(grupo["itens"]), axis=0))
+            moldura = encontrar_moldura(quadros, rosto)
+            if moldura[2] * moldura[3] <= 0.6 and webcam_estavel(quadros, moldura):
+                return {"layout": "dividido", "camera": moldura, "rosto": list(rosto)}
+        return {"layout": "tela_cheia", "editado": True, "cenas": cenas, "duracao": dur, "centro_x": 0.5, "centro_y": 0.5}
 
     # Duas ou mais pessoas paradas e grandes (podcast, conversa, IRL): o vertical vai seguir quem está falando.
     pessoas = [g for g in grupos if len(g["quadros"]) >= presenca and np.median([i[3] for i in g["itens"]]) >= .1]
@@ -285,6 +413,11 @@ def planejar(video: Path, ajuste: dict | None = None) -> dict:
         w = altura * ASPECTO_VERTICAL / largura
         x = float(np.clip(centro - w / 2, 0, max(0.0, 1 - w)))
         plano = {"layout": "tela_cheia", "recorte": _recorte(x, 0, min(w, 1), 1, largura, altura), "origem": modo}
+        if analise.get("editado") and not ajuste.get("rect"):
+            trechos = enquadrar_cenas(video, analise.get("cenas") or [], float(analise.get("duracao") or 0), largura, altura, w)
+            if trechos:
+                plano.update(trechos=trechos, recorte={**plano["recorte"], "x": trechos[0]["x"]}, editado=True)
+            return plano
         if analise.get("conversa") and not ajuste.get("rect"):
             try:
                 from .locutor import seguir_quem_fala
@@ -309,12 +442,19 @@ def mapear_trechos(trechos: list[dict], cortes: list[list[float]]) -> list[dict]
             ini, fim = max(a, t["ini"]), min(b, t["fim"])
             if fim > ini:
                 novo = {"ini": round(corrido + ini - a, 3), "fim": round(corrido + fim - a, 3), "x": t["x"]}
-                if saida and saida[-1]["x"] == novo["x"] and abs(saida[-1]["fim"] - novo["ini"]) < .05:
+                if t.get("inteiro"):
+                    novo["inteiro"] = True
+                if saida and saida[-1]["x"] == novo["x"] and saida[-1].get("inteiro") == novo.get("inteiro") and abs(saida[-1]["fim"] - novo["ini"]) < .05:
                     saida[-1]["fim"] = novo["fim"]
                 else:
                     saida.append(novo)
         corrido += b - a
     return saida
+
+
+def expressao_inteiro(trechos: list[dict]) -> str:
+    """Expressão `enable` do FFmpeg com os trechos que aparecem inteiros (vai entre aspas simples, como em tomadas.enable)."""
+    return "+".join(f"between(t,{t['ini']:.3f},{t['fim'] - .001:.3f})" for t in trechos if t.get("inteiro"))
 
 
 def expressao_x(trechos: list[dict], padrao: int) -> str:

@@ -1,5 +1,14 @@
 [
   {
+    "versao": "1.20.0",
+    "data": "2026-11-22",
+    "notas": [
+      "Cortes de vídeos já editados (programas, podcasts com várias câmeras, vlogs do YouTube): o Clipador percebe as trocas de câmera e enquadra cada cena separado. Close e plano médio ficam recortados em quem está em destaque; plano aberto aparece inteiro, com fundo desfocado.",
+      "A tela só é dividida em câmera e jogo quando existe uma webcam de verdade, sempre no mesmo lugar. Antes, num vídeo editado, a parte de cima podia mostrar parede, ombro ou objeto.",
+      "Em vídeos já editados, o Clipador não faz mais zoom automático, que podia cair num objeto logo depois de uma troca de câmera."
+    ]
+  },
+  {
     "versao": "1.19.0",
     "data": "2026-11-22",
     "notas": [
